@@ -370,33 +370,15 @@ body {
   border-radius: 9px;
   cursor: pointer;
   font-size: 0.95rem;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-}
-
-.row-action:hover {
-  transform: translateY(-1px);
+  color: #fff;
 }
 
 .row-action--edit {
-  background: var(--app-primary-soft);
-  color: var(--app-primary);
-}
-
-.row-action--edit:hover {
   background: var(--app-primary);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(79, 110, 247, 0.35);
 }
 
 .row-action--delete {
-  background: var(--danger-soft);
-  color: var(--app-expense);
-}
-
-.row-action--delete:hover {
   background: var(--app-expense);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .entry-card__footer .row-actions {
