@@ -217,20 +217,20 @@
       </div>
 
       <!-- ENTRADAS (positivo) -->
-      <section class="card app-card shadow-sm border-0 mb-4 entries-section entries-section--income" id="incomeSection">
-        <div class="card-header entries-section__header">
+      <section class="entries-panel entries-panel--income" id="incomeSection">
+        <div class="entries-panel__head">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h3 class="h6 mb-0 entries-section__title">
+            <h3 class="h6 mb-0 entries-panel__title">
               <i class="bi bi-cash-coin"></i> Entradas e Rendas
               <span class="badge rounded-pill ms-1" id="incomeCount">0</span>
             </h3>
-            <strong class="entries-section__subtotal value-income" id="incomeSubtotal">R$ 0,00</strong>
+            <strong class="entries-panel__subtotal value-income" id="incomeSubtotal">R$ 0,00</strong>
           </div>
-          <p class="entries-section__hint mb-0">Salários, renda extra e valores que entram na casa</p>
+          <p class="entries-panel__hint mb-0">Salários, renda extra e valores que entram na casa</p>
         </div>
-        <div class="card-body p-0 p-md-4">
-          <div class="table-responsive d-none d-md-block" id="incomeTableWrapper">
-            <table class="table table-hover align-middle mb-0" id="incomeTable">
+        <div class="entries-panel__body">
+          <div class="entries-table-wrap d-none d-md-block" id="incomeTableWrapper">
+            <table class="entries-table" id="incomeTable">
               <thead>
                 <tr>
                   <th>Descrição</th>
@@ -244,7 +244,7 @@
               <tbody id="incomeBody"></tbody>
             </table>
           </div>
-          <div class="d-md-none p-3 pt-0" id="incomeCards"></div>
+          <div class="entries-cards d-md-none" id="incomeCards"></div>
           <div class="empty-section text-center py-4" id="incomeEmpty" hidden>
             <i class="bi bi-plus-circle-dotted"></i>
             <p class="mb-0 small text-muted">Nenhuma entrada neste mês</p>
@@ -253,20 +253,20 @@
       </section>
 
       <!-- DESPESAS (negativo) -->
-      <section class="card app-card shadow-sm border-0 mb-4 entries-section entries-section--expense" id="expenseSection">
-        <div class="card-header entries-section__header">
+      <section class="entries-panel entries-panel--expense" id="expenseSection">
+        <div class="entries-panel__head">
           <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <h3 class="h6 mb-0 entries-section__title">
+            <h3 class="h6 mb-0 entries-panel__title">
               <i class="bi bi-cart3"></i> Despesas e Lançamentos
               <span class="badge rounded-pill ms-1" id="expenseCount">0</span>
             </h3>
-            <strong class="entries-section__subtotal value-expense" id="expenseSubtotal">R$ 0,00</strong>
+            <strong class="entries-panel__subtotal value-expense" id="expenseSubtotal">R$ 0,00</strong>
           </div>
-          <p class="entries-section__hint mb-0">Contas, mercado, cartão e gastos do mês</p>
+          <p class="entries-panel__hint mb-0">Contas, mercado, cartão e gastos do mês</p>
         </div>
-        <div class="card-body p-0 p-md-4">
-          <div class="table-responsive d-none d-md-block" id="expenseTableWrapper">
-            <table class="table table-hover align-middle mb-0" id="expenseTable">
+        <div class="entries-panel__body">
+          <div class="entries-table-wrap d-none d-md-block" id="expenseTableWrapper">
+            <table class="entries-table" id="expenseTable">
               <thead>
                 <tr>
                   <th>Descrição</th>
@@ -280,7 +280,7 @@
               <tbody id="expenseBody"></tbody>
             </table>
           </div>
-          <div class="d-md-none p-3 pt-0" id="expenseCards"></div>
+          <div class="entries-cards d-md-none" id="expenseCards"></div>
           <div class="empty-section text-center py-4" id="expenseEmpty" hidden>
             <i class="bi bi-plus-circle-dotted"></i>
             <p class="mb-0 small text-muted">Nenhuma despesa neste mês</p>
