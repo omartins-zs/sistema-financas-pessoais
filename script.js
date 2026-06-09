@@ -98,6 +98,7 @@ const dom = {
   inputType: $('#inputType'),
   inputValue: $('#inputValue'),
   inputStatus: $('#inputStatus'),
+  inputDueDay: $('#inputDueDay'),
   inputObservation: $('#inputObservation'),
   editId: $('#editId'),
   editDescription: $('#editDescription'),
@@ -105,6 +106,7 @@ const dom = {
   editType: $('#editType'),
   editValue: $('#editValue'),
   editStatus: $('#editStatus'),
+  editDueDay: $('#editDueDay'),
   editObservation: $('#editObservation'),
   incomeCount: $('#incomeCount'),
   expenseCount: $('#expenseCount'),
@@ -498,6 +500,7 @@ const buildEntryFromForm = (formData) => ({
   type: formData.type,
   value: formData.value,
   status: formData.status,
+  due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
   observation: formData.observation.trim()
 });
 
@@ -516,6 +519,7 @@ const handleAddEntry = (e) => {
     type: dom.inputType.value,
     value: getMaskValue(maskAdd),
     status: dom.inputStatus.value,
+    due_day: dom.inputDueDay.value || null,
     observation: dom.inputObservation.value
   });
 
@@ -536,6 +540,7 @@ const openEditModal = (id) => {
   dom.editCategory.value = entry.category;
   dom.editType.value = entry.type;
   dom.editStatus.value = entry.status;
+  dom.editDueDay.value = entry.due_day ?? '';
   dom.editObservation.value = entry.observation ?? '';
   setMaskValue(maskEdit, entry.value);
 
@@ -558,6 +563,7 @@ const handleEditEntry = (e) => {
     type: dom.editType.value,
     value: getMaskValue(maskEdit),
     status: dom.editStatus.value,
+    due_day: dom.editDueDay.value || null,
     observation: dom.editObservation.value
   });
 
@@ -644,13 +650,14 @@ const copyPreviousMonth = async () => {
     if (!confirmed) return;
   }
 
-  const copied = newEntries.map(({ description, category, type, value, observation }) => ({
+  const copied = newEntries.map(({ description, category, type, value, due_day, observation }) => ({
     id: generateId(),
     description,
     category,
     type,
     value,
     status: 'nao_pago',
+    due_day: due_day ?? null,
     observation: observation ?? ''
   }));
 
@@ -1082,12 +1089,17 @@ const createActionButtons = (id) => `
     </button>
   </div>`;
 
+const renderDueDay = (due_day) => due_day
+  ? `<span class="badge text-bg-light border" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>dia ${due_day}</span>`
+  : '<span class="text-muted">—</span>';
+
 const renderEntryRow = (entry, valueClass) => `
   <tr data-id="${entry.id}">
     <td class="cell-description">${escapeHtml(entry.description)}</td>
     <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
     <td class="${valueClass}">${formatCurrency(entry.value)}</td>
     <td>${createStatusSelect(entry)}</td>
+    <td>${renderDueDay(entry.due_day)}</td>
     <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
     <td class="text-end">${createActionButtons(entry.id)}</td>
   </tr>`;
@@ -1095,6 +1107,8 @@ const renderEntryRow = (entry, valueClass) => `
 const renderEntryCard = (entry, valueClass) => {
   const obs = entry.observation
     ? `<p class="entry-card__obs">${escapeHtml(entry.observation)}</p>` : '';
+  const due = entry.due_day
+    ? `<span class="badge text-bg-light border ms-1" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>vence dia ${entry.due_day}</span>` : '';
 
   return `
     <div class="entry-card" data-id="${entry.id}">
@@ -1103,7 +1117,7 @@ const renderEntryCard = (entry, valueClass) => {
         <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
       </div>
       <div class="entry-card__meta">
-        <span class="category-tag">${escapeHtml(entry.category)}</span>
+        <span class="category-tag">${escapeHtml(entry.category)}</span>${due}
       </div>
       ${obs}
       <div class="entry-card__footer">

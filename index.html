@@ -188,11 +188,18 @@
                   <option value="pago">Pago</option>
                 </select>
               </div>
-              <div class="col-12 col-lg-10">
+              <div class="col-6 col-md-3 col-lg-2">
+                <label for="inputDueDay" class="form-label">
+                  <i class="bi bi-calendar-event me-1"></i>Vencimento <span class="label-optional">(dia)</span>
+                </label>
+                <input type="number" class="form-control form-control-lg" id="inputDueDay"
+                       placeholder="Ex: 10" min="1" max="31">
+              </div>
+              <div class="col-12 col-md col-lg-8">
                 <label for="inputObservation" class="form-label">
                   Observação <span class="label-optional">(opcional)</span>
                 </label>
-                <input type="text" class="form-control" id="inputObservation" placeholder="Anotações extras...">
+                <input type="text" class="form-control form-control-lg" id="inputObservation" placeholder="Anotações extras...">
               </div>
               <div class="col-12 col-lg-2 d-flex align-items-end">
                 <button type="submit" class="btn btn-primary btn-lg w-100">
@@ -237,6 +244,7 @@
                   <th>Categoria</th>
                   <th>Valor</th>
                   <th>Status</th>
+                  <th>Vencimento</th>
                   <th>Obs.</th>
                   <th class="text-end">Ações</th>
                 </tr>
@@ -273,6 +281,7 @@
                   <th>Categoria</th>
                   <th>Valor</th>
                   <th>Status</th>
+                  <th>Vencimento</th>
                   <th>Obs.</th>
                   <th class="text-end">Ações</th>
                 </tr>
@@ -374,7 +383,13 @@
                   <option value="pago">Pago</option>
                 </select>
               </div>
-              <div class="col-12">
+              <div class="col-6">
+                <label for="editDueDay" class="form-label">
+                  <i class="bi bi-calendar-event me-1"></i>Vencimento <span class="label-optional">(dia)</span>
+                </label>
+                <input type="number" class="form-control" id="editDueDay" placeholder="Ex: 10" min="1" max="31">
+              </div>
+              <div class="col-6">
                 <label for="editObservation" class="form-label">Observação</label>
                 <input type="text" class="form-control" id="editObservation">
               </div>
