@@ -104,228 +104,303 @@ body {
 
 .text-muted { color: var(--app-text-muted) !important; }
 
-/* ---- Header / Navbar ---- */
+/* ---- Topbar / Navbar ---- */
 
-.app-header {
-  background: var(--header-bg);
-  border-bottom: 1px solid var(--app-border);
+.topbar {
   position: sticky;
   top: 0;
   z-index: 1030;
-  box-shadow: 0 4px 20px var(--app-shadow);
+  background: color-mix(in srgb, var(--header-bg) 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 var(--app-border), 0 8px 32px var(--app-shadow);
   transition: background 0.25s ease;
 }
 
-.app-header__inner {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.85rem 0 1rem;
+.topbar .container {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
 }
 
-.header-row {
-  display: flex;
-  align-items: center;
+.topbar__line {
+  height: 3px;
+  background: linear-gradient(90deg, var(--app-primary), var(--app-income), var(--app-primary));
+  opacity: 0.85;
+}
+
+.topbar__grid {
+  display: grid;
   gap: 0.65rem;
-  width: 100%;
-}
-
-.header-row--brand {
-  justify-content: space-between;
-  min-height: 44px;
-}
-
-.header-row--month,
-.header-row--actions {
-  flex-wrap: wrap;
+  align-items: center;
 }
 
 /* Marca */
-.header-brand {
+.topbar__brand {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  text-decoration: none;
-  color: inherit;
+  gap: 0.7rem;
   min-width: 0;
-  flex: 1;
 }
 
-.header-brand__logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+.topbar__logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
   object-fit: cover;
-  box-shadow: 0 2px 10px var(--app-shadow);
+  box-shadow: 0 2px 12px var(--app-shadow);
   flex-shrink: 0;
 }
 
-.header-brand__text {
+.topbar__brand-text {
   min-width: 0;
+  line-height: 1.2;
 }
 
-.header-brand__title {
-  font-size: clamp(1.05rem, 3.5vw, 1.35rem);
+.topbar__title {
+  margin: 0;
+  font-size: clamp(1rem, 2.8vw, 1.25rem);
   font-weight: 700;
   color: var(--app-text);
-  margin: 0;
-  line-height: 1.2;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.header-brand__month {
-  font-size: clamp(0.78rem, 2.5vw, 0.88rem);
+.topbar__subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
   color: var(--app-text-muted);
-  margin: 0;
   text-transform: capitalize;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Botões rápidos (tema, importar) */
-.header-quick {
+/* Período (mês/ano) */
+.topbar__period {
   display: flex;
-  gap: 0.4rem;
+  align-items: center;
+  background: var(--header-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  padding: 0.2rem;
+  box-shadow: inset 0 1px 2px var(--app-shadow);
+}
+
+.topbar__period-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
   flex-shrink: 0;
 }
 
-.header-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  background: var(--header-elevated);
-  color: var(--app-text-muted);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 1.1rem;
-}
-
-.header-btn:hover {
-  background: var(--btn-hover);
-  color: var(--app-primary);
-  border-color: var(--app-primary);
-}
-
-/* Seletor de mês */
-.month-picker {
-  display: flex;
-  align-items: stretch;
-  width: 100%;
-  background: var(--header-elevated);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
-  overflow: hidden;
-}
-
-.month-picker__arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  min-width: 48px;
-  border: none;
-  background: transparent;
-  color: var(--app-text-muted);
-  font-size: 1.15rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.month-picker__arrow:hover {
+.topbar__period-btn:hover {
   background: var(--btn-hover);
   color: var(--app-primary);
 }
 
-.month-picker__fields {
+.topbar__period-fields {
   display: flex;
+  align-items: center;
+  gap: 0.15rem;
   flex: 1;
   min-width: 0;
+  padding: 0 0.25rem;
 }
 
-.month-picker__select {
-  flex: 1;
-  min-width: 0;
+.topbar__period-sep {
+  color: var(--app-text-faint);
+  font-weight: 600;
+  font-size: 0.9rem;
+  user-select: none;
+}
+
+.topbar__select {
   border: none;
-  border-left: 1px solid var(--app-border);
-  border-right: 1px solid var(--app-border);
   background: transparent;
   color: var(--app-text);
   font-weight: 600;
-  font-size: clamp(0.85rem, 2.8vw, 0.95rem);
-  padding: 0.65rem 0.5rem;
-  text-align: center;
+  font-size: 0.88rem;
+  padding: 0.35rem 0.25rem;
   cursor: pointer;
+  min-width: 0;
+  flex: 1;
+  text-align: center;
   box-shadow: none !important;
 }
 
-.month-picker__select--year {
-  flex: 0 0 88px;
-  max-width: 100px;
-  border-right: none;
+.topbar__select--year {
+  flex: 0 0 4.2rem;
+  max-width: 4.5rem;
 }
 
-.month-picker__select:focus {
+.topbar__select:focus {
   outline: none;
-  background: var(--btn-hover);
+  color: var(--app-primary);
 }
 
-/* Barra de ações */
-.header-row--actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+/* Ferramentas + Ações */
+.topbar__tools {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  background: var(--header-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  flex-shrink: 0;
 }
 
-.header-action {
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.topbar__export {
+  flex: 1;
+}
+
+.topbar__export .topbar__btn {
+  width: 100%;
+}
+
+.topbar__btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  width: 100%;
-  min-height: 44px;
-  padding: 0.55rem 0.85rem;
+  gap: 0.4rem;
+  height: 38px;
+  padding: 0 0.9rem;
   border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
+  border-radius: 999px;
   background: var(--header-elevated);
   color: var(--app-text);
-  font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+  font-size: 0.84rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
 }
 
-.header-action i { font-size: 1.05rem; flex-shrink: 0; }
-
-.header-action:hover {
-  background: var(--btn-hover);
-  border-color: var(--app-primary);
-  color: var(--app-primary);
+.topbar__btn i {
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 
-.header-action--primary {
+.topbar__btn:hover {
+  border-color: var(--app-primary);
+  color: var(--app-primary);
+  background: var(--btn-hover);
+}
+
+.topbar__btn--primary {
   background: var(--app-primary);
   border-color: var(--app-primary);
   color: #fff;
+  flex: 1;
 }
 
-.header-action--primary:hover {
+.topbar__btn--primary:hover {
   background: var(--app-primary-dark);
   border-color: var(--app-primary-dark);
   color: #fff;
 }
 
-.header-export { width: 100%; }
+.topbar__tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
 
-.header-export .dropdown-toggle::after {
-  margin-left: auto;
+.topbar__tool:hover {
+  background: var(--btn-hover);
+  color: var(--app-primary);
+}
+
+.dropdown-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--app-text-faint) !important;
+}
+
+.topbar__import-drop .dropdown-toggle::after {
+  display: none;
+}
+
+/* ---- Botões de ação na tabela ---- */
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.row-action:hover {
+  transform: translateY(-1px);
+}
+
+.row-action--edit {
+  background: var(--app-primary-soft);
+  color: var(--app-primary);
+}
+
+.row-action--edit:hover {
+  background: var(--app-primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(79, 110, 247, 0.35);
+}
+
+.row-action--delete {
+  background: var(--danger-soft);
+  color: var(--app-expense);
+}
+
+.row-action--delete:hover {
+  background: var(--app-expense);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.entry-card__footer .row-actions {
+  flex-shrink: 0;
 }
 
 /* ---- Main ---- */
@@ -745,111 +820,91 @@ body {
 }
 
 /* ============================================
-   RESPONSIVO — breakpoints
+   RESPONSIVO — Topbar
    ============================================ */
 
-/* Tablet+ : header em uma linha compacta */
-@media (min-width: 768px) {
-  .app-header__inner {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 0.75rem 1rem;
-    padding: 1rem 0 1.15rem;
-    align-items: center;
-  }
-
-  .header-row--brand {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .header-quick {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-  }
-
-  .header-row--month {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .header-row--actions {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    display: flex;
-    flex-wrap: nowrap;
-    justify-content: flex-end;
-    gap: 0.5rem;
-  }
-
-  .month-picker {
-    max-width: 420px;
-    margin: 0 auto;
-  }
-
-  .header-action,
-  .header-export {
-    width: auto;
-    min-width: 160px;
-  }
-
-  .header-export .header-action {
-    min-width: 140px;
-  }
+/* Mobile */
+.topbar__grid {
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "brand tools"
+    "period period"
+    "actions actions";
 }
 
-/* Desktop largo */
+.topbar__brand   { grid-area: brand; }
+.topbar__tools   { grid-area: tools; align-self: center; }
+.topbar__period  { grid-area: period; }
+.topbar__actions { grid-area: actions; }
+
+/* Desktop: linha única */
 @media (min-width: 992px) {
-  .app-header__inner {
-    grid-template-columns: minmax(200px, 1fr) minmax(280px, 420px) auto;
-    grid-template-rows: auto auto;
-    align-items: center;
+  .topbar .container {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
   }
 
-  .header-row--brand { grid-column: 1; grid-row: 1; }
-  .header-quick { grid-column: 3; grid-row: 1; }
-  .header-row--month { grid-column: 2; grid-row: 1; }
-  .header-row--actions {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-content: center;
-    padding-top: 0.15rem;
+  .topbar__grid {
+    grid-template-columns: auto 1fr auto auto;
+    grid-template-areas: "brand period actions tools";
+    gap: 0.75rem 1rem;
   }
 
-  .month-picker {
-    margin: 0;
-    max-width: none;
+  .topbar__period {
+    max-width: 320px;
+    justify-self: center;
+    width: 100%;
   }
 
-  .header-action span,
-  .header-export span { display: inline; }
+  .topbar__subtitle {
+    display: none;
+  }
+
+  .topbar__actions {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .topbar__btn--primary,
+  .topbar__export {
+    flex: 0 0 auto;
+  }
+
+  .topbar__export .topbar__btn,
+  .topbar__btn--primary {
+    width: auto;
+    min-width: auto;
+  }
+
+  .topbar__btn--primary {
+    padding: 0 1rem;
+  }
+
+  .topbar__export .topbar__btn {
+    min-width: 110px;
+  }
 }
 
 /* Mobile pequeno */
 @media (max-width: 380px) {
-  .header-brand__logo {
-    width: 38px;
-    height: 38px;
+  .topbar__logo {
+    width: 36px;
+    height: 36px;
   }
 
-  .header-btn {
-    width: 38px;
-    height: 38px;
+  .topbar__btn span {
+    font-size: 0.78rem;
   }
 
-  .header-action span {
-    font-size: 0.75rem;
+  .topbar__btn {
+    padding: 0 0.65rem;
+    height: 36px;
   }
 
-  .month-picker__arrow {
-    width: 40px;
-    min-width: 40px;
-  }
-
-  .month-picker__select--year {
-    flex: 0 0 72px;
+  .topbar__period-btn,
+  .topbar__tool {
+    width: 32px;
+    height: 32px;
   }
 
   .summary-card__value {
