@@ -79,8 +79,8 @@ const dom = {
   btnCopyMonth: $('#btnCopyMonth'),
   btnTheme: $('#btnTheme'),
   themeIcon: $('#themeIcon'),
-  btnImport: $('#btnImport'),
-  inputImport: $('#inputImport'),
+  inputImportJson: $('#inputImportJson'),
+  inputImportSheet: $('#inputImportSheet'),
   btnClearMonth: $('#btnClearMonth'),
   formAdd: $('#formAdd'),
   formEdit: $('#formEdit'),
@@ -814,38 +814,188 @@ const handleExport = (format) => {
   exporters[format]?.();
 };
 
-const importData = (e) => {
+const TYPE_MAP = {
+  entrada: 'entrada', entradas: 'entrada', '+': 'entrada',
+  despesa: 'despesa', despesas: 'despesa', '-': 'despesa'
+};
+
+const STATUS_MAP = {
+  pago: 'pago',
+  reservado: 'reservado',
+  nao_pago: 'nao_pago',
+  'não pago': 'nao_pago',
+  'nao pago': 'nao_pago',
+  'não-pago': 'nao_pago'
+};
+
+const normalizeHeader = (h) =>
+  String(h ?? '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+const mapTipo = (raw) => {
+  const key = String(raw ?? '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return TYPE_MAP[key] ?? (key.startsWith('entr') ? 'entrada' : key.startsWith('desp') ? 'despesa' : null);
+};
+
+const mapStatus = (raw) => {
+  const key = String(raw ?? '').trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return STATUS_MAP[key] ?? 'nao_pago';
+};
+
+const rowToEntry = (row) => {
+  const desc = String(row.descricao ?? row.description ?? '').trim();
+  const category = String(row.categoria ?? row.category ?? 'Outros').trim();
+  const type = mapTipo(row.tipo ?? row.type);
+  const value = parseValue(String(row.valor ?? row.value ?? '0'));
+  const status = mapStatus(row.status);
+  const observation = String(row.observacao ?? row.observation ?? '').trim();
+
+  if (!desc || !type || value <= 0) return null;
+
+  return {
+    id: generateId(),
+    description: desc,
+    category: CATEGORIAS.includes(category) ? category : 'Outros',
+    type,
+    value,
+    status,
+    observation
+  };
+};
+
+const parseSheetRows = (rows) => {
+  if (!rows.length) return [];
+
+  const headerRow = rows.findIndex((r) =>
+    r.some((c) => normalizeHeader(c).includes('descricao'))
+  );
+
+  const dataRows = headerRow >= 0 ? rows.slice(headerRow + 1) : rows;
+  const headers = headerRow >= 0
+    ? rows[headerRow].map(normalizeHeader)
+    : ['descricao', 'categoria', 'tipo', 'valor', 'status', 'observacao'];
+
+  return dataRows
+    .filter((r) => r.some((c) => String(c ?? '').trim()))
+    .map((cells) => {
+      const row = {};
+      headers.forEach((h, i) => {
+        if (h.includes('descricao')) row.descricao = cells[i];
+        else if (h.includes('categoria')) row.categoria = cells[i];
+        else if (h === 'tipo' || h.includes('tipo')) row.tipo = cells[i];
+        else if (h.includes('valor')) row.valor = cells[i];
+        else if (h.includes('status')) row.status = cells[i];
+        else if (h.includes('observ')) row.observacao = cells[i];
+      });
+      return rowToEntry(row);
+    })
+    .filter(Boolean);
+};
+
+const importJSON = async (file) => {
+  const text = await file.text();
+  const imported = JSON.parse(text);
+
+  if (typeof imported !== 'object' || imported === null) throw new Error('json');
+
+  const confirmed = await confirmAction({
+    title: 'Restaurar backup JSON?',
+    text: 'Isso substituirá TODOS os dados do sistema. Deseja continuar?',
+    icon: 'warning',
+    confirmText: 'Sim, restaurar'
+  });
+
+  if (!confirmed) return;
+
+  allData = imported;
+  saveData();
+  render();
+  notify.success('Backup restaurado com sucesso!');
+};
+
+const importSheet = async (file) => {
+  const ext = file.name.split('.').pop().toLowerCase();
+  let rows = [];
+
+  if (ext === 'csv') {
+    const text = (await file.text()).replace(/^\uFEFF/, '');
+    const sep = text.includes(';') ? ';' : ',';
+    rows = text.split(/\r?\n/).map((line) => line.split(sep).map((c) => c.trim()));
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const sheetName = wb.SheetNames.find((n) =>
+      n.toLowerCase().includes('lanc')
+    ) ?? wb.SheetNames.find((n) =>
+      ['entradas', 'despesas'].includes(n.toLowerCase())
+    ) ?? wb.SheetNames[0];
+
+    rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: '' });
+
+    const extraSheets = wb.SheetNames.filter((n) =>
+      ['entradas', 'despesas'].includes(n.toLowerCase()) && n !== sheetName
+    );
+
+    extraSheets.forEach((name) => {
+      const extra = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+      const tipoDefault = name.toLowerCase() === 'entradas' ? 'Entrada' : 'Despesa';
+      extra.slice(1).forEach((cells) => {
+        if (cells.some((c) => String(c ?? '').trim())) {
+          rows.push([cells[0], cells[1], tipoDefault, cells[2], cells[3], cells[4] ?? '']);
+        }
+      });
+    });
+  } else {
+    throw new Error('formato');
+  }
+
+  const entries = parseSheetRows(rows);
+
+  if (!entries.length) {
+    notify.error('Nenhum lançamento válido encontrado. Use o template.');
+    return;
+  }
+
+  const confirmed = await confirmAction({
+    title: 'Importar lançamentos?',
+    text: `Adicionar ${entries.length} lançamento(s) ao mês de ${getMonthLabel()}?`,
+    confirmText: 'Sim, importar'
+  });
+
+  if (!confirmed) return;
+
+  setCurrentEntries([...getCurrentEntries(), ...entries]);
+  render();
+  notify.success(`${entries.length} lançamento(s) importado(s)!`);
+};
+
+const handleImportClick = (type) => {
+  if (type === 'json') dom.inputImportJson.click();
+  if (type === 'sheet') dom.inputImportSheet.click();
+};
+
+const onImportJson = async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  try {
+    await importJSON(file);
+  } catch {
+    notify.error('Arquivo JSON inválido.');
+  }
+  dom.inputImportJson.value = '';
+};
 
-  const reader = new FileReader();
-
-  reader.onload = async (event) => {
-    try {
-      const imported = JSON.parse(event.target.result);
-      if (typeof imported !== 'object' || imported === null) throw new Error();
-
-      const confirmed = await confirmAction({
-        title: 'Importar dados?',
-        text: 'Isso substituirá todos os dados atuais. Deseja continuar?',
-        icon: 'warning',
-        confirmText: 'Sim, importar'
-      });
-
-      if (!confirmed) return;
-
-      allData = imported;
-      saveData();
-      render();
-      notify.success('Dados importados com sucesso!');
-    } catch {
-      notify.error('Arquivo JSON inválido.');
-    }
-
-    dom.inputImport.value = '';
-  };
-
-  reader.readAsText(file);
+const onImportSheet = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    await importSheet(file);
+  } catch {
+    notify.error('Arquivo inválido. Use o template CSV ou Excel.');
+  }
+  dom.inputImportSheet.value = '';
 };
 
 // ============================================
@@ -864,12 +1014,12 @@ const createStatusSelect = (entry) => {
 };
 
 const createActionButtons = (id) => `
-  <div class="btn-group btn-group-sm">
-    <button type="button" class="btn btn-outline-primary" data-id="${id}" data-action="edit" title="Editar">
-      <i class="bi bi-pencil"></i>
+  <div class="row-actions">
+    <button type="button" class="row-action row-action--edit" data-id="${id}" data-action="edit" title="Editar" aria-label="Editar">
+      <i class="bi bi-pencil-fill"></i>
     </button>
-    <button type="button" class="btn btn-outline-danger" data-id="${id}" data-action="delete" title="Excluir">
-      <i class="bi bi-trash"></i>
+    <button type="button" class="row-action row-action--delete" data-id="${id}" data-action="delete" title="Excluir" aria-label="Excluir">
+      <i class="bi bi-trash-fill"></i>
     </button>
   </div>`;
 
@@ -1006,8 +1156,11 @@ const bindEvents = () => {
   dom.btnCopyMonth.addEventListener('click', copyPreviousMonth);
   dom.btnClearMonth.addEventListener('click', clearCurrentMonth);
   dom.btnTheme.addEventListener('click', toggleTheme);
-  dom.btnImport.addEventListener('click', () => dom.inputImport.click());
-  dom.inputImport.addEventListener('change', importData);
+  document.querySelectorAll('[data-import]').forEach((btn) => {
+    btn.addEventListener('click', () => handleImportClick(btn.dataset.import));
+  });
+  dom.inputImportJson.addEventListener('change', onImportJson);
+  dom.inputImportSheet.addEventListener('change', onImportSheet);
   dom.formAdd.addEventListener('submit', handleAddEntry);
   dom.formEdit.addEventListener('submit', handleEditEntry);
 
