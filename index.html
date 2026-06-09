@@ -17,69 +17,87 @@
 <body>
 
   <div class="app-wrapper">
-    <header class="app-header">
-      <div class="container app-header__inner">
+    <header class="topbar">
+      <div class="container">
+        <div class="topbar__grid">
 
-        <!-- Linha 1: marca + atalhos -->
-        <div class="header-row header-row--brand">
-          <a href="#" class="header-brand" onclick="return false" aria-label="Finanças da Casa">
-            <img src="logo.png" alt="Logo Finanças da Casa" class="header-brand__logo" width="44" height="44">
-            <div class="header-brand__text">
-              <h1 class="header-brand__title">Finanças da Casa</h1>
-              <p class="header-brand__month" id="currentMonthLabel">—</p>
+          <!-- Marca -->
+          <div class="topbar__brand">
+            <img src="logo.png" alt="" class="topbar__logo" width="42" height="42">
+            <div class="topbar__brand-text">
+              <h1 class="topbar__title">Finanças da Casa</h1>
+              <p class="topbar__subtitle" id="currentMonthLabel">—</p>
             </div>
-          </a>
-
-          <div class="header-quick">
-            <button type="button" class="header-btn" id="btnTheme" title="Alternar tema" aria-label="Alternar tema">
-              <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
-            </button>
-            <button type="button" class="header-btn" id="btnImport" title="Importar JSON" aria-label="Importar JSON">
-              <i class="bi bi-upload"></i>
-            </button>
-            <input type="file" id="inputImport" accept=".json,application/json" hidden>
           </div>
-        </div>
 
-        <!-- Linha 2: navegação do mês -->
-        <div class="header-row header-row--month">
-          <div class="month-picker" role="group" aria-label="Selecionar mês e ano">
-            <button type="button" class="month-picker__arrow" id="btnPrevMonth" aria-label="Mês anterior">
+          <!-- Navegação do mês -->
+          <nav class="topbar__period" aria-label="Selecionar período">
+            <button type="button" class="topbar__period-btn" id="btnPrevMonth" aria-label="Mês anterior">
               <i class="bi bi-chevron-left"></i>
             </button>
-            <div class="month-picker__fields">
-              <select id="selectMonth" class="month-picker__select" aria-label="Mês"></select>
-              <select id="selectYear" class="month-picker__select month-picker__select--year" aria-label="Ano"></select>
+            <div class="topbar__period-fields">
+              <select id="selectMonth" class="topbar__select" aria-label="Mês"></select>
+              <span class="topbar__period-sep" aria-hidden="true">/</span>
+              <select id="selectYear" class="topbar__select topbar__select--year" aria-label="Ano"></select>
             </div>
-            <button type="button" class="month-picker__arrow" id="btnNextMonth" aria-label="Próximo mês">
+            <button type="button" class="topbar__period-btn" id="btnNextMonth" aria-label="Próximo mês">
               <i class="bi bi-chevron-right"></i>
             </button>
-          </div>
-        </div>
+          </nav>
 
-        <!-- Linha 3: ações -->
-        <div class="header-row header-row--actions">
-          <button type="button" class="header-action header-action--primary" id="btnCopyMonth">
-            <i class="bi bi-copy"></i>
-            <span>Copiar mês anterior</span>
-          </button>
-
-          <div class="dropdown header-export">
-            <button type="button" class="header-action dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="bi bi-download"></i>
-              <span>Exportar</span>
+          <!-- Ferramentas -->
+          <div class="topbar__tools" role="group" aria-label="Ferramentas">
+            <button type="button" class="topbar__tool" id="btnTheme" title="Alternar tema" aria-label="Alternar tema">
+              <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
             </button>
-            <ul class="dropdown-menu dropdown-menu-end shadow">
-              <li><button class="dropdown-item" type="button" data-export="json"><i class="bi bi-filetype-json"></i> JSON — backup completo</button></li>
-              <li><hr class="dropdown-divider"></li>
-              <li><button class="dropdown-item" type="button" data-export="csv"><i class="bi bi-filetype-csv"></i> CSV — mês atual</button></li>
-              <li><button class="dropdown-item" type="button" data-export="excel"><i class="bi bi-file-earmark-excel"></i> Excel — mês atual</button></li>
-              <li><button class="dropdown-item" type="button" data-export="pdf"><i class="bi bi-file-earmark-pdf"></i> PDF — mês atual</button></li>
-            </ul>
-          </div>
-        </div>
 
+            <div class="dropdown topbar__import-drop">
+              <button type="button" class="topbar__tool dropdown-toggle" data-bs-toggle="dropdown" title="Importar dados" aria-label="Importar dados">
+                <i class="bi bi-upload"></i>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                <li><h6 class="dropdown-header">Importar para o mês atual</h6></li>
+                <li><button class="dropdown-item" type="button" data-import="sheet"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha CSV ou Excel</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Templates de exemplo</h6></li>
+                <li><a class="dropdown-item" href="template-importacao.csv" download><i class="bi bi-filetype-csv"></i> Baixar template CSV</a></li>
+                <li><a class="dropdown-item" href="template-importacao.xlsx" download><i class="bi bi-file-earmark-excel"></i> Baixar template Excel</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Backup completo</h6></li>
+                <li><button class="dropdown-item" type="button" data-import="json"><i class="bi bi-filetype-json"></i> Restaurar backup JSON</button></li>
+              </ul>
+            </div>
+
+            <input type="file" id="inputImportJson" accept=".json,application/json" hidden>
+            <input type="file" id="inputImportSheet" accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+          </div>
+
+          <!-- Ações principais -->
+          <div class="topbar__actions">
+            <button type="button" class="topbar__btn topbar__btn--primary" id="btnCopyMonth">
+              <i class="bi bi-copy"></i>
+              <span>Copiar mês</span>
+            </button>
+
+            <div class="dropdown topbar__export">
+              <button type="button" class="topbar__btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-download"></i>
+                <span>Exportar</span>
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                <li><h6 class="dropdown-header">Exportar dados</h6></li>
+                <li><button class="dropdown-item" type="button" data-export="json"><i class="bi bi-filetype-json"></i> JSON — backup completo</button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button class="dropdown-item" type="button" data-export="csv"><i class="bi bi-filetype-csv"></i> CSV — mês atual</button></li>
+                <li><button class="dropdown-item" type="button" data-export="excel"><i class="bi bi-file-earmark-excel"></i> Excel — mês atual</button></li>
+                <li><button class="dropdown-item" type="button" data-export="pdf"><i class="bi bi-file-earmark-pdf"></i> PDF — mês atual</button></li>
+              </ul>
+            </div>
+          </div>
+
+        </div>
       </div>
+      <div class="topbar__line" aria-hidden="true"></div>
     </header>
 
     <main class="container app-main">
