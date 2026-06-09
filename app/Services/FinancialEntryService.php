@@ -132,6 +132,7 @@ class FinancialEntryService
                 'month' => $month,
                 'year' => $year,
                 'notes' => $entry->notes,
+                'due_day' => $entry->due_day,
             ]);
 
             $currentFingerprints[] = $this->fingerprint($entry);

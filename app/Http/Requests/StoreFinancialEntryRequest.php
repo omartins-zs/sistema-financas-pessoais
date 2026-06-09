@@ -25,6 +25,7 @@ class StoreFinancialEntryRequest extends FormRequest
             'month' => ['required', 'integer', 'min:1', 'max:12'],
             'year' => ['required', 'integer', 'min:2020', 'max:2100'],
             'notes' => ['nullable', 'string', 'max:500'],
+            'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
         ];
     }
 

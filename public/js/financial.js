@@ -123,6 +123,7 @@ const openEdit = (entry) => {
   document.getElementById('edit_type').value = data.type;
   document.getElementById('edit_amount').value = data.amount;
   document.getElementById('edit_status').value = data.status;
+  document.getElementById('edit_due_day').value = data.due_day ?? '';
   document.getElementById('edit_notes').value = data.notes ?? '';
   editModal.classList.remove('hidden');
 };

@@ -24,6 +24,7 @@
                         <th class="px-4 text-left font-bold">Categoria</th>
                         <th class="px-4 text-left font-bold">Valor</th>
                         <th class="px-4 text-left font-bold">Status</th>
+                        <th class="px-4 text-left font-bold">Vencimento</th>
                         <th class="px-4 text-left font-bold">Obs.</th>
                         <th class="px-4 text-right font-bold">Ações</th>
                     </tr>

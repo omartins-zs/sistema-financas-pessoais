@@ -23,6 +23,7 @@ class UpdateFinancialEntryRequest extends FormRequest
             'amount' => ['required', 'numeric', 'min:0.01', 'max:999999999.99'],
             'status' => ['required', Rule::enum(EntryStatus::class)],
             'notes' => ['nullable', 'string', 'max:500'],
+            'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
         ];
     }
 }

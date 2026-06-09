@@ -9,6 +9,7 @@
         'amount' => (float) $entry->amount,
         'status' => $entry->status->value,
         'notes' => $entry->notes,
+        'due_day' => $entry->due_day,
     ];
     $cell = 'bg-white px-4 py-3 border-y border-slate-100 first:border-l last:border-r';
 @endphp
@@ -28,7 +29,16 @@
             @endforeach
         </select>
     </td>
-    <td class="{{ $cell }} text-slate-400 text-sm max-w-[120px] truncate" title="{{ $entry->notes }}">{{ $entry->notes ?: '—' }}</td>
+    <td class="{{ $cell }} text-sm whitespace-nowrap">
+        @if($entry->due_day)
+            <span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <i class="fa-regular fa-calendar-days"></i> dia {{ $entry->due_day }}
+            </span>
+        @else
+            <span class="text-slate-300">—</span>
+        @endif
+    </td>
+    <td class="{{ $cell }} text-slate-400 text-sm max-w-[100px] truncate" title="{{ $entry->notes }}">{{ $entry->notes ?: '—' }}</td>
     <td class="{{ $cell }} rounded-r-xl text-right">
         <div class="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition">
             <button type="button" class="edit-btn w-8 h-8 rounded-lg bg-brand text-white hover:bg-brand-dark transition"

@@ -9,6 +9,7 @@
         'amount' => (float) $entry->amount,
         'status' => $entry->status->value,
         'notes' => $entry->notes,
+        'due_day' => $entry->due_day,
     ];
 @endphp
 <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
@@ -18,7 +19,14 @@
             R$ {{ number_format($entry->amount, 2, ',', '.') }}
         </p>
     </div>
-    <span class="text-xs px-2.5 py-1 rounded-full bg-white text-slate-600 border border-slate-200">{{ $entry->category }}</span>
+    <div class="flex flex-wrap items-center gap-2 mt-1">
+        <span class="text-xs px-2.5 py-1 rounded-full bg-white text-slate-600 border border-slate-200">{{ $entry->category }}</span>
+        @if($entry->due_day)
+            <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <i class="fa-regular fa-calendar-days"></i> vence dia {{ $entry->due_day }}
+            </span>
+        @endif
+    </div>
     @if($entry->notes)
         <p class="text-sm text-slate-500 italic mt-2">{{ $entry->notes }}</p>
     @endif

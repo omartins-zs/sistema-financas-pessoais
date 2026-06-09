@@ -19,6 +19,7 @@ class FinancialEntry extends Model
         'month',
         'year',
         'notes',
+        'due_day',
     ];
 
     protected function casts(): array
@@ -29,6 +30,7 @@ class FinancialEntry extends Model
             'amount' => 'decimal:2',
             'month' => 'integer',
             'year' => 'integer',
+            'due_day' => 'integer',
         ];
     }
 

@@ -119,11 +119,19 @@
                 @endforeach
             </select>
         </div>
-        <div class="sm:col-span-2">
+        <div>
+            <label class="text-xs font-semibold text-slate-500">
+                <i class="fa-regular fa-calendar-days mr-1 text-slate-400"></i>
+                Vencimento <span class="font-normal">(dia, opcional)</span>
+            </label>
+            <input type="number" name="due_day" min="1" max="31" placeholder="Ex: 10"
+                   class="w-full mt-1 rounded-xl border-slate-200 focus:border-brand focus:ring-brand">
+        </div>
+        <div>
             <label class="text-xs font-semibold text-slate-500">Observação <span class="font-normal">(opcional)</span></label>
             <input type="text" name="notes" class="w-full mt-1 rounded-xl border-slate-200">
         </div>
-        <div class="flex items-end">
+        <div class="flex items-end sm:col-span-2 lg:col-span-1">
             <button type="submit" class="w-full py-3 rounded-xl bg-brand text-white font-semibold hover:bg-brand-dark transition">
                 <i class="fa-solid fa-plus mr-1"></i> Adicionar
             </button>
@@ -240,9 +248,19 @@
                     </select>
                 </div>
             </div>
-            <div>
-                <label class="text-xs font-semibold text-slate-500">Observação</label>
-                <input type="text" name="notes" id="edit_notes" class="w-full mt-1 rounded-xl border-slate-200">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs font-semibold text-slate-500">
+                        <i class="fa-regular fa-calendar-days mr-1 text-slate-400"></i>
+                        Vencimento (dia)
+                    </label>
+                    <input type="number" name="due_day" id="edit_due_day" min="1" max="31" placeholder="Ex: 10"
+                           class="w-full mt-1 rounded-xl border-slate-200">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-slate-500">Observação</label>
+                    <input type="text" name="notes" id="edit_notes" class="w-full mt-1 rounded-xl border-slate-200">
+                </div>
             </div>
             <div class="flex justify-end gap-2 pt-2">
                 <button type="button" id="closeEditModal" class="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100">Cancelar</button>
