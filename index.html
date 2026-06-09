@@ -4,245 +4,319 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Finanças da Casa</title>
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Notyf -->
+  <link href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css" rel="stylesheet">
+  <!-- Estilos customizados -->
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="app">
-    <!-- Cabeçalho -->
-    <header class="header">
-      <div class="header__brand">
-        <span class="header__icon" aria-hidden="true">🏠</span>
-        <h1 class="header__title">Finanças da Casa</h1>
-      </div>
 
-      <div class="header__controls">
-        <div class="month-nav">
-          <button type="button" class="btn btn--icon" id="btnPrevMonth" title="Mês anterior" aria-label="Mês anterior">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          </button>
-
-          <div class="month-nav__selectors">
-            <select id="selectMonth" class="select" aria-label="Selecionar mês"></select>
-            <select id="selectYear" class="select" aria-label="Selecionar ano"></select>
+  <div class="app-wrapper">
+    <!-- Header -->
+    <header class="app-header shadow-sm">
+      <div class="container py-3 py-md-4">
+        <div class="row align-items-center g-3">
+          <div class="col-md-4">
+            <div class="d-flex align-items-center gap-2">
+              <span class="app-header__icon"><i class="bi bi-house-heart-fill"></i></span>
+              <div>
+                <h1 class="app-header__title mb-0">Finanças da Casa</h1>
+                <p class="app-header__subtitle mb-0" id="currentMonthLabel">—</p>
+              </div>
+            </div>
           </div>
 
-          <button type="button" class="btn btn--icon" id="btnNextMonth" title="Próximo mês" aria-label="Próximo mês">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-          </button>
-        </div>
+          <div class="col-md-8">
+            <div class="d-flex flex-wrap align-items-center justify-content-md-end gap-2">
+              <!-- Navegação de mês -->
+              <div class="month-nav btn-group shadow-sm" role="group" aria-label="Navegação de mês">
+                <button type="button" class="btn btn-light" id="btnPrevMonth" title="Mês anterior">
+                  <i class="bi bi-chevron-left"></i>
+                </button>
+                <select id="selectMonth" class="form-select form-select-sm month-nav__select" aria-label="Mês"></select>
+                <select id="selectYear" class="form-select form-select-sm month-nav__select year" aria-label="Ano"></select>
+                <button type="button" class="btn btn-light" id="btnNextMonth" title="Próximo mês">
+                  <i class="bi bi-chevron-right"></i>
+                </button>
+              </div>
 
-        <div class="header__actions">
-          <button type="button" class="btn btn--secondary" id="btnCopyMonth">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            Copiar mês anterior
-          </button>
-          <button type="button" class="btn btn--ghost" id="btnExport" title="Exportar dados">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            <span class="btn-text">Exportar</span>
-          </button>
-          <button type="button" class="btn btn--ghost" id="btnImport" title="Importar dados">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            <span class="btn-text">Importar</span>
-          </button>
-          <input type="file" id="inputImport" accept=".json,application/json" hidden>
+              <button type="button" class="btn btn-primary" id="btnCopyMonth">
+                <i class="bi bi-copy"></i>
+                <span class="d-none d-sm-inline">Copiar mês anterior</span>
+              </button>
+
+              <div class="btn-group">
+                <button type="button" class="btn btn-outline-secondary" id="btnExport" title="Exportar JSON">
+                  <i class="bi bi-download"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnImport" title="Importar JSON">
+                  <i class="bi bi-upload"></i>
+                </button>
+              </div>
+              <input type="file" id="inputImport" accept=".json,application/json" hidden>
+            </div>
+          </div>
         </div>
       </div>
     </header>
 
-    <!-- Cards de resumo -->
-    <section class="summary" aria-label="Resumo do mês">
-      <div class="summary__card summary__card--income">
-        <span class="summary__label">Entradas</span>
-        <span class="summary__value" id="totalIncome">R$ 0,00</span>
-      </div>
-      <div class="summary__card summary__card--expense">
-        <span class="summary__label">Despesas</span>
-        <span class="summary__value" id="totalExpense">R$ 0,00</span>
-      </div>
-      <div class="summary__card summary__card--balance">
-        <span class="summary__label">Saldo</span>
-        <span class="summary__value" id="totalBalance">R$ 0,00</span>
-      </div>
-      <div class="summary__card summary__card--paid">
-        <span class="summary__label">Pago</span>
-        <span class="summary__value" id="totalPaid">R$ 0,00</span>
-      </div>
-      <div class="summary__card summary__card--reserved">
-        <span class="summary__label">Reservado</span>
-        <span class="summary__value" id="totalReserved">R$ 0,00</span>
-      </div>
-      <div class="summary__card summary__card--unpaid">
-        <span class="summary__label">Não pago</span>
-        <span class="summary__value" id="totalUnpaid">R$ 0,00</span>
-      </div>
-    </section>
+    <main class="container py-4">
 
-    <!-- Formulário de adição -->
-    <section class="form-section">
-      <h2 class="section-title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-        Novo lançamento
-      </h2>
-
-      <form id="formAdd" class="form" autocomplete="off">
-        <div class="form__grid">
-          <div class="form__group form__group--wide">
-            <label for="inputDescription">Descrição</label>
-            <input type="text" id="inputDescription" placeholder="Ex: Conta de luz" required>
-          </div>
-
-          <div class="form__group">
-            <label for="inputCategory">Categoria</label>
-            <select id="inputCategory" required></select>
-          </div>
-
-          <div class="form__group">
-            <label for="inputType">Tipo</label>
-            <select id="inputType" required>
-              <option value="despesa">Despesa</option>
-              <option value="entrada">Entrada</option>
-            </select>
-          </div>
-
-          <div class="form__group">
-            <label for="inputValue">Valor (R$)</label>
-            <input type="text" id="inputValue" placeholder="0,00" inputmode="decimal" required>
-          </div>
-
-          <div class="form__group">
-            <label for="inputStatus">Status</label>
-            <select id="inputStatus" required>
-              <option value="nao_pago">Não pago</option>
-              <option value="reservado">Reservado</option>
-              <option value="pago">Pago</option>
-            </select>
-          </div>
-
-          <div class="form__group form__group--wide">
-            <label for="inputObservation">Observação <span class="optional">(opcional)</span></label>
-            <input type="text" id="inputObservation" placeholder="Anotações extras...">
+      <!-- Cards de resumo -->
+      <section class="row g-3 mb-4" aria-label="Resumo do mês">
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="summary-card summary-card--income">
+            <i class="bi bi-arrow-down-circle"></i>
+            <span class="summary-card__label">Entradas</span>
+            <strong class="summary-card__value" id="totalIncome">R$ 0,00</strong>
           </div>
         </div>
-
-        <button type="submit" class="btn btn--primary btn--large">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          Adicionar lançamento
-        </button>
-      </form>
-    </section>
-
-    <!-- Lista de lançamentos -->
-    <section class="list-section">
-      <div class="list-header">
-        <h2 class="section-title">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-          Lançamentos do mês
-          <span class="badge" id="entryCount">0</span>
-        </h2>
-        <button type="button" class="btn btn--danger btn--small" id="btnClearMonth">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-          Limpar mês
-        </button>
-      </div>
-
-      <div id="entriesContainer">
-        <!-- Tabela desktop -->
-        <div class="table-wrapper" id="tableWrapper">
-          <table class="table" id="entriesTable">
-            <thead>
-              <tr>
-                <th>Descrição</th>
-                <th>Categoria</th>
-                <th>Tipo</th>
-                <th>Valor</th>
-                <th>Status</th>
-                <th>Obs.</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody id="entriesBody"></tbody>
-          </table>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="summary-card summary-card--expense">
+            <i class="bi bi-arrow-up-circle"></i>
+            <span class="summary-card__label">Despesas</span>
+            <strong class="summary-card__value" id="totalExpense">R$ 0,00</strong>
+          </div>
         </div>
-
-        <!-- Cards mobile -->
-        <div class="cards-list" id="cardsList"></div>
-
-        <!-- Estado vazio -->
-        <div class="empty-state" id="emptyState" hidden>
-          <span class="empty-state__icon" aria-hidden="true">📋</span>
-          <p class="empty-state__title">Nenhum lançamento neste mês</p>
-          <p class="empty-state__text">Adicione um lançamento acima ou copie o mês anterior para começar.</p>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="summary-card summary-card--balance">
+            <i class="bi bi-wallet2"></i>
+            <span class="summary-card__label">Saldo</span>
+            <strong class="summary-card__value" id="totalBalance">R$ 0,00</strong>
+          </div>
         </div>
-      </div>
-    </section>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="summary-card summary-card--paid">
+            <i class="bi bi-check-circle"></i>
+            <span class="summary-card__label">Pago</span>
+            <strong class="summary-card__value" id="totalPaid">R$ 0,00</strong>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="summary-card summary-card--reserved">
+            <i class="bi bi-clock-history"></i>
+            <span class="summary-card__label">Reservado</span>
+            <strong class="summary-card__value" id="totalReserved">R$ 0,00</strong>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="summary-card summary-card--unpaid">
+            <i class="bi bi-exclamation-circle"></i>
+            <span class="summary-card__label">Não pago</span>
+            <strong class="summary-card__value" id="totalUnpaid">R$ 0,00</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Formulário -->
+      <section class="card shadow-sm border-0 mb-4">
+        <div class="card-body p-4">
+          <h2 class="section-title h5 mb-3">
+            <i class="bi bi-plus-circle text-primary"></i> Novo lançamento
+          </h2>
+
+          <form id="formAdd" autocomplete="off">
+            <div class="row g-3">
+              <div class="col-12 col-md-6 col-lg-4">
+                <label for="inputDescription" class="form-label">Descrição</label>
+                <input type="text" class="form-control form-control-lg" id="inputDescription"
+                       placeholder="Ex: Conta de luz" required>
+              </div>
+              <div class="col-6 col-md-3 col-lg-2">
+                <label for="inputCategory" class="form-label">Categoria</label>
+                <select id="inputCategory" class="form-select form-select-lg" required></select>
+              </div>
+              <div class="col-6 col-md-3 col-lg-2">
+                <label for="inputType" class="form-label">Tipo</label>
+                <select id="inputType" class="form-select form-select-lg" required>
+                  <option value="despesa">Despesa</option>
+                  <option value="entrada">Entrada</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-3 col-lg-2">
+                <label for="inputValue" class="form-label">Valor</label>
+                <div class="input-group input-group-lg">
+                  <span class="input-group-text">R$</span>
+                  <input type="text" class="form-control" id="inputValue" placeholder="0,00" required>
+                </div>
+              </div>
+              <div class="col-6 col-md-3 col-lg-2">
+                <label for="inputStatus" class="form-label">Status</label>
+                <select id="inputStatus" class="form-select form-select-lg" required>
+                  <option value="nao_pago">Não pago</option>
+                  <option value="reservado">Reservado</option>
+                  <option value="pago">Pago</option>
+                </select>
+              </div>
+              <div class="col-12 col-lg-10">
+                <label for="inputObservation" class="form-label">
+                  Observação <span class="text-muted fw-normal">(opcional)</span>
+                </label>
+                <input type="text" class="form-control" id="inputObservation" placeholder="Anotações extras...">
+              </div>
+              <div class="col-12 col-lg-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary btn-lg w-100">
+                  <i class="bi bi-plus-lg"></i> Adicionar
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Lista de lançamentos -->
+      <section class="card shadow-sm border-0 mb-4">
+        <div class="card-body p-4">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h2 class="section-title h5 mb-0">
+              <i class="bi bi-list-ul text-primary"></i>
+              Lançamentos
+              <span class="badge bg-primary rounded-pill ms-1" id="entryCount">0</span>
+            </h2>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="btnClearMonth">
+              <i class="bi bi-trash"></i> Limpar mês
+            </button>
+          </div>
+
+          <!-- Desktop: tabela -->
+          <div class="table-responsive d-none d-md-block" id="tableWrapper">
+            <table class="table table-hover align-middle mb-0" id="entriesTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Tipo</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Obs.</th>
+                  <th class="text-end">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="entriesBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Mobile: cards -->
+          <div class="d-md-none" id="cardsList"></div>
+
+          <!-- Vazio -->
+          <div class="empty-state text-center py-5" id="emptyState" hidden>
+            <i class="bi bi-clipboard2-data empty-state__icon"></i>
+            <p class="fw-semibold mb-1">Nenhum lançamento neste mês</p>
+            <p class="text-muted small mb-0">Adicione acima ou copie o mês anterior.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Gráficos (recolhível) -->
+      <section class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white border-0 py-3">
+          <button class="btn btn-link text-decoration-none w-100 text-start p-0 charts-toggle"
+                  type="button" data-bs-toggle="collapse" data-bs-target="#chartsCollapse"
+                  aria-expanded="false" aria-controls="chartsCollapse">
+            <h2 class="section-title h5 mb-0">
+              <i class="bi bi-bar-chart-line text-primary"></i> Gráficos do mês
+              <i class="bi bi-chevron-down ms-auto charts-toggle__icon"></i>
+            </h2>
+          </button>
+        </div>
+        <div class="collapse" id="chartsCollapse">
+          <div class="card-body p-4 pt-0">
+            <div class="row g-4">
+              <div class="col-md-6">
+                <div class="chart-box">
+                  <h3 class="chart-box__title">Entradas x Despesas</h3>
+                  <canvas id="chartIncomeExpense" height="220"></canvas>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="chart-box">
+                  <h3 class="chart-box__title">Despesas por categoria</h3>
+                  <canvas id="chartCategories" height="220"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
   </div>
 
-  <!-- Modal de edição -->
-  <div class="modal-overlay" id="modalOverlay" hidden>
-    <div class="modal" role="dialog" aria-labelledby="modalTitle" aria-modal="true">
-      <div class="modal__header">
-        <h3 id="modalTitle">Editar lançamento</h3>
-        <button type="button" class="btn btn--icon btn--ghost" id="btnCloseModal" aria-label="Fechar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
+  <!-- Modal de edição (Bootstrap) -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold" id="editModalLabel">
+            <i class="bi bi-pencil-square text-primary"></i> Editar lançamento
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+        <form id="formEdit">
+          <div class="modal-body">
+            <input type="hidden" id="editId">
+            <div class="row g-3">
+              <div class="col-12">
+                <label for="editDescription" class="form-label">Descrição</label>
+                <input type="text" class="form-control" id="editDescription" required>
+              </div>
+              <div class="col-6">
+                <label for="editCategory" class="form-label">Categoria</label>
+                <select id="editCategory" class="form-select" required></select>
+              </div>
+              <div class="col-6">
+                <label for="editType" class="form-label">Tipo</label>
+                <select id="editType" class="form-select" required>
+                  <option value="despesa">Despesa</option>
+                  <option value="entrada">Entrada</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="editValue" class="form-label">Valor</label>
+                <div class="input-group">
+                  <span class="input-group-text">R$</span>
+                  <input type="text" class="form-control" id="editValue" required>
+                </div>
+              </div>
+              <div class="col-6">
+                <label for="editStatus" class="form-label">Status</label>
+                <select id="editStatus" class="form-select" required>
+                  <option value="nao_pago">Não pago</option>
+                  <option value="reservado">Reservado</option>
+                  <option value="pago">Pago</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label for="editObservation" class="form-label">Observação</label>
+                <input type="text" class="form-control" id="editObservation">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-lg"></i> Salvar
+            </button>
+          </div>
+        </form>
       </div>
-
-      <form id="formEdit" class="form">
-        <input type="hidden" id="editId">
-
-        <div class="form__grid form__grid--modal">
-          <div class="form__group form__group--wide">
-            <label for="editDescription">Descrição</label>
-            <input type="text" id="editDescription" required>
-          </div>
-
-          <div class="form__group">
-            <label for="editCategory">Categoria</label>
-            <select id="editCategory" required></select>
-          </div>
-
-          <div class="form__group">
-            <label for="editType">Tipo</label>
-            <select id="editType" required>
-              <option value="despesa">Despesa</option>
-              <option value="entrada">Entrada</option>
-            </select>
-          </div>
-
-          <div class="form__group">
-            <label for="editValue">Valor (R$)</label>
-            <input type="text" id="editValue" inputmode="decimal" required>
-          </div>
-
-          <div class="form__group">
-            <label for="editStatus">Status</label>
-            <select id="editStatus" required>
-              <option value="nao_pago">Não pago</option>
-              <option value="reservado">Reservado</option>
-              <option value="pago">Pago</option>
-            </select>
-          </div>
-
-          <div class="form__group form__group--wide">
-            <label for="editObservation">Observação</label>
-            <input type="text" id="editObservation">
-          </div>
-        </div>
-
-        <div class="modal__footer">
-          <button type="button" class="btn btn--ghost" id="btnCancelEdit">Cancelar</button>
-          <button type="submit" class="btn btn--primary">Salvar alterações</button>
-        </div>
-      </form>
     </div>
   </div>
 
-  <!-- Toast de notificação -->
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
+  <!-- CDN: JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/locale/pt-br.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/imask@7.6.1/dist/imask.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
