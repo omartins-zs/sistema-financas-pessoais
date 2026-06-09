@@ -371,14 +371,32 @@ body {
   cursor: pointer;
   font-size: 0.95rem;
   color: #fff;
+  transition: filter 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.row-action:hover {
+  transform: scale(1.08);
+  filter: brightness(1.1);
+}
+
+.row-action:active {
+  transform: scale(0.96);
 }
 
 .row-action--edit {
   background: var(--app-primary);
 }
 
+.row-action--edit:hover {
+  box-shadow: 0 4px 14px rgba(79, 110, 247, 0.45);
+}
+
 .row-action--delete {
   background: var(--app-expense);
+}
+
+.row-action--delete:hover {
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
 }
 
 .entry-card__footer .row-actions {
@@ -521,45 +539,138 @@ body {
   box-shadow: 0 0 0 0.2rem rgba(79, 110, 247, 0.2);
 }
 
-/* ---- Seções de lançamentos ---- */
+/* ---- Painéis de lançamentos ---- */
 
-.entries-section__header {
-  background: var(--app-surface-2) !important;
-  border-bottom: 1px solid var(--app-border) !important;
-  padding: clamp(0.85rem, 2.5vw, 1rem) clamp(1rem, 3vw, 1.25rem) !important;
+.entries-panel {
+  margin-bottom: 1.25rem;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--app-surface);
+  box-shadow: 0 4px 24px var(--app-shadow);
+  border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
 }
 
-.entries-section--income .entries-section__header { border-left: 4px solid var(--app-income) !important; }
-.entries-section--expense .entries-section__header { border-left: 4px solid var(--app-expense) !important; }
+.entries-panel__head {
+  padding: 1rem 1.25rem 0.85rem;
+  border-bottom: none;
+}
 
-.entries-section__title {
+.entries-panel--income .entries-panel__head {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--app-income) 12%, var(--app-surface)),
+    var(--app-surface));
+}
+
+.entries-panel--expense .entries-panel__head {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--app-expense) 10%, var(--app-surface)),
+    var(--app-surface));
+}
+
+.entries-panel__title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.4rem;
   font-weight: 700;
-  font-size: clamp(0.9rem, 2.5vw, 1rem);
+  font-size: clamp(0.92rem, 2.5vw, 1.02rem);
   color: var(--app-text);
 }
 
-.entries-section--income .entries-section__title i { color: var(--app-income); }
-.entries-section--expense .entries-section__title i { color: var(--app-expense); }
-.entries-section--income .badge { background: var(--app-income) !important; }
-.entries-section--expense .badge { background: var(--app-expense) !important; }
+.entries-panel--income .entries-panel__title i { color: var(--app-income); }
+.entries-panel--expense .entries-panel__title i { color: var(--app-expense); }
+.entries-panel--income .badge { background: var(--app-income) !important; }
+.entries-panel--expense .badge { background: var(--app-expense) !important; }
 
-.entries-section__subtotal {
-  font-size: clamp(0.95rem, 2.8vw, 1.05rem);
+.entries-panel__subtotal {
+  font-size: clamp(0.95rem, 2.8vw, 1.08rem);
   white-space: nowrap;
 }
 
-.entries-section__hint {
-  font-size: clamp(0.75rem, 2vw, 0.8rem);
+.entries-panel__hint {
+  font-size: 0.8rem;
   color: var(--app-text-muted);
-  margin-top: 4px;
+  margin-top: 0.35rem;
 }
 
-/* ---- Tabela ---- */
+.entries-panel__body {
+  padding: 0.5rem 1rem 1rem;
+}
 
+/* ---- Tabela moderna (linhas arredondadas) ---- */
+
+.entries-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.25rem 0;
+}
+
+.entries-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 10px;
+  font-size: clamp(0.84rem, 2.2vw, 0.92rem);
+  margin-bottom: 0;
+}
+
+.entries-table thead th {
+  padding: 0 14px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--app-text-faint);
+  background: transparent !important;
+  border: none !important;
+  white-space: nowrap;
+}
+
+.entries-table tbody tr {
+  transition: transform 0.15s ease;
+}
+
+.entries-table tbody tr:hover {
+  transform: translateY(-1px);
+}
+
+.entries-table tbody td {
+  padding: 14px 16px;
+  vertical-align: middle;
+  background: var(--app-surface-2);
+  border: none;
+  color: var(--app-text);
+}
+
+.entries-table tbody td:first-child {
+  border-radius: 14px 0 0 14px;
+  font-weight: 600;
+}
+
+.entries-table tbody td:last-child {
+  border-radius: 0 14px 14px 0;
+}
+
+.entries-panel--income .entries-table tbody td {
+  background: color-mix(in srgb, var(--app-income) 6%, var(--app-surface-2));
+}
+
+.entries-panel--expense .entries-table tbody td {
+  background: color-mix(in srgb, var(--app-expense) 5%, var(--app-surface-2));
+}
+
+.entries-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface-2));
+}
+
+.entries-panel--income .entries-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--app-income) 14%, var(--app-surface-2));
+}
+
+.entries-panel--expense .entries-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--app-expense) 12%, var(--app-surface-2));
+}
+
+/* Tabela legada (formulário etc.) */
 .table {
   --bs-table-bg: transparent;
   --bs-table-color: var(--app-text);
@@ -619,9 +730,9 @@ body {
 
 .category-tag {
   display: inline-block;
-  padding: 0.2rem 0.55rem;
+  padding: 0.25rem 0.65rem;
   background: var(--category-bg);
-  border-radius: 6px;
+  border-radius: 999px;
   font-size: clamp(0.72rem, 2vw, 0.8rem);
   color: var(--category-text);
   max-width: 100%;
@@ -631,7 +742,7 @@ body {
 
 .cell-description {
   font-weight: 600;
-  max-width: 180px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -639,7 +750,7 @@ body {
 .cell-obs {
   color: var(--app-text-faint);
   font-size: 0.8rem;
-  max-width: 120px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -647,12 +758,27 @@ body {
 
 /* ---- Cards mobile ---- */
 
+.entries-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.25rem 0;
+}
+
 .entry-card {
   background: var(--app-surface-2);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
-  padding: clamp(0.85rem, 2.5vw, 1rem);
-  margin-bottom: 0.65rem;
+  border: none;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 2px 12px var(--app-shadow);
+}
+
+.entries-panel--income .entry-card {
+  background: color-mix(in srgb, var(--app-income) 7%, var(--app-surface-2));
+}
+
+.entries-panel--expense .entry-card {
+  background: color-mix(in srgb, var(--app-expense) 6%, var(--app-surface-2));
 }
 
 .entry-card__header {
@@ -698,8 +824,9 @@ body {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.5rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--app-border);
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid color-mix(in srgb, var(--app-border) 50%, transparent);
 }
 
 .entry-card__footer .status-select {
@@ -923,9 +1050,9 @@ body {
   }
 }
 
-/* Tabela: scroll horizontal em telas médias */
+/* Tabela: scroll horizontal */
 @media (max-width: 991px) {
-  .table-responsive {
+  .entries-table-wrap {
     -webkit-overflow-scrolling: touch;
   }
 
