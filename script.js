@@ -130,6 +130,18 @@ const dom = {
 
 const getMonthKey = (date) => date.format('YYYY-MM');
 
+/** Identifica lançamento único para evitar duplicatas */
+const entryFingerprint = ({ description, category, type, value }) =>
+  [
+    String(description ?? '').trim().toLowerCase(),
+    category,
+    type,
+    Number(value).toFixed(2)
+  ].join('|');
+
+const isEntryDuplicate = (entry, list) =>
+  list.some((e) => entryFingerprint(e) === entryFingerprint(entry));
+
 const getMonthLabel = () =>
   currentDate.locale('pt-br').format('MMMM [de] YYYY');
 
@@ -141,8 +153,21 @@ const generateId = () =>
 
 const parseValue = (str) => {
   if (!str) return 0;
-  const cleaned = String(str).replace(/[^\d,.-]/g, '').replace(',', '.');
-  const num = parseFloat(cleaned);
+  let s = String(str).replace(/[^\d,.-]/g, '').trim();
+  if (!s) return 0;
+
+  if (s.includes(',')) {
+    // Formato BR: 4.500,00 → remove milhares e troca vírgula decimal
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if ((s.match(/\./g) ?? []).length > 1) {
+    // Vários pontos = separador de milhar (4.500)
+    s = s.replace(/\./g, '');
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+    // Padrão 1.234 ou 4.500 sem centavos
+    s = s.replace(/\./g, '');
+  }
+
+  const num = parseFloat(s);
   return Number.isNaN(num) ? 0 : Math.abs(num);
 };
 
@@ -264,10 +289,17 @@ const moneyMaskOptions = {
   scale: 2,
   thousandsSeparator: '.',
   radix: ',',
-  mapToRadix: ['.'],
+  // Não mapear "." para vírgula — no BR o ponto é separador de milhar
+  mapToRadix: [],
   normalizeZeros: true,
-  padFractionalZeros: true,
-  min: 0
+  padFractionalZeros: false,
+  min: 0,
+  max: 999999999.99
+};
+
+const getMaskValue = (mask) => {
+  const val = mask?.typedValue;
+  return typeof val === 'number' && !Number.isNaN(val) ? Math.abs(val) : 0;
 };
 
 const initMoneyMasks = () => {
@@ -482,7 +514,7 @@ const handleAddEntry = (e) => {
     description: dom.inputDescription.value,
     category: dom.inputCategory.value,
     type: dom.inputType.value,
-    value: parseValue(maskAdd.value),
+    value: getMaskValue(maskAdd),
     status: dom.inputStatus.value,
     observation: dom.inputObservation.value
   });
@@ -524,7 +556,7 @@ const handleEditEntry = (e) => {
     description: dom.editDescription.value,
     category: dom.editCategory.value,
     type: dom.editType.value,
-    value: parseValue(maskEdit.value),
+    value: getMaskValue(maskEdit),
     status: dom.editStatus.value,
     observation: dom.editObservation.value
   });
@@ -581,16 +613,38 @@ const copyPreviousMonth = async () => {
 
   const currentEntries = getCurrentEntries();
 
-  if (currentEntries.length) {
+  const newEntries = prevEntries.filter(
+    (prev) => !isEntryDuplicate(prev, currentEntries)
+  );
+
+  const skipped = prevEntries.length - newEntries.length;
+
+  if (!newEntries.length) {
+    notify.info(
+      skipped === prevEntries.length
+        ? 'Todos os lançamentos do mês anterior já existem neste mês.'
+        : 'Não há lançamentos novos para copiar.'
+    );
+    return;
+  }
+
+  let confirmText = `Adicionar ${newEntries.length} lançamento(s) novo(s)? O status virá como "Não pago".`;
+  if (skipped > 0) {
+    confirmText += ` ${skipped} já existente(s) serão ignorado(s).`;
+  }
+
+  const needsConfirm = currentEntries.length > 0 || skipped > 0;
+
+  if (needsConfirm) {
     const confirmed = await confirmAction({
       title: 'Copiar mês anterior?',
-      text: `Serão adicionados ${prevEntries.length} lançamento(s). Status voltará para "Não pago".`,
+      text: confirmText,
       confirmText: 'Sim, copiar'
     });
     if (!confirmed) return;
   }
 
-  const copied = prevEntries.map(({ description, category, type, value, observation }) => ({
+  const copied = newEntries.map(({ description, category, type, value, observation }) => ({
     id: generateId(),
     description,
     category,
@@ -601,7 +655,12 @@ const copyPreviousMonth = async () => {
   }));
 
   setCurrentEntries([...currentEntries, ...copied]);
-  notify.success(`${copied.length} lançamento(s) copiado(s)!`);
+
+  const msg = skipped > 0
+    ? `${copied.length} copiado(s), ${skipped} ignorado(s) (já existiam).`
+    : `${copied.length} lançamento(s) copiado(s)!`;
+
+  notify.success(msg);
   render();
 };
 
