@@ -163,42 +163,6 @@ Acesse: **http://127.0.0.1:8000**
 
 ---
 
-## 🧱 Estrutura do Projeto
-
-```
-app/
-├── Enums/
-│   ├── EntryStatus.php      # paid, reserved, unpaid
-│   └── EntryType.php        # income, expense
-├── Http/
-│   ├── Controllers/
-│   │   ├── Auth/LoginController.php
-│   │   ├── FinancialDashboardController.php
-│   │   └── FinancialEntryController.php
-│   └── Requests/
-│       ├── StoreFinancialEntryRequest.php
-│       └── UpdateFinancialEntryRequest.php
-├── Models/
-│   ├── FinancialEntry.php
-│   └── User.php
-├── Policies/
-│   └── FinancialEntryPolicy.php
-└── Services/
-    └── FinancialEntryService.php
-
-config/financial.php               # Categorias e meses em PT-BR
-database/migrations/               # Tabelas: users + financial_entries
-resources/views/
-├── layouts/app.blade.php
-├── auth/login.blade.php
-└── financial/
-    ├── dashboard.blade.php
-    └── partials/
-public/js/financial.js             # Chart.js, fetch status, SweetAlert2
-```
-
----
-
 ## 📝 Melhorias Futuras
 
 - [ ] Relatório em PDF por mês
