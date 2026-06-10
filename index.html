@@ -16,6 +16,33 @@
 </head>
 <body>
 
+  <!-- Tela de login (somente quando o Firebase está configurado) -->
+  <div class="auth-overlay" id="authOverlay" hidden>
+    <div class="auth-card">
+      <div class="auth-card__brand">
+        <img src="logo.png" alt="" width="56" height="56">
+        <h1>Finanças da Casa</h1>
+        <p>Acesse seus dados de qualquer dispositivo</p>
+      </div>
+      <form id="authForm" autocomplete="on">
+        <h2 class="auth-card__title" id="authTitle">Entrar</h2>
+        <div class="auth-field">
+          <label for="authEmail">E-mail</label>
+          <input type="email" id="authEmail" required placeholder="voce@email.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label for="authPassword">Senha</label>
+          <input type="password" id="authPassword" required placeholder="••••••" autocomplete="current-password" minlength="6">
+        </div>
+        <p class="auth-error" id="authError" hidden></p>
+        <button type="submit" class="auth-submit" id="authSubmit">
+          <i class="bi bi-box-arrow-in-right"></i> Entrar
+        </button>
+        <a href="#" class="auth-toggle" id="authToggle">Primeira vez? Criar conta</a>
+      </form>
+    </div>
+  </div>
+
   <div class="app-wrapper">
     <header class="topbar">
       <div class="container">
@@ -70,6 +97,11 @@
 
             <input type="file" id="inputImportJson" accept=".json,application/json" hidden>
             <input type="file" id="inputImportSheet" accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+
+            <span class="topbar__user" id="authUser" data-auth-only hidden></span>
+            <button type="button" class="topbar__tool" id="btnLogout" data-auth-only hidden title="Sair" aria-label="Sair">
+              <i class="bi bi-box-arrow-right"></i>
+            </button>
           </div>
 
           <!-- Ações principais -->
@@ -416,6 +448,14 @@
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+  <!-- Firebase (sincronização em nuvem — opcional) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="cloud-sync.js"></script>
+
   <script src="script.js"></script>
 </body>
 </html>

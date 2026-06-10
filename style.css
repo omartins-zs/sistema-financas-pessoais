@@ -1070,3 +1070,140 @@ body {
     width: 100%;
   }
 }
+
+/* ============================================
+   Login (Firebase Auth)
+   ============================================ */
+body.auth-locked { overflow: hidden; }
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, var(--app-primary) 0%, #6d8bff 100%);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--app-surface);
+  border-radius: 20px;
+  padding: 2rem 1.75rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.25);
+}
+
+.auth-card__brand {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.auth-card__brand img {
+  border-radius: 14px;
+  margin-bottom: 0.75rem;
+}
+
+.auth-card__brand h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--app-text);
+  margin: 0;
+}
+
+.auth-card__brand p {
+  font-size: 0.85rem;
+  color: var(--app-text-muted);
+  margin: 0.25rem 0 0;
+}
+
+.auth-card__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--app-text);
+  margin: 0 0 1rem;
+}
+
+.auth-field { margin-bottom: 1rem; }
+
+.auth-field label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.auth-field input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.95rem;
+  color: var(--app-text);
+  background: var(--app-surface-2);
+  border: 1.5px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.auth-field input:focus {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.15);
+}
+
+.auth-error {
+  background: var(--status-nao-bg);
+  color: var(--status-nao-text);
+  border: 1px solid var(--status-nao-border);
+  border-radius: var(--app-radius-sm);
+  font-size: 0.82rem;
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 0.9rem;
+}
+
+.auth-submit {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--app-primary);
+  border: 0;
+  border-radius: var(--app-radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.auth-submit:hover { background: var(--app-primary-dark); }
+.auth-submit:disabled { opacity: 0.6; cursor: wait; }
+
+.auth-toggle {
+  display: block;
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+  color: var(--app-primary);
+  text-decoration: none;
+}
+
+.auth-toggle:hover { text-decoration: underline; }
+
+/* Usuário logado na topbar */
+.topbar__user {
+  display: inline-flex;
+  align-items: center;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--app-text-muted);
+  padding: 0 0.35rem;
+}
+
+@media (max-width: 575px) {
+  .topbar__user { display: none; }
+}

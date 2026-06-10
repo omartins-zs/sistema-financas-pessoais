@@ -254,13 +254,12 @@ const toggleTheme = () => {
 };
 
 // ============================================
-// LocalStorage
+// Persistência (localStorage ou Firebase via AppStorage)
 // ============================================
 
-const loadData = () => {
+const loadData = async () => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    allData = raw ? JSON.parse(raw) : {};
+    allData = (await AppStorage.load()) ?? {};
   } catch {
     allData = {};
     notify.error('Erro ao carregar dados. Iniciando do zero.');
@@ -269,9 +268,9 @@ const loadData = () => {
 
 const saveData = () => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(allData));
+    AppStorage.save(allData);
   } catch {
-    notify.error('Erro ao salvar. Verifique o espaço do navegador.');
+    notify.error('Erro ao salvar os dados.');
   }
 };
 
@@ -1249,16 +1248,24 @@ const bindEvents = () => {
 // Init
 // ============================================
 
+// Carrega os dados e desenha a tela (chamado quando o armazenamento está pronto)
+const startApp = async () => {
+  await loadData();
+  render();
+};
+
 const init = () => {
   dayjs.locale('pt-br');
   initTheme();
-  loadData();
   populateSelectors();
   populateCategories();
   initMoneyMasks();
   editModal = new bootstrap.Modal(dom.editModalEl);
   bindEvents();
-  render();
+
+  // Inicia o armazenamento: em modo nuvem aguarda o login;
+  // em modo local dispara startApp() imediatamente.
+  AppStorage.init(startApp);
 };
 
 document.addEventListener('DOMContentLoaded', init);
