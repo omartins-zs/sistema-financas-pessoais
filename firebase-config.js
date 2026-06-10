@@ -17,12 +17,12 @@
  */
 
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY",
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  projectId: "SEU_PROJETO",
-  storageBucket: "SEU_PROJETO.appspot.com",
-  messagingSenderId: "SEU_SENDER_ID",
-  appId: "SEU_APP_ID"
+  apiKey: "AIzaSyAcAhcQ7u5d5qTU4mwj5I3S-JKGHLp7Wn8",
+  authDomain: "financas-da-casa-c72c9.firebaseapp.com",
+  projectId: "financas-da-casa-c72c9",
+  storageBucket: "financas-da-casa-c72c9.firebasestorage.app",
+  messagingSenderId: "633257427023",
+  appId: "1:633257427023:web:a80f42e75d99ee3aff6a3a"
 };
 
 // Detecta se a config foi preenchida de verdade.
