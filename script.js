@@ -191,6 +191,9 @@ const notify = {
   info: (msg) => notyf.open({ type: 'info', message: msg })
 };
 
+// Disponibiliza o toast para o cloud-sync.js (mensagem de migração)
+window.appNotify = notify;
+
 const confirmAction = async ({ title, text, icon = 'question', confirmText = 'Confirmar' }) => {
   const { isConfirmed } = await Swal.fire({
     title,

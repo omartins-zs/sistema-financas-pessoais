@@ -133,12 +133,44 @@ const AppStorage = (() => {
     });
   };
 
+  const hasEntries = (obj) =>
+    obj && typeof obj === 'object' && Object.keys(obj).length > 0;
+
+  const cloudWriteNow = (data) =>
+    db.collection('financas').doc(uid).set({
+      data: JSON.stringify(data),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
   const cloudLoad = async () => {
     if (!uid) return {};
+
     const snap = await db.collection('financas').doc(uid).get();
-    if (!snap.exists) return {};
-    const raw = snap.data()?.data;
-    try { return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+    let cloud = {};
+    if (snap.exists) {
+      const raw = snap.data()?.data;
+      try { cloud = raw ? JSON.parse(raw) : {}; } catch { cloud = {}; }
+    }
+
+    // Migração: se a nuvem está vazia mas existem dados locais
+    // (lançamentos feitos antes do Firebase), envia-os para a nuvem.
+    if (!hasEntries(cloud)) {
+      const local = localLoad();
+      if (hasEntries(local)) {
+        try {
+          await cloudWriteNow(local);
+          notifySafe('Seus dados locais foram enviados para a nuvem!');
+          return local;
+        } catch { /* mantém vazio se falhar */ }
+      }
+    }
+
+    return cloud;
+  };
+
+  // Notifica usando o toast do app, se disponível.
+  const notifySafe = (msg) => {
+    try { window.appNotify?.success(msg); } catch {}
   };
 
   const cloudSave = (data) => {
