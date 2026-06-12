@@ -983,14 +983,39 @@ const importJSON = async (file) => {
   notify.success('Backup restaurado com sucesso!');
 };
 
+const importEntriesFromRows = async (rows, { title, text }) => {
+  const entries = parseSheetRows(rows);
+
+  if (!entries.length) {
+    notify.error('Nenhum lançamento válido encontrado. Use o template.');
+    return 0;
+  }
+
+  const confirmed = await confirmAction({
+    title: title ?? 'Importar lançamentos?',
+    text: text ?? `Adicionar ${entries.length} lançamento(s) ao mês de ${getMonthLabel()}?`,
+    confirmText: 'Sim, importar'
+  });
+
+  if (!confirmed) return 0;
+
+  setCurrentEntries([...getCurrentEntries(), ...entries]);
+  render();
+  return entries.length;
+};
+
+const csvTextToRows = (text) => {
+  const clean = text.replace(/^\uFEFF/, '');
+  const sep = clean.includes(';') ? ';' : ',';
+  return clean.split(/\r?\n/).map((line) => line.split(sep).map((c) => c.trim()));
+};
+
 const importSheet = async (file) => {
   const ext = file.name.split('.').pop().toLowerCase();
   let rows = [];
 
   if (ext === 'csv') {
-    const text = (await file.text()).replace(/^\uFEFF/, '');
-    const sep = text.includes(';') ? ';' : ',';
-    rows = text.split(/\r?\n/).map((line) => line.split(sep).map((c) => c.trim()));
+    rows = csvTextToRows(await file.text());
   } else if (ext === 'xlsx' || ext === 'xls') {
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: 'array' });
@@ -1019,29 +1044,70 @@ const importSheet = async (file) => {
     throw new Error('formato');
   }
 
-  const entries = parseSheetRows(rows);
+  const count = await importEntriesFromRows(rows);
+  if (count) notify.success(`${count} lançamento(s) importado(s)!`);
+};
 
-  if (!entries.length) {
-    notify.error('Nenhum lançamento válido encontrado. Use o template.');
-    return;
+const goToMonth = (year, monthIndex) => {
+  currentDate = dayjs().year(year).month(monthIndex).date(1);
+  dom.selectMonth.value = String(monthIndex);
+  dom.selectYear.value = String(year);
+  render();
+};
+
+const importBundledJunho2026 = async () => {
+  const targetKey = '2026-06';
+  const needsMonthSwitch = getMonthKey(currentDate) !== targetKey;
+
+  if (needsMonthSwitch) {
+    const ok = await confirmAction({
+      title: 'Importar Junho 2026?',
+      text: 'Os lançamentos do PDF serão adicionados em Junho de 2026. O mês atual será alterado.',
+      confirmText: 'Sim, continuar'
+    });
+    if (!ok) return;
+    goToMonth(2026, 5);
   }
 
-  const confirmed = await confirmAction({
-    title: 'Importar lançamentos?',
-    text: `Adicionar ${entries.length} lançamento(s) ao mês de ${getMonthLabel()}?`,
-    confirmText: 'Sim, importar'
-  });
+  try {
+    const [mainRes, nubankRes] = await Promise.all([
+      fetch('dados/junho-2026.csv'),
+      fetch('dados/junho-2026-nubank-babi.csv')
+    ]);
 
-  if (!confirmed) return;
+    if (!mainRes.ok || !nubankRes.ok) {
+      notify.error('Não foi possível carregar as planilhas de Junho 2026.');
+      return;
+    }
 
-  setCurrentEntries([...getCurrentEntries(), ...entries]);
-  render();
-  notify.success(`${entries.length} lançamento(s) importado(s)!`);
+    const mainRows = csvTextToRows(await mainRes.text());
+    const nubankRows = csvTextToRows(await nubankRes.text());
+
+    const mainCount = await importEntriesFromRows(mainRows, {
+      title: 'Importar lançamentos principais?',
+      text: `Adicionar os lançamentos principais do PDF (Jun/2026)?`
+    });
+    if (!mainCount) return;
+
+    notify.success(`${mainCount} lançamento(s) principal(is) importado(s)!`);
+
+    const nubankCount = await importEntriesFromRows(nubankRows, {
+      title: 'Importar detalhe Nubank Babi?',
+      text: 'Adicionar o detalhamento da fatura Nubank (Jun/2026)?'
+    });
+
+    if (nubankCount) {
+      notify.success(`${nubankCount} item(ns) Nubank importado(s)!`);
+    }
+  } catch {
+    notify.error('Erro ao importar planilha Junho 2026.');
+  }
 };
 
 const handleImportClick = (type) => {
   if (type === 'json') dom.inputImportJson.click();
   if (type === 'sheet') dom.inputImportSheet.click();
+  if (type === 'junho2026') importBundledJunho2026();
 };
 
 const onImportJson = async (e) => {
