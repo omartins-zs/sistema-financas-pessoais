@@ -2,7 +2,9 @@ Descrição;Categoria;Tipo;Valor;Status;Observação
 Salário / renda 1;Contribuição para casa;Entrada;4500,00;Pago;PDF Jun/2026
 Salário / renda 2;Contribuição para casa;Entrada;6900,00;Pago;PDF Jun/2026
 Renda extra;Outros;Entrada;960,77;Pago;PDF Jun/2026 (total entradas 12.360,77)
-Santander Crédito Gabriel;Cartão de crédito;Despesa;149,00;Não pago;Gabriel — revisar valor no PDF (14900)
+Santander Crédito Gabriel;Cartão de crédito;Despesa;149,00;Não pago;Gabriel
+Nubank Babi;Cartão de crédito;Despesa;866,00;Não pago;Babi — fatura Jun/2026
+Milbane Gabriel;Outros;Despesa;2,00;Não pago;Gabriel
 Dina;Outros;Despesa;25,00;Não pago;Bibi
 Redfox;Cartão de crédito;Despesa;79,90;Reservado;Babi — coloquei rec. no cartão
 Jovens de Maria;Outros;Despesa;15,00;Não pago;Babi
@@ -18,7 +20,7 @@ Investimentos Babi;Investimentos;Investimento;1000,00;Reservado;PDF Jun/2026
 Reserva viagem;Investimentos;Investimento;500,00;Reservado;PDF Jun/2026
 Cartão Atacadão;Cartão de crédito;Despesa;563,06;Não pago;Gabriel
 Dízimo Babi;Outros;Despesa;50,00;Não pago;Babi
-Dízimo Gabriel;Outros;Despesa;509,00;Não pago;Gabriel — revisar valor no PDF (50900)
+Dízimo Gabriel;Outros;Despesa;509,00;Não pago;Gabriel
 Combustível Gabriel;Combustível;Despesa;350,90;Não pago;Gabriel
 Claro Babi;Outros;Despesa;71,28;Não pago;Babi
 Camiseta São Pedro (2ª parte);Outros;Despesa;40,00;Não pago;Babi

@@ -6,21 +6,29 @@ Arquivos prontos para importar no **Finanças da Casa** (GitHub Pages).
 
 | Arquivo | Conteúdo |
 | --- | --- |
-| `junho-2026.csv` | Lançamentos principais do PDF (entradas + despesas) |
-| `junho-2026-nubank-babi.csv` | Detalhamento da fatura Nubank Babi (opcional) |
+| `junho-2026.csv` | Lançamentos completos do PDF (entradas, despesas e investimentos/reservas) |
+| `junho-2026-nubank-babi.csv` | Detalhamento opcional da fatura Nubank Babi |
 
 ### Como importar
 
 1. Abra o app e selecione **Junho / 2026**
-2. Menu **Importar** → **Planilha CSV ou Excel** → escolha `junho-2026.csv`
+2. Menu **Importar** → **Importar planilha Junho 2026** (um clique)
 
-   **Ou** use **Importar planilha Junho 2026** (importação com um clique).
+   Ou importe manualmente `junho-2026.csv`.
 
-3. Se quiser o detalhe do Nubank **em vez** da linha única de R$ 866,00:
-   - Remova a linha "Nubank Babi" antes, ou
-   - Importe só o `junho-2026-nubank-babi.csv` (sem a linha de total no arquivo principal)
+3. O arquivo principal já inclui **Nubank Babi R$ 866,00**. O detalhe Nubank é **opcional** — use só se quiser ver cada item da fatura (remova a linha do total antes).
 
-### Valores a revisar
+### Investimentos (reservas)
+
+Estes lançamentos entram no bloco **Investimentos e Reservas**, não nas despesas:
+
+- Investimentos Babi (R$ 1.000)
+- Reserva viagem (R$ 500)
+- Reserva Emergência PT Babi / PF Gabriel
+- Caixinha Turbo PF Gabriel
+- Reserva geral
+
+### Valores interpretados do PDF
 
 Alguns valores do PDF saíram sem vírgula decimal. Foram interpretados assim:
 

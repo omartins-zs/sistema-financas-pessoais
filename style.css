@@ -523,6 +523,12 @@ body {
   height: 100%;
 }
 
+.month-calc__item--inline {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .month-calc__item--highlight {
   border-color: color-mix(in srgb, var(--app-investment) 35%, var(--app-border));
   background: color-mix(in srgb, var(--app-investment) 8%, var(--app-surface-2));
