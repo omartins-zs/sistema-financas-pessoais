@@ -226,6 +226,10 @@
                 </select>
               </div>
               <div class="col-6 col-md-3 col-lg-2">
+                <label for="inputPerson" class="form-label">Tag <span class="label-optional">(quem paga/recebe)</span></label>
+                <select id="inputPerson" class="form-select form-select-lg" required></select>
+              </div>
+              <div class="col-6 col-md-3 col-lg-2">
                 <label for="inputValue" class="form-label">Valor</label>
                 <div class="input-group input-group-lg">
                   <span class="input-group-text">R$</span>
@@ -293,6 +297,7 @@
               <thead>
                 <tr>
                   <th>Descrição</th>
+                  <th>Tag</th>
                   <th>Categoria</th>
                   <th>Valor</th>
                   <th>Status</th>
@@ -330,6 +335,7 @@
               <thead>
                 <tr>
                   <th>Descrição</th>
+                  <th>Tag</th>
                   <th>Categoria</th>
                   <th>Valor</th>
                   <th>Status</th>
@@ -367,6 +373,7 @@
               <thead>
                 <tr>
                   <th>Descrição</th>
+                  <th>Tag</th>
                   <th>Categoria</th>
                   <th>Valor</th>
                   <th>Status</th>
@@ -457,6 +464,10 @@
                   <option value="despesa">Despesa (-)</option>
                   <option value="investimento">Investimento (reserva)</option>
                 </select>
+              </div>
+              <div class="col-6">
+                <label for="editPerson" class="form-label">Tag <span class="label-optional">(quem paga/recebe)</span></label>
+                <select id="editPerson" class="form-select" required></select>
               </div>
               <div class="col-6">
                 <label for="editValue" class="form-label">Valor</label>

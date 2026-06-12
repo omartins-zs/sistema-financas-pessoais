@@ -41,6 +41,26 @@ const TYPE_LABELS = {
   investimento: 'Investimento'
 };
 
+const PERSON_LABELS = {
+  gabriel: 'Gabriel',
+  barbara: 'Barbara',
+  casa: 'Casa'
+};
+
+const PERSON_MAP = {
+  gabriel: 'gabriel',
+  gab: 'gabriel',
+  g: 'gabriel',
+  barbara: 'barbara',
+  babi: 'barbara',
+  bibi: 'barbara',
+  bab: 'barbara',
+  casa: 'casa',
+  ambos: 'casa',
+  compartilhado: 'casa',
+  'os dois': 'casa'
+};
+
 const CHART_COLORS = [
   '#4f6ef7', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
   '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'
@@ -104,6 +124,7 @@ const dom = {
   inputStatus: $('#inputStatus'),
   inputDueDay: $('#inputDueDay'),
   inputObservation: $('#inputObservation'),
+  inputPerson: $('#inputPerson'),
   editId: $('#editId'),
   editDescription: $('#editDescription'),
   editCategory: $('#editCategory'),
@@ -112,6 +133,7 @@ const dom = {
   editStatus: $('#editStatus'),
   editDueDay: $('#editDueDay'),
   editObservation: $('#editObservation'),
+  editPerson: $('#editPerson'),
   incomeCount: $('#incomeCount'),
   expenseCount: $('#expenseCount'),
   investmentCount: $('#investmentCount'),
@@ -327,6 +349,7 @@ const resetAddForm = () => {
   dom.formAdd.reset();
   dom.inputType.value = 'despesa';
   dom.inputStatus.value = 'nao_pago';
+  dom.inputPerson.value = '';
   maskAdd.typedValue = 0;
   dom.inputDescription.focus();
 };
@@ -359,6 +382,35 @@ const populateCategories = () => {
   const options = CATEGORIAS.map((c) => `<option value="${c}">${c}</option>`).join('');
   dom.inputCategory.innerHTML = options;
   dom.editCategory.innerHTML = options;
+};
+
+const populatePersonSelect = () => {
+  const options = [
+    '<option value="">Quem paga/recebe?</option>',
+    ...Object.entries(PERSON_LABELS).map(
+      ([val, label]) => `<option value="${val}">${label}</option>`
+    )
+  ].join('');
+  dom.inputPerson.innerHTML = options;
+  dom.editPerson.innerHTML = options;
+};
+
+const mapPerson = (raw) => {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  const key = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (PERSON_MAP[key]) return PERSON_MAP[key];
+  if (key.includes('gab')) return 'gabriel';
+  if (key.includes('bab') || key.includes('barb') || key.includes('bibi')) return 'barbara';
+  if (key.includes('casa') || key.includes('amb')) return 'casa';
+  return '';
+};
+
+const renderPersonTag = (person) => {
+  if (!person || !PERSON_LABELS[person]) {
+    return '<span class="text-muted">—</span>';
+  }
+  return `<span class="person-tag person-tag--${person}">${PERSON_LABELS[person]}</span>`;
 };
 
 const syncSelectors = () => {
@@ -430,6 +482,7 @@ const getExpensesByCategory = (entries) =>
 
 const entryToRow = (entry) => [
   entry.description,
+  PERSON_LABELS[entry.person] ?? '',
   entry.category,
   TYPE_LABELS[entry.type],
   formatValuePlain(entry.value),
@@ -525,6 +578,7 @@ const buildEntryFromForm = (formData) => ({
   description: formData.description.trim(),
   category: formData.category,
   type: formData.type,
+  person: formData.person ?? '',
   value: formData.value,
   status: formData.status,
   due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
@@ -533,6 +587,7 @@ const buildEntryFromForm = (formData) => ({
 
 const validateEntry = (entry) => {
   if (!entry.description) { notify.error('Informe uma descrição.'); return false; }
+  if (!entry.person) { notify.error('Selecione quem paga ou recebe (Gabriel, Barbara ou Casa).'); return false; }
   if (entry.value <= 0) { notify.error('Informe um valor maior que zero.'); return false; }
   return true;
 };
@@ -544,6 +599,7 @@ const handleAddEntry = (e) => {
     description: dom.inputDescription.value,
     category: dom.inputCategory.value,
     type: dom.inputType.value,
+    person: dom.inputPerson.value,
     value: getMaskValue(maskAdd),
     status: dom.inputStatus.value,
     due_day: dom.inputDueDay.value || null,
@@ -569,6 +625,7 @@ const openEditModal = (id) => {
   dom.editStatus.value = entry.status;
   dom.editDueDay.value = entry.due_day ?? '';
   dom.editObservation.value = entry.observation ?? '';
+  dom.editPerson.value = entry.person ?? '';
   setMaskValue(maskEdit, entry.value);
 
   editModal.show();
@@ -588,6 +645,7 @@ const handleEditEntry = (e) => {
     description: dom.editDescription.value,
     category: dom.editCategory.value,
     type: dom.editType.value,
+    person: dom.editPerson.value,
     value: getMaskValue(maskEdit),
     status: dom.editStatus.value,
     due_day: dom.editDueDay.value || null,
@@ -677,11 +735,12 @@ const copyPreviousMonth = async () => {
     if (!confirmed) return;
   }
 
-  const copied = newEntries.map(({ description, category, type, value, due_day, observation }) => ({
+  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation }) => ({
     id: generateId(),
     description,
     category,
     type,
+    person: person ?? '',
     value,
     status: 'nao_pago',
     due_day: due_day ?? null,
@@ -757,21 +816,21 @@ const exportCSV = () => {
     `Não pago;${formatValuePlain(summary.unpaid)}`,
     '',
     'ENTRADAS E RENDAS',
-    'Descrição;Categoria;Valor;Status;Observação',
+    'Descrição;Tag;Categoria;Valor;Status;Observação',
     ...income.map((e) =>
-      [e.description, e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+      [e.description, PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
     ),
     '',
     'DESPESAS E LANÇAMENTOS',
-    'Descrição;Categoria;Valor;Status;Observação',
+    'Descrição;Tag;Categoria;Valor;Status;Observação',
     ...expense.map((e) =>
-      [e.description, e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+      [e.description, PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
     ),
     '',
     'INVESTIMENTOS (RESERVA)',
-    'Descrição;Categoria;Valor;Status;Observação',
+    'Descrição;Tag;Categoria;Valor;Status;Observação',
     ...investment.map((e) =>
-      [e.description, e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+      [e.description, PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
     )
   ];
 
@@ -804,27 +863,27 @@ const exportExcel = () => {
 
   const incomeSheet = XLSX.utils.aoa_to_sheet([
     ['ENTRADAS E RENDAS'],
-    ['Descrição', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ['Descrição', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
     ...income.map((e) => [
-      e.description, e.category, e.value,
+      e.description, PERSON_LABELS[e.person] ?? '', e.category, e.value,
       STATUS_LABELS[e.status], e.observation ?? ''
     ])
   ]);
 
   const expenseSheet = XLSX.utils.aoa_to_sheet([
     ['DESPESAS E LANÇAMENTOS'],
-    ['Descrição', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ['Descrição', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
     ...expense.map((e) => [
-      e.description, e.category, e.value,
+      e.description, PERSON_LABELS[e.person] ?? '', e.category, e.value,
       STATUS_LABELS[e.status], e.observation ?? ''
     ])
   ]);
 
   const investmentSheet = XLSX.utils.aoa_to_sheet([
     ['INVESTIMENTOS (RESERVA)'],
-    ['Descrição', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ['Descrição', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
     ...investment.map((e) => [
-      e.description, e.category, e.value,
+      e.description, PERSON_LABELS[e.person] ?? '', e.category, e.value,
       STATUS_LABELS[e.status], e.observation ?? ''
     ])
   ]);
@@ -876,9 +935,9 @@ const exportPDF = () => {
 
     doc.autoTable({
       startY: startY + 4,
-      head: [['Descrição', 'Categoria', 'Valor', 'Status']],
+      head: [['Descrição', 'Tag', 'Categoria', 'Valor', 'Status']],
       body: income.map((e) => [
-        e.description, e.category,
+        e.description, PERSON_LABELS[e.person] ?? '—', e.category,
         formatCurrency(e.value), STATUS_LABELS[e.status]
       ]),
       theme: 'striped',
@@ -896,9 +955,9 @@ const exportPDF = () => {
 
     doc.autoTable({
       startY: startY + 4,
-      head: [['Descrição', 'Categoria', 'Valor', 'Status']],
+      head: [['Descrição', 'Tag', 'Categoria', 'Valor', 'Status']],
       body: expense.map((e) => [
-        e.description, e.category,
+        e.description, PERSON_LABELS[e.person] ?? '—', e.category,
         formatCurrency(e.value), STATUS_LABELS[e.status]
       ]),
       theme: 'striped',
@@ -916,9 +975,9 @@ const exportPDF = () => {
 
     doc.autoTable({
       startY: startY + 4,
-      head: [['Descrição', 'Categoria', 'Valor', 'Status']],
+      head: [['Descrição', 'Tag', 'Categoria', 'Valor', 'Status']],
       body: investment.map((e) => [
-        e.description, e.category,
+        e.description, PERSON_LABELS[e.person] ?? '—', e.category,
         formatCurrency(e.value), STATUS_LABELS[e.status]
       ]),
       theme: 'striped',
@@ -991,6 +1050,7 @@ const rowToEntry = (row) => {
   const value = parseValue(String(row.valor ?? row.value ?? '0'));
   const status = mapStatus(row.status);
   const observation = String(row.observacao ?? row.observation ?? '').trim();
+  const person = mapPerson(row.tag ?? row.pessoa ?? row.responsavel ?? row.responsável);
 
   if (!desc || !type || value <= 0) return null;
 
@@ -1001,6 +1061,7 @@ const rowToEntry = (row) => {
       ? 'Investimentos'
       : (CATEGORIAS.includes(category) ? category : 'Outros'),
     type,
+    person,
     value,
     status,
     observation
@@ -1017,7 +1078,7 @@ const parseSheetRows = (rows) => {
   const dataRows = headerRow >= 0 ? rows.slice(headerRow + 1) : rows;
   const headers = headerRow >= 0
     ? rows[headerRow].map(normalizeHeader)
-    : ['descricao', 'categoria', 'tipo', 'valor', 'status', 'observacao'];
+    : ['descricao', 'categoria', 'tipo', 'valor', 'status', 'tag', 'observacao'];
 
   return dataRows
     .filter((r) => r.some((c) => String(c ?? '').trim()))
@@ -1029,6 +1090,7 @@ const parseSheetRows = (rows) => {
         else if (h === 'tipo' || h.includes('tipo')) row.tipo = cells[i];
         else if (h.includes('valor')) row.valor = cells[i];
         else if (h.includes('status')) row.status = cells[i];
+        else if (h === 'tag' || h.includes('pessoa') || h.includes('respons')) row.tag = cells[i];
         else if (h.includes('observ')) row.observacao = cells[i];
       });
       return rowToEntry(row);
@@ -1250,6 +1312,7 @@ const renderDueDay = (due_day) => due_day
 const renderEntryRow = (entry, valueClass) => `
   <tr data-id="${entry.id}">
     <td class="cell-description">${escapeHtml(entry.description)}</td>
+    <td>${renderPersonTag(entry.person)}</td>
     <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
     <td class="${valueClass}">${formatCurrency(entry.value)}</td>
     <td>${createStatusSelect(entry)}</td>
@@ -1271,6 +1334,7 @@ const renderEntryCard = (entry, valueClass) => {
         <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
       </div>
       <div class="entry-card__meta">
+        ${renderPersonTag(entry.person)}
         <span class="category-tag">${escapeHtml(entry.category)}</span>${due}
       </div>
       ${obs}
@@ -1450,6 +1514,7 @@ const init = () => {
   initTheme();
   populateSelectors();
   populateCategories();
+  populatePersonSelect();
   initMoneyMasks();
   editModal = new bootstrap.Modal(dom.editModalEl);
   bindEvents();

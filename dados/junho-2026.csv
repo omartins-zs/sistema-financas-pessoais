@@ -1,34 +1,34 @@
-Descrição;Categoria;Tipo;Valor;Status;Observação
-Salário / renda 1;Contribuição para casa;Entrada;4500,00;Pago;PDF Jun/2026
-Salário / renda 2;Contribuição para casa;Entrada;6900,00;Pago;PDF Jun/2026
-Renda extra;Outros;Entrada;960,77;Pago;PDF Jun/2026 (total entradas 12.360,77)
-Santander Crédito Gabriel;Cartão de crédito;Despesa;149,00;Não pago;Gabriel
-Nubank Babi;Cartão de crédito;Despesa;866,00;Não pago;Babi — fatura Jun/2026
-Milbane Gabriel;Outros;Despesa;2,00;Não pago;Gabriel
-Dina;Outros;Despesa;25,00;Não pago;Bibi
-Redfox;Cartão de crédito;Despesa;79,90;Reservado;Babi — coloquei rec. no cartão
-Jovens de Maria;Outros;Despesa;15,00;Não pago;Babi
-MEI Babi;Outros;Despesa;86,05;Não pago;Babi
-MEI Gabriel;Outros;Despesa;86,05;Não pago;Gabriel
-Unha;Outros;Despesa;135,00;Não pago;Babi
-Cabelo Gabriel;Outros;Despesa;50,00;Não pago;Gabriel
-Condução Babi;Combustível;Despesa;135,00;Não pago;Babi
-Internet Vivo;Internet;Despesa;100,00;Não pago;
-Contribuição casa;Contribuição para casa;Despesa;500,00;Não pago;Gabriel
-Convênio;Outros;Despesa;589,36;Não pago;Gabriel e Babi
-Investimentos Babi;Investimentos;Investimento;1000,00;Reservado;PDF Jun/2026
-Reserva viagem;Investimentos;Investimento;500,00;Reservado;PDF Jun/2026
-Cartão Atacadão;Cartão de crédito;Despesa;563,06;Não pago;Gabriel
-Dízimo Babi;Outros;Despesa;50,00;Não pago;Babi
-Dízimo Gabriel;Outros;Despesa;509,00;Não pago;Gabriel
-Combustível Gabriel;Combustível;Despesa;350,90;Não pago;Gabriel
-Claro Babi;Outros;Despesa;71,28;Não pago;Babi
-Camiseta São Pedro (2ª parte);Outros;Despesa;40,00;Não pago;Babi
-Multa Gabriel;Outros;Despesa;234,00;Não pago;Gabriel
-Raimunda;Outros;Despesa;1000,00;Não pago;
-Reserva Emergência PT Babi;Investimentos;Investimento;500,00;Reservado;PDF Jun/2026
-Reserva Emergência PF Gabriel;Investimentos;Investimento;650,00;Reservado;Em junho juntar
-Caixinha Turbo PF Gabriel (casa);Investimentos;Investimento;1200,00;Reservado;PDF Jun/2026
-Caixinha Turbo PF Gabriel;Investimentos;Investimento;1700,00;Reservado;PDF Jun/2026
-Contas do mês;Outros;Despesa;4410,31;Não pago;Total contas PDF Jun/2026
-Reserva geral;Investimentos;Investimento;2350,00;Reservado;PDF Jun/2026 — sobra prevista 5.476,04
+Descrição;Categoria;Tipo;Valor;Status;Tag;Observação
+Salário / renda 1;Contribuição para casa;Entrada;4500,00;Pago;Gabriel;PDF Jun/2026
+Salário / renda 2;Contribuição para casa;Entrada;6900,00;Pago;Barbara;PDF Jun/2026
+Renda extra;Outros;Entrada;960,77;Pago;Casa;PDF Jun/2026 (total entradas 12.360,77)
+Santander Crédito Gabriel;Cartão de crédito;Despesa;149,00;Não pago;Gabriel;
+Nubank Babi;Cartão de crédito;Despesa;866,00;Não pago;Barbara;Fatura Jun/2026
+Milbane Gabriel;Outros;Despesa;2,00;Não pago;Gabriel;
+Dina;Outros;Despesa;25,00;Não pago;Barbara;
+Redfox;Cartão de crédito;Despesa;79,90;Reservado;Barbara;Coloquei rec. no cartão
+Jovens de Maria;Outros;Despesa;15,00;Não pago;Barbara;
+MEI Babi;Outros;Despesa;86,05;Não pago;Barbara;
+MEI Gabriel;Outros;Despesa;86,05;Não pago;Gabriel;
+Unha;Outros;Despesa;135,00;Não pago;Barbara;
+Cabelo Gabriel;Outros;Despesa;50,00;Não pago;Gabriel;
+Condução Babi;Combustível;Despesa;135,00;Não pago;Barbara;
+Internet Vivo;Internet;Despesa;100,00;Não pago;Casa;
+Contribuição casa;Contribuição para casa;Despesa;500,00;Não pago;Gabriel;
+Convênio;Outros;Despesa;589,36;Não pago;Casa;Gabriel e Barbara
+Investimentos Babi;Investimentos;Investimento;1000,00;Reservado;Barbara;PDF Jun/2026
+Reserva viagem;Investimentos;Investimento;500,00;Reservado;Casa;PDF Jun/2026
+Cartão Atacadão;Cartão de crédito;Despesa;563,06;Não pago;Gabriel;
+Dízimo Babi;Outros;Despesa;50,00;Não pago;Barbara;
+Dízimo Gabriel;Outros;Despesa;509,00;Não pago;Gabriel;
+Combustível Gabriel;Combustível;Despesa;350,90;Não pago;Gabriel;
+Claro Babi;Outros;Despesa;71,28;Não pago;Barbara;
+Camiseta São Pedro (2ª parte);Outros;Despesa;40,00;Não pago;Barbara;
+Multa Gabriel;Outros;Despesa;234,00;Não pago;Gabriel;
+Raimunda;Outros;Despesa;1000,00;Não pago;Casa;
+Reserva Emergência PT Babi;Investimentos;Investimento;500,00;Reservado;Barbara;PDF Jun/2026
+Reserva Emergência PF Gabriel;Investimentos;Investimento;650,00;Reservado;Gabriel;Em junho juntar
+Caixinha Turbo PF Gabriel (casa);Investimentos;Investimento;1200,00;Reservado;Gabriel;PDF Jun/2026
+Caixinha Turbo PF Gabriel;Investimentos;Investimento;1700,00;Reservado;Gabriel;PDF Jun/2026
+Contas do mês;Outros;Despesa;4410,31;Não pago;Casa;Total contas PDF Jun/2026
+Reserva geral;Investimentos;Investimento;2350,00;Reservado;Casa;PDF Jun/2026 — sobra prevista 5.476,04

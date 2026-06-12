@@ -805,11 +805,60 @@ body {
   text-overflow: ellipsis;
 }
 
-.cell-description {
-  font-weight: 600;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.person-tag {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: clamp(0.7rem, 2vw, 0.78rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.person-tag--gabriel {
+  background: color-mix(in srgb, #3b82f6 18%, var(--app-surface-2));
+  color: #2563eb;
+  border: 1px solid color-mix(in srgb, #3b82f6 35%, transparent);
+}
+
+.person-tag--barbara {
+  background: color-mix(in srgb, #ec4899 18%, var(--app-surface-2));
+  color: #db2777;
+  border: 1px solid color-mix(in srgb, #ec4899 35%, transparent);
+}
+
+.person-tag--casa {
+  background: color-mix(in srgb, var(--app-primary) 14%, var(--app-surface-2));
+  color: var(--app-primary-dark);
+  border: 1px solid color-mix(in srgb, var(--app-primary) 30%, transparent);
+}
+
+[data-theme="dark"] .person-tag--gabriel {
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .person-tag--barbara {
+  color: #f9a8d4;
+}
+
+[data-theme="dark"] .person-tag--casa {
+  color: #a5b4fc;
+}
+
+.entry-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.entry-card__obs {
+  font-size: 0.85rem;
+  color: var(--app-text-muted);
+  font-style: italic;
+  margin-bottom: 0.65rem;
+  word-break: break-word;
 }
 
 .cell-obs {
@@ -872,19 +921,11 @@ body {
   flex-shrink: 0;
 }
 
-.entry-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-}
-
-.entry-card__obs {
-  font-size: 0.85rem;
-  color: var(--app-text-muted);
-  font-style: italic;
-  margin-bottom: 0.65rem;
-  word-break: break-word;
+.cell-description {
+  font-weight: 600;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .entry-card__footer {

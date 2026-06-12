@@ -1,7 +1,8 @@
-Descrição;Categoria;Tipo;Valor;Status;Observação
-Salário;Contribuição para casa;Entrada;5000,00;Pago;Recebido dia 5
-Freelance;Outros;Entrada;1200,00;Pago;
-Aluguel;Aluguel;Despesa;1500,00;Não pago;Vence dia 10
-Conta de luz;Luz;Despesa;185,90;Não pago;
-Mercado;Mercado;Despesa;650,00;Reservado;Compras do mês
-Internet;Internet;Despesa;99,90;Pago;
+Descrição;Categoria;Tipo;Valor;Status;Tag;Observação
+Salário;Contribuição para casa;Entrada;5000,00;Pago;Gabriel;Recebido dia 5
+Freelance;Outros;Entrada;1200,00;Pago;Barbara;
+Aluguel;Aluguel;Despesa;1500,00;Não pago;Casa;Vence dia 10
+Conta de luz;Luz;Despesa;185,90;Não pago;Casa;
+Mercado;Mercado;Despesa;650,00;Reservado;Barbara;Compras do mês
+Internet;Internet;Despesa;99,90;Pago;Casa;
+Reserva emergência;Investimentos;Investimento;500,00;Reservado;Gabriel;

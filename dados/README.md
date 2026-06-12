@@ -18,6 +18,18 @@ Arquivos prontos para importar no **Finanças da Casa** (GitHub Pages).
 
 3. O arquivo principal já inclui **Nubank Babi R$ 866,00**. O detalhe Nubank é **opcional** — use só se quiser ver cada item da fatura (remova a linha do total antes).
 
+### Tags (Gabriel / Barbara / Casa)
+
+Cada lançamento pode ter uma **Tag** indicando de quem sai ou entra o dinheiro:
+
+| Tag | Uso |
+| --- | --- |
+| **Gabriel** | Despesa ou entrada do Gabriel |
+| **Barbara** | Despesa ou entrada da Barbara (Babi) |
+| **Casa** | Compartilhado (internet, convênio, contas comuns) |
+
+Coluna na planilha: `Tag` (também aceita `Pessoa` ou `Responsável`).
+
 ### Investimentos (reservas)
 
 Estes lançamentos entram no bloco **Investimentos e Reservas**, não nas despesas:
