@@ -44,7 +44,8 @@ const TYPE_LABELS = {
 const PERSON_LABELS = {
   gabriel: 'Gabriel',
   barbara: 'Barbara',
-  casa: 'Casa'
+  casa: 'Casa',
+  familia: 'Família'
 };
 
 const PERSON_MAP = {
@@ -58,7 +59,9 @@ const PERSON_MAP = {
   casa: 'casa',
   ambos: 'casa',
   compartilhado: 'casa',
-  'os dois': 'casa'
+  'os dois': 'casa',
+  familia: 'familia',
+  family: 'familia'
 };
 
 const CHART_COLORS = [
@@ -167,12 +170,13 @@ const dom = {
 const getMonthKey = (date) => date.format('YYYY-MM');
 
 /** Identifica lançamento único para evitar duplicatas */
-const entryFingerprint = ({ description, category, type, value }) =>
+const entryFingerprint = ({ description, category, type, value, person }) =>
   [
     String(description ?? '').trim().toLowerCase(),
     category,
     type,
-    Number(value).toFixed(2)
+    Number(value).toFixed(2),
+    person ?? ''
   ].join('|');
 
 const isEntryDuplicate = (entry, list) =>
@@ -402,6 +406,7 @@ const mapPerson = (raw) => {
   if (PERSON_MAP[key]) return PERSON_MAP[key];
   if (key.includes('gab')) return 'gabriel';
   if (key.includes('bab') || key.includes('barb') || key.includes('bibi')) return 'barbara';
+  if (key.includes('famil')) return 'familia';
   if (key.includes('casa') || key.includes('amb')) return 'casa';
   return '';
 };

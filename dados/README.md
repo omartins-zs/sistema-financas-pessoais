@@ -26,7 +26,8 @@ Cada lançamento pode ter uma **Tag** indicando de quem sai ou entra o dinheiro:
 | --- | --- |
 | **Gabriel** | Despesa ou entrada do Gabriel |
 | **Barbara** | Despesa ou entrada da Barbara (Babi) |
-| **Casa** | Compartilhado (internet, convênio, contas comuns) |
+| **Casa** | Contas compartilhadas da casa |
+| **Família** | Gastos familiares (ex.: convênio médico) |
 
 Coluna na planilha: `Tag` (também aceita `Pessoa` ou `Responsável`).
 

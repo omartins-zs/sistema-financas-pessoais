@@ -833,6 +833,12 @@ body {
   border: 1px solid color-mix(in srgb, var(--app-primary) 30%, transparent);
 }
 
+.person-tag--familia {
+  background: color-mix(in srgb, #14b8a6 16%, var(--app-surface-2));
+  color: #0d9488;
+  border: 1px solid color-mix(in srgb, #14b8a6 35%, transparent);
+}
+
 [data-theme="dark"] .person-tag--gabriel {
   color: #93c5fd;
 }
@@ -843,6 +849,10 @@ body {
 
 [data-theme="dark"] .person-tag--casa {
   color: #a5b4fc;
+}
+
+[data-theme="dark"] .person-tag--familia {
+  color: #5eead4;
 }
 
 .entry-card__meta {
