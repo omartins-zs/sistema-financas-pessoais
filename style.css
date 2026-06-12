@@ -17,6 +17,7 @@
   --app-shadow: rgba(15, 23, 42, 0.08);
   --app-income: #10b981;
   --app-expense: #ef4444;
+  --app-investment: #8b5cf6;
   --app-balance: #6366f1;
   --app-paid: #22c55e;
   --app-reserved: #f59e0b;
@@ -57,6 +58,7 @@
   --app-shadow: rgba(0, 0, 0, 0.4);
   --app-income: #34d399;
   --app-expense: #f87171;
+  --app-investment: #a78bfa;
   --app-balance: #a5b4fc;
   --app-paid: #4ade80;
   --app-reserved: #fbbf24;
@@ -501,6 +503,8 @@ body {
 .summary-card--income  .summary-card__value, .summary-card--income > i { color: var(--app-income); }
 .summary-card--expense { border-left-color: var(--app-expense); }
 .summary-card--expense .summary-card__value, .summary-card--expense > i { color: var(--app-expense); }
+.summary-card--investment { border-left-color: var(--app-investment); }
+.summary-card--investment .summary-card__value, .summary-card--investment > i { color: var(--app-investment); }
 .summary-card--balance { border-left-color: var(--app-balance); }
 .summary-card--balance .summary-card__value, .summary-card--balance > i { color: var(--app-balance); }
 .summary-card--paid    { border-left-color: var(--app-paid); }
@@ -509,6 +513,44 @@ body {
 .summary-card--reserved .summary-card__value, .summary-card--reserved > i { color: var(--app-reserved); }
 .summary-card--unpaid  { border-left-color: var(--app-unpaid); }
 .summary-card--unpaid  .summary-card__value, .summary-card--unpaid > i { color: var(--app-unpaid); }
+
+/* ---- Cálculo do mês ---- */
+.month-calc__item {
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  padding: 1rem 1.15rem;
+  height: 100%;
+}
+
+.month-calc__item--highlight {
+  border-color: color-mix(in srgb, var(--app-investment) 35%, var(--app-border));
+  background: color-mix(in srgb, var(--app-investment) 8%, var(--app-surface-2));
+}
+
+.month-calc__formula {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--app-text);
+  margin-bottom: 0.25rem;
+}
+
+.month-calc__hint {
+  font-size: 0.78rem;
+  color: var(--app-text-muted);
+}
+
+.month-calc__value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.month-calc__value--surplus {
+  color: var(--app-investment);
+}
 
 /* ---- Formulários ---- */
 
@@ -567,6 +609,12 @@ body {
     var(--app-surface));
 }
 
+.entries-panel--investment .entries-panel__head {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--app-investment) 12%, var(--app-surface)),
+    var(--app-surface));
+}
+
 .entries-panel__title {
   display: flex;
   align-items: center;
@@ -579,8 +627,10 @@ body {
 
 .entries-panel--income .entries-panel__title i { color: var(--app-income); }
 .entries-panel--expense .entries-panel__title i { color: var(--app-expense); }
+.entries-panel--investment .entries-panel__title i { color: var(--app-investment); }
 .entries-panel--income .badge { background: var(--app-income) !important; }
 .entries-panel--expense .badge { background: var(--app-expense) !important; }
+.entries-panel--investment .badge { background: var(--app-investment) !important; }
 
 .entries-panel__subtotal {
   font-size: clamp(0.95rem, 2.8vw, 1.08rem);
@@ -658,6 +708,10 @@ body {
   background: color-mix(in srgb, var(--app-expense) 5%, var(--app-surface-2));
 }
 
+.entries-panel--investment .entries-table tbody td {
+  background: color-mix(in srgb, var(--app-investment) 6%, var(--app-surface-2));
+}
+
 .entries-table tbody tr:hover td {
   background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface-2));
 }
@@ -668,6 +722,10 @@ body {
 
 .entries-panel--expense .entries-table tbody tr:hover td {
   background: color-mix(in srgb, var(--app-expense) 12%, var(--app-surface-2));
+}
+
+.entries-panel--investment .entries-table tbody tr:hover td {
+  background: color-mix(in srgb, var(--app-investment) 14%, var(--app-surface-2));
 }
 
 /* Tabela legada (formulário etc.) */
@@ -727,6 +785,7 @@ body {
 
 .value-income { color: var(--app-income); font-weight: 700; }
 .value-expense { color: var(--app-expense); font-weight: 700; }
+.value-investment { color: var(--app-investment); font-weight: 700; }
 
 .category-tag {
   display: inline-block;
@@ -779,6 +838,10 @@ body {
 
 .entries-panel--expense .entry-card {
   background: color-mix(in srgb, var(--app-expense) 6%, var(--app-surface-2));
+}
+
+.entries-panel--investment .entry-card {
+  background: color-mix(in srgb, var(--app-investment) 7%, var(--app-surface-2));
 }
 
 .entry-card__header {

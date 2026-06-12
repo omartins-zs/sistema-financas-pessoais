@@ -140,11 +140,11 @@
     <main class="container app-main">
 
       <!-- Resumo -->
-      <section class="row g-3 mb-4" aria-label="Resumo do mês">
+      <section class="row g-3 mb-3" aria-label="Resumo do mês">
         <div class="col-6 col-md-4 col-xl-2">
           <div class="summary-card summary-card--income">
             <i class="bi bi-arrow-down-circle"></i>
-            <span class="summary-card__label">Entradas</span>
+            <span class="summary-card__label">Entradas (lucro)</span>
             <strong class="summary-card__value" id="totalIncome">R$ 0,00</strong>
           </div>
         </div>
@@ -156,10 +156,10 @@
           </div>
         </div>
         <div class="col-6 col-md-4 col-xl-2">
-          <div class="summary-card summary-card--balance">
-            <i class="bi bi-wallet2"></i>
-            <span class="summary-card__label">Saldo</span>
-            <strong class="summary-card__value" id="totalBalance">R$ 0,00</strong>
+          <div class="summary-card summary-card--investment">
+            <i class="bi bi-piggy-bank"></i>
+            <span class="summary-card__label">Investimentos</span>
+            <strong class="summary-card__value" id="totalInvestment">R$ 0,00</strong>
           </div>
         </div>
         <div class="col-6 col-md-4 col-xl-2">
@@ -181,6 +181,31 @@
             <i class="bi bi-exclamation-circle"></i>
             <span class="summary-card__label">Não pago</span>
             <strong class="summary-card__value" id="totalUnpaid">R$ 0,00</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Cálculo do mês -->
+      <section class="month-calc card app-card shadow-sm border-0 mb-4" aria-label="Cálculo do mês">
+        <div class="card-body p-4">
+          <h2 class="section-title h6 mb-3">
+            <i class="bi bi-calculator app-icon"></i> Cálculo do mês
+          </h2>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="month-calc__item">
+                <span class="month-calc__formula">Lucro − Despesas</span>
+                <p class="month-calc__hint mb-1">Quanto sobra das entradas após pagar as despesas do mês</p>
+                <strong class="month-calc__value" id="calcAfterExpenses">R$ 0,00</strong>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="month-calc__item month-calc__item--highlight">
+                <span class="month-calc__formula">Lucro − Despesas − Investimentos</span>
+                <p class="month-calc__hint mb-1">Sobra real do mês (investimentos são reserva, não gasto comum)</p>
+                <strong class="month-calc__value month-calc__value--surplus" id="calcSurplus">R$ 0,00</strong>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -208,6 +233,7 @@
                 <select id="inputType" class="form-select form-select-lg" required>
                   <option value="entrada">Entrada (+)</option>
                   <option value="despesa">Despesa (-)</option>
+                  <option value="investimento">Investimento (reserva)</option>
                 </select>
               </div>
               <div class="col-6 col-md-3 col-lg-2">
@@ -334,11 +360,48 @@
         </div>
       </section>
 
+      <!-- INVESTIMENTOS (reserva — separado das despesas) -->
+      <section class="entries-panel entries-panel--investment" id="investmentSection">
+        <div class="entries-panel__head">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <h3 class="h6 mb-0 entries-panel__title">
+              <i class="bi bi-piggy-bank"></i> Investimentos e Reservas
+              <span class="badge rounded-pill ms-1" id="investmentCount">0</span>
+            </h3>
+            <strong class="entries-panel__subtotal value-investment" id="investmentSubtotal">R$ 0,00</strong>
+          </div>
+          <p class="entries-panel__hint mb-0">Dinheiro reservado — entra no cálculo do mês, mas não mistura com despesas comuns</p>
+        </div>
+        <div class="entries-panel__body">
+          <div class="entries-table-wrap d-none d-md-block" id="investmentTableWrapper">
+            <table class="entries-table" id="investmentTable">
+              <thead>
+                <tr>
+                  <th>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th>Vencimento</th>
+                  <th>Obs.</th>
+                  <th class="text-end">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="investmentBody"></tbody>
+            </table>
+          </div>
+          <div class="entries-cards d-md-none" id="investmentCards"></div>
+          <div class="empty-section text-center py-4" id="investmentEmpty" hidden>
+            <i class="bi bi-piggy-bank"></i>
+            <p class="mb-0 small text-muted">Nenhum investimento/reserva neste mês</p>
+          </div>
+        </div>
+      </section>
+
       <!-- Estado vazio geral -->
       <div class="empty-state text-center py-5" id="emptyState" hidden>
         <i class="bi bi-clipboard2-data empty-state__icon"></i>
         <p class="fw-semibold mb-1">Nenhum lançamento neste mês</p>
-        <p class="text-muted small mb-0">Adicione entradas ou despesas acima, ou copie o mês anterior.</p>
+        <p class="text-muted small mb-0">Adicione entradas, despesas ou investimentos acima, ou copie o mês anterior.</p>
       </div>
 
       <!-- Gráficos -->
@@ -358,7 +421,7 @@
             <div class="row g-4">
               <div class="col-md-6">
                 <div class="chart-box">
-                  <h3 class="chart-box__title">Entradas x Despesas</h3>
+                  <h3 class="chart-box__title">Entradas x Despesas x Investimentos</h3>
                   <canvas id="chartIncomeExpense" height="220"></canvas>
                 </div>
               </div>
@@ -403,6 +466,7 @@
                 <select id="editType" class="form-select" required>
                   <option value="entrada">Entrada (+)</option>
                   <option value="despesa">Despesa (-)</option>
+                  <option value="investimento">Investimento (reserva)</option>
                 </select>
               </div>
               <div class="col-6">

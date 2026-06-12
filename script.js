@@ -20,6 +20,7 @@ const CATEGORIAS = [
   'Internet',
   'Cartão de crédito',
   'Farmácia',
+  'Investimentos',
   'Outros'
 ];
 
@@ -36,7 +37,8 @@ const STATUS_LABELS = {
 
 const TYPE_LABELS = {
   entrada: 'Entrada',
-  despesa: 'Despesa'
+  despesa: 'Despesa',
+  investimento: 'Investimento'
 };
 
 const CHART_COLORS = [
@@ -89,7 +91,9 @@ const dom = {
   editModalEl: $('#editModal'),
   totalIncome: $('#totalIncome'),
   totalExpense: $('#totalExpense'),
-  totalBalance: $('#totalBalance'),
+  totalInvestment: $('#totalInvestment'),
+  calcAfterExpenses: $('#calcAfterExpenses'),
+  calcSurplus: $('#calcSurplus'),
   totalPaid: $('#totalPaid'),
   totalReserved: $('#totalReserved'),
   totalUnpaid: $('#totalUnpaid'),
@@ -110,8 +114,10 @@ const dom = {
   editObservation: $('#editObservation'),
   incomeCount: $('#incomeCount'),
   expenseCount: $('#expenseCount'),
+  investmentCount: $('#investmentCount'),
   incomeSubtotal: $('#incomeSubtotal'),
   expenseSubtotal: $('#expenseSubtotal'),
+  investmentSubtotal: $('#investmentSubtotal'),
   incomeBody: $('#incomeBody'),
   expenseBody: $('#expenseBody'),
   incomeCards: $('#incomeCards'),
@@ -123,7 +129,13 @@ const dom = {
   incomeTable: $('#incomeTable'),
   expenseTable: $('#expenseTable'),
   incomeSection: $('#incomeSection'),
-  expenseSection: $('#expenseSection')
+  expenseSection: $('#expenseSection'),
+  investmentSection: $('#investmentSection'),
+  investmentBody: $('#investmentBody'),
+  investmentCards: $('#investmentCards'),
+  investmentTableWrapper: $('#investmentTableWrapper'),
+  investmentEmpty: $('#investmentEmpty'),
+  investmentTable: $('#investmentTable')
 };
 
 // ============================================
@@ -377,14 +389,24 @@ const calculateSummary = (entries) =>
   entries.reduce(
     (acc, { type, value, status }) => {
       if (type === 'entrada') acc.income += value;
+      else if (type === 'investimento') acc.investment += value;
       else acc.expense += value;
-      if (status === 'pago') acc.paid += value;
-      else if (status === 'reservado') acc.reserved += value;
-      else acc.unpaid += value;
+
+      if (type !== 'entrada') {
+        if (status === 'pago') acc.paid += value;
+        else if (status === 'reservado') acc.reserved += value;
+        else acc.unpaid += value;
+      }
       return acc;
     },
-    { income: 0, expense: 0, paid: 0, reserved: 0, unpaid: 0 }
+    { income: 0, expense: 0, investment: 0, paid: 0, reserved: 0, unpaid: 0 }
   );
+
+const getMonthBalances = (summary) => {
+  const afterExpenses = summary.income - summary.expense;
+  const surplus = afterExpenses - summary.investment;
+  return { afterExpenses, surplus };
+};
 
 const splitEntries = (entries) => ({
   income: entries
@@ -392,6 +414,9 @@ const splitEntries = (entries) => ({
     .sort((a, b) => a.description.localeCompare(b.description, 'pt-BR')),
   expense: entries
     .filter((e) => e.type === 'despesa')
+    .sort((a, b) => a.description.localeCompare(b.description, 'pt-BR')),
+  investment: entries
+    .filter((e) => e.type === 'investimento')
     .sort((a, b) => a.description.localeCompare(b.description, 'pt-BR'))
 });
 
@@ -431,10 +456,10 @@ const updateCharts = (entries) => {
   chartIncomeExpense = new Chart($('#chartIncomeExpense'), {
     type: 'bar',
     data: {
-      labels: ['Entradas', 'Despesas'],
+      labels: ['Entradas', 'Despesas', 'Investimentos'],
       datasets: [{
-        data: [summary.income, summary.expense],
-        backgroundColor: ['#10b981', '#ef4444'],
+        data: [summary.income, summary.expense, summary.investment],
+        backgroundColor: ['#10b981', '#ef4444', '#8b5cf6'],
         borderRadius: 8
       }]
     },
@@ -700,11 +725,11 @@ const clearCurrentMonth = async () => {
 
 const getExportContext = () => {
   const entries = getCurrentEntries();
-  const { income, expense } = splitEntries(entries);
+  const { income, expense, investment } = splitEntries(entries);
   const summary = calculateSummary(entries);
-  const balance = summary.income - summary.expense;
+  const { afterExpenses, surplus } = getMonthBalances(summary);
 
-  return { entries, income, expense, summary, balance, monthLabel: getMonthLabel() };
+  return { entries, income, expense, investment, summary, afterExpenses, surplus, monthLabel: getMonthLabel() };
 };
 
 const exportJSON = () => {
@@ -716,15 +741,17 @@ const exportJSON = () => {
 };
 
 const exportCSV = () => {
-  const { income, expense, summary, balance, monthLabel } = getExportContext();
+  const { income, expense, investment, summary, afterExpenses, surplus, monthLabel } = getExportContext();
 
   const lines = [
     `Finanças da Casa - ${monthLabel}`,
     '',
     'RESUMO',
-    `Entradas;${formatValuePlain(summary.income)}`,
+    `Entradas (lucro);${formatValuePlain(summary.income)}`,
     `Despesas;${formatValuePlain(summary.expense)}`,
-    `Saldo;${formatValuePlain(balance)}`,
+    `Investimentos (reserva);${formatValuePlain(summary.investment)}`,
+    `Lucro - Despesas;${formatValuePlain(afterExpenses)}`,
+    `Lucro - Despesas - Investimentos;${formatValuePlain(surplus)}`,
     `Pago;${formatValuePlain(summary.paid)}`,
     `Reservado;${formatValuePlain(summary.reserved)}`,
     `Não pago;${formatValuePlain(summary.unpaid)}`,
@@ -739,6 +766,12 @@ const exportCSV = () => {
     'Descrição;Categoria;Valor;Status;Observação',
     ...expense.map((e) =>
       [e.description, e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+    ),
+    '',
+    'INVESTIMENTOS (RESERVA)',
+    'Descrição;Categoria;Valor;Status;Observação',
+    ...investment.map((e) =>
+      [e.description, e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
     )
   ];
 
@@ -751,7 +784,7 @@ const exportCSV = () => {
 };
 
 const exportExcel = () => {
-  const { income, expense, summary, balance, monthLabel } = getExportContext();
+  const { income, expense, investment, summary, afterExpenses, surplus, monthLabel } = getExportContext();
 
   const wb = XLSX.utils.book_new();
 
@@ -759,9 +792,11 @@ const exportExcel = () => {
     ['Finanças da Casa', monthLabel],
     [],
     ['Resumo', 'Valor (R$)'],
-    ['Entradas', summary.income],
+    ['Entradas (lucro)', summary.income],
     ['Despesas', summary.expense],
-    ['Saldo', balance],
+    ['Investimentos (reserva)', summary.investment],
+    ['Lucro - Despesas', afterExpenses],
+    ['Lucro - Despesas - Investimentos', surplus],
     ['Pago', summary.paid],
     ['Reservado', summary.reserved],
     ['Não pago', summary.unpaid]
@@ -785,16 +820,26 @@ const exportExcel = () => {
     ])
   ]);
 
+  const investmentSheet = XLSX.utils.aoa_to_sheet([
+    ['INVESTIMENTOS (RESERVA)'],
+    ['Descrição', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ...investment.map((e) => [
+      e.description, e.category, e.value,
+      STATUS_LABELS[e.status], e.observation ?? ''
+    ])
+  ]);
+
   XLSX.utils.book_append_sheet(wb, resumoSheet, 'Resumo');
   XLSX.utils.book_append_sheet(wb, incomeSheet, 'Entradas');
   XLSX.utils.book_append_sheet(wb, expenseSheet, 'Despesas');
+  XLSX.utils.book_append_sheet(wb, investmentSheet, 'Investimentos');
 
   XLSX.writeFile(wb, `${getExportBaseName()}.xlsx`);
   notify.success('Excel exportado!');
 };
 
 const exportPDF = () => {
-  const { income, expense, summary, balance, monthLabel } = getExportContext();
+  const { income, expense, investment, summary, afterExpenses, surplus, monthLabel } = getExportContext();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
 
@@ -808,9 +853,11 @@ const exportPDF = () => {
     startY: 32,
     head: [['Resumo', 'Valor']],
     body: [
-      ['Entradas', formatCurrency(summary.income)],
+      ['Entradas (lucro)', formatCurrency(summary.income)],
       ['Despesas', formatCurrency(summary.expense)],
-      ['Saldo', formatCurrency(balance)],
+      ['Investimentos (reserva)', formatCurrency(summary.investment)],
+      ['Lucro − Despesas', formatCurrency(afterExpenses)],
+      ['Lucro − Despesas − Investimentos', formatCurrency(surplus)],
       ['Pago', formatCurrency(summary.paid)],
       ['Reservado', formatCurrency(summary.reserved)],
       ['Não pago', formatCurrency(summary.unpaid)]
@@ -858,6 +905,26 @@ const exportPDF = () => {
       headStyles: { fillColor: [239, 68, 68] },
       styles: { fontSize: 9 }
     });
+
+    startY = doc.lastAutoTable.finalY + 10;
+  }
+
+  if (investment.length) {
+    doc.setFontSize(12);
+    doc.setTextColor(139, 92, 246);
+    doc.text('Investimentos (reserva)', 14, startY);
+
+    doc.autoTable({
+      startY: startY + 4,
+      head: [['Descrição', 'Categoria', 'Valor', 'Status']],
+      body: investment.map((e) => [
+        e.description, e.category,
+        formatCurrency(e.value), STATUS_LABELS[e.status]
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [139, 92, 246] },
+      styles: { fontSize: 9 }
+    });
   }
 
   doc.save(`${getExportBaseName()}.pdf`);
@@ -884,7 +951,8 @@ const handleExport = (format) => {
 
 const TYPE_MAP = {
   entrada: 'entrada', entradas: 'entrada', '+': 'entrada',
-  despesa: 'despesa', despesas: 'despesa', '-': 'despesa'
+  despesa: 'despesa', despesas: 'despesa', '-': 'despesa',
+  investimento: 'investimento', investimentos: 'investimento', reserva: 'investimento'
 };
 
 const STATUS_MAP = {
@@ -903,7 +971,11 @@ const normalizeHeader = (h) =>
 const mapTipo = (raw) => {
   const key = String(raw ?? '').trim().toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  return TYPE_MAP[key] ?? (key.startsWith('entr') ? 'entrada' : key.startsWith('desp') ? 'despesa' : null);
+  if (TYPE_MAP[key]) return TYPE_MAP[key];
+  if (key.startsWith('entr')) return 'entrada';
+  if (key.startsWith('invest') || key.startsWith('reserv')) return 'investimento';
+  if (key.startsWith('desp')) return 'despesa';
+  return null;
 };
 
 const mapStatus = (raw) => {
@@ -925,7 +997,9 @@ const rowToEntry = (row) => {
   return {
     id: generateId(),
     description: desc,
-    category: CATEGORIAS.includes(category) ? category : 'Outros',
+    category: type === 'investimento'
+      ? 'Investimentos'
+      : (CATEGORIAS.includes(category) ? category : 'Outros'),
     type,
     value,
     status,
@@ -1211,33 +1285,44 @@ const renderSection = ({ entries, bodyEl, cardsEl, tableWrapper, emptyEl, valueC
 };
 
 const updateSummary = (entries) => {
-  const { income, expense, paid, reserved, unpaid } = calculateSummary(entries);
-  const balance = income - expense;
-  const { income: incomeList, expense: expenseList } = splitEntries(entries);
+  const summary = calculateSummary(entries);
+  const { afterExpenses, surplus } = getMonthBalances(summary);
+  const { income: incomeList, expense: expenseList, investment: investmentList } = splitEntries(entries);
 
-  dom.totalIncome.textContent = formatCurrency(income);
-  dom.totalExpense.textContent = formatCurrency(expense);
-  dom.totalBalance.textContent = formatCurrency(balance);
-  dom.totalPaid.textContent = formatCurrency(paid);
-  dom.totalReserved.textContent = formatCurrency(reserved);
-  dom.totalUnpaid.textContent = formatCurrency(unpaid);
-  dom.totalBalance.style.color = balance >= 0 ? 'var(--app-income)' : 'var(--app-expense)';
+  dom.totalIncome.textContent = formatCurrency(summary.income);
+  dom.totalExpense.textContent = formatCurrency(summary.expense);
+  dom.totalInvestment.textContent = formatCurrency(summary.investment);
+  dom.totalPaid.textContent = formatCurrency(summary.paid);
+  dom.totalReserved.textContent = formatCurrency(summary.reserved);
+  dom.totalUnpaid.textContent = formatCurrency(summary.unpaid);
+
+  if (dom.calcAfterExpenses) {
+    dom.calcAfterExpenses.textContent = formatCurrency(afterExpenses);
+    dom.calcAfterExpenses.style.color = afterExpenses >= 0 ? 'var(--app-income)' : 'var(--app-expense)';
+  }
+  if (dom.calcSurplus) {
+    dom.calcSurplus.textContent = formatCurrency(surplus);
+    dom.calcSurplus.style.color = surplus >= 0 ? 'var(--app-income)' : 'var(--app-expense)';
+  }
 
   dom.entryCount.textContent = entries.length;
   dom.incomeCount.textContent = incomeList.length;
   dom.expenseCount.textContent = expenseList.length;
-  dom.incomeSubtotal.textContent = formatCurrency(income);
-  dom.expenseSubtotal.textContent = formatCurrency(expense);
+  dom.investmentCount.textContent = investmentList.length;
+  dom.incomeSubtotal.textContent = formatCurrency(summary.income);
+  dom.expenseSubtotal.textContent = formatCurrency(summary.expense);
+  dom.investmentSubtotal.textContent = formatCurrency(summary.investment);
 };
 
 const render = () => {
   const entries = getCurrentEntries();
-  const { income, expense } = splitEntries(entries);
+  const { income, expense, investment } = splitEntries(entries);
   const hasEntries = entries.length > 0;
 
   dom.emptyState.hidden = hasEntries;
   dom.incomeSection.hidden = !hasEntries;
   dom.expenseSection.hidden = !hasEntries;
+  dom.investmentSection.hidden = !hasEntries;
 
   renderSection({
     entries: income,
@@ -1255,6 +1340,15 @@ const render = () => {
     tableWrapper: dom.expenseTableWrapper,
     emptyEl: dom.expenseEmpty,
     valueClass: 'value-expense'
+  });
+
+  renderSection({
+    entries: investment,
+    bodyEl: dom.investmentBody,
+    cardsEl: dom.investmentCards,
+    tableWrapper: dom.investmentTableWrapper,
+    emptyEl: dom.investmentEmpty,
+    valueClass: 'value-investment'
   });
 
   updateSummary(entries);
@@ -1311,6 +1405,22 @@ const bindEvents = () => {
 
   bindListEvents(dom.incomeTable, dom.incomeCards);
   bindListEvents(dom.expenseTable, dom.expenseCards);
+  bindListEvents(dom.investmentTable, dom.investmentCards);
+
+  dom.inputType?.addEventListener('change', onTypeChange);
+  dom.editType?.addEventListener('change', onEditTypeChange);
+};
+
+const onTypeChange = () => {
+  if (dom.inputType.value === 'investimento') {
+    dom.inputCategory.value = 'Investimentos';
+  }
+};
+
+const onEditTypeChange = () => {
+  if (dom.editType.value === 'investimento') {
+    dom.editCategory.value = 'Investimentos';
+  }
 };
 
 // ============================================
