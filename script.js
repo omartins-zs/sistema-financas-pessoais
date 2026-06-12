@@ -1189,78 +1189,9 @@ const importSheet = async (file) => {
   if (count) notify.success(`${count} lançamento(s) importado(s)!`);
 };
 
-const goToMonth = (year, monthIndex) => {
-  currentDate = dayjs().year(year).month(monthIndex).date(1);
-  dom.selectMonth.value = String(monthIndex);
-  dom.selectYear.value = String(year);
-  render();
-};
-
-const importBundledJunho2026 = async () => {
-  const targetKey = '2026-06';
-  const needsMonthSwitch = getMonthKey(currentDate) !== targetKey;
-
-  if (needsMonthSwitch) {
-    const ok = await confirmAction({
-      title: 'Importar Junho 2026?',
-      text: 'Os lançamentos do PDF serão adicionados em Junho de 2026. O mês atual será alterado.',
-      confirmText: 'Sim, continuar'
-    });
-    if (!ok) return;
-    goToMonth(2026, 5);
-  }
-
-  try {
-    const mainRes = await fetch('dados/junho-2026.csv');
-
-    if (!mainRes.ok) {
-      notify.error('Não foi possível carregar a planilha de Junho 2026.');
-      return;
-    }
-
-    const mainRows = csvTextToRows(await mainRes.text());
-
-    const mainCount = await importEntriesFromRows(mainRows, {
-      title: 'Importar Junho 2026?',
-      text: 'Adicionar todos os lançamentos do PDF (entradas, despesas e investimentos/reservas)?'
-    });
-    if (!mainCount) return;
-
-    notify.success(`${mainCount} lançamento(s) importado(s)!`);
-
-    const importDetail = await confirmAction({
-      title: 'Detalhar fatura Nubank?',
-      text: 'A planilha principal já inclui Nubank Babi R$ 866,00. Importe o detalhe só se quiser substituir por itens separados (remova a linha do total antes).',
-      confirmText: 'Importar detalhe',
-      cancelText: 'Não, obrigado'
-    });
-
-    if (!importDetail) return;
-
-    const nubankRes = await fetch('dados/junho-2026-nubank-babi.csv');
-    if (!nubankRes.ok) {
-      notify.error('Não foi possível carregar o detalhe Nubank.');
-      return;
-    }
-
-    const nubankRows = csvTextToRows(await nubankRes.text());
-    const nubankCount = await importEntriesFromRows(nubankRows, {
-      title: 'Importar itens Nubank Babi?',
-      text: 'Adicionar o detalhamento da fatura (Jun/2026)?'
-    });
-
-    if (nubankCount) {
-      notify.success(`${nubankCount} item(ns) Nubank importado(s)!`);
-    }
-  } catch {
-    notify.error('Erro ao importar planilha Junho 2026.');
-  }
-};
-
 const handleImportClick = (type) => {
   if (type === 'json') dom.inputImportJson.click();
   if (type === 'sheet') dom.inputImportSheet.click();
-  if (type === 'junho2026') importBundledJunho2026();
 };
 
 const onImportJson = async (e) => {

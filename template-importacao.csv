@@ -1,8 +1,28 @@
 Descrição;Categoria;Tipo;Valor;Status;Tag;Observação
-Salário;Contribuição para casa;Entrada;5000,00;Pago;Gabriel;Recebido dia 5
-Freelance;Outros;Entrada;1200,00;Pago;Barbara;
-Aluguel;Aluguel;Despesa;1500,00;Não pago;Casa;Vence dia 10
-Conta de luz;Luz;Despesa;185,90;Não pago;Casa;
-Mercado;Mercado;Despesa;650,00;Reservado;Barbara;Compras do mês
-Internet;Internet;Despesa;99,90;Pago;Casa;
-Reserva emergência;Investimentos;Investimento;500,00;Reservado;Gabriel;
+Santander Crédito;Cartão de crédito;Despesa;390,00;Não pago;Gabriel;
+Nubank;Cartão de crédito;Despesa;866,00;Não pago;Barbara;
+Milbane;Outros;Despesa;2000,00;Não pago;Gabriel;Dívida
+Dina (Faxina);Outros;Despesa;25,00;Não pago;Casa;Serviços
+Redfox;Outros;Despesa;79,90;Reservado;Barbara;Recorrente no cartão
+Jovens de Maria;Outros;Despesa;15,00;Não pago;Barbara;Religioso
+MEI;Outros;Despesa;86,05;Não pago;Barbara;Impostos
+MEI;Outros;Despesa;86,05;Não pago;Gabriel;Impostos
+Unha;Outros;Despesa;135,00;Não pago;Barbara;Cuidados pessoais
+Cabelo;Outros;Despesa;50,00;Não pago;Gabriel;Cuidados pessoais
+Condução;Combustível;Despesa;135,00;Não pago;Barbara;Transporte
+Internet Vivo;Internet;Despesa;100,00;Não pago;Casa;
+Contribuição Casa;Contribuição para casa;Despesa;500,00;Não pago;Gabriel;Moradia
+Convênio Médico;Outros;Despesa;589,36;Não pago;Família;Saúde
+Cartão Atacadão;Cartão de crédito;Despesa;563,06;Não pago;Gabriel;
+Dízimo;Outros;Despesa;50,00;Não pago;Barbara;Religioso
+Dízimo;Outros;Despesa;50,00;Não pago;Gabriel;Religioso
+Combustível;Combustível;Despesa;350,00;Não pago;Gabriel;Transporte
+Claro;Outros;Despesa;71,28;Não pago;Barbara;Telefonia
+Camiseta São Pedro (2ª Parcela);Outros;Despesa;40,00;Não pago;Barbara;Vestuário
+Multa;Outros;Despesa;234,00;Não pago;Gabriel;
+Raimunda;Outros;Despesa;1000,00;Não pago;Casa;Serviços
+Investimentos;Investimentos;Investimento;1000,00;Reservado;Barbara;
+Viagem;Investimentos;Investimento;500,00;Reservado;Barbara;Reserva
+Reserva de Emergência PJ;Investimentos;Investimento;500,00;Reservado;Barbara;
+Reserva de Emergência PF;Investimentos;Investimento;650,00;Reservado;Gabriel;
+Caixinha Turbo PF (Casa);Investimentos;Investimento;1200,00;Reservado;Gabriel;Reserva
