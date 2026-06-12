@@ -814,8 +814,8 @@ const exportCSV = () => {
     `Entradas (lucro);${formatValuePlain(summary.income)}`,
     `Despesas;${formatValuePlain(summary.expense)}`,
     `Investimentos (reserva);${formatValuePlain(summary.investment)}`,
-    `Lucro - Despesas;${formatValuePlain(afterExpenses)}`,
-    `Lucro - Despesas - Investimentos;${formatValuePlain(surplus)}`,
+    `Restou;${formatValuePlain(afterExpenses)}`,
+    `Sobra;${formatValuePlain(surplus)}`,
     `Pago;${formatValuePlain(summary.paid)}`,
     `Reservado;${formatValuePlain(summary.reserved)}`,
     `Não pago;${formatValuePlain(summary.unpaid)}`,
@@ -859,8 +859,8 @@ const exportExcel = () => {
     ['Entradas (lucro)', summary.income],
     ['Despesas', summary.expense],
     ['Investimentos (reserva)', summary.investment],
-    ['Lucro - Despesas', afterExpenses],
-    ['Lucro - Despesas - Investimentos', surplus],
+    ['Restou', afterExpenses],
+    ['Sobra', surplus],
     ['Pago', summary.paid],
     ['Reservado', summary.reserved],
     ['Não pago', summary.unpaid]
@@ -920,8 +920,8 @@ const exportPDF = () => {
       ['Entradas (lucro)', formatCurrency(summary.income)],
       ['Despesas', formatCurrency(summary.expense)],
       ['Investimentos (reserva)', formatCurrency(summary.investment)],
-      ['Lucro − Despesas', formatCurrency(afterExpenses)],
-      ['Lucro − Despesas − Investimentos', formatCurrency(surplus)],
+      ['Restou', formatCurrency(afterExpenses)],
+      ['Sobra', formatCurrency(surplus)],
       ['Pago', formatCurrency(summary.paid)],
       ['Reservado', formatCurrency(summary.reserved)],
       ['Não pago', formatCurrency(summary.unpaid)]
@@ -1310,11 +1310,11 @@ const updateSummary = (entries) => {
 
   if (dom.calcAfterExpenses) {
     dom.calcAfterExpenses.textContent = formatCurrency(afterExpenses);
-    dom.calcAfterExpenses.style.color = afterExpenses >= 0 ? 'var(--app-income)' : 'var(--app-expense)';
+    dom.calcAfterExpenses.style.color = afterExpenses >= 0 ? 'var(--app-balance)' : 'var(--app-expense)';
   }
   if (dom.calcSurplus) {
     dom.calcSurplus.textContent = formatCurrency(surplus);
-    dom.calcSurplus.style.color = surplus >= 0 ? 'var(--app-income)' : 'var(--app-expense)';
+    dom.calcSurplus.style.color = surplus >= 0 ? 'var(--app-investment)' : 'var(--app-expense)';
   }
 
   dom.entryCount.textContent = entries.length;

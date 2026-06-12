@@ -513,50 +513,10 @@ body {
 .summary-card--reserved .summary-card__value, .summary-card--reserved > i { color: var(--app-reserved); }
 .summary-card--unpaid  { border-left-color: var(--app-unpaid); }
 .summary-card--unpaid  .summary-card__value, .summary-card--unpaid > i { color: var(--app-unpaid); }
-
-/* ---- Cálculo do mês ---- */
-.month-calc__item {
-  background: var(--app-surface-2);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius-sm);
-  padding: 1rem 1.15rem;
-  height: 100%;
-}
-
-.month-calc__item--inline {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.month-calc__item--highlight {
-  border-color: color-mix(in srgb, var(--app-investment) 35%, var(--app-border));
-  background: color-mix(in srgb, var(--app-investment) 8%, var(--app-surface-2));
-}
-
-.month-calc__formula {
-  display: block;
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--app-text);
-  margin-bottom: 0.25rem;
-}
-
-.month-calc__hint {
-  font-size: 0.78rem;
-  color: var(--app-text-muted);
-}
-
-.month-calc__value {
-  display: block;
-  font-size: 1.35rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.month-calc__value--surplus {
-  color: var(--app-investment);
-}
+.summary-card--restou  { border-left-color: var(--app-balance); }
+.summary-card--restou  .summary-card__value { color: var(--app-balance); }
+.summary-card--sobra   { border-left-color: var(--app-investment); }
+.summary-card--sobra   .summary-card__value { color: var(--app-investment); }
 
 /* ---- Formulários ---- */
 
