@@ -492,6 +492,13 @@ body {
   color: var(--app-text-muted);
 }
 
+.summary-card__formula {
+  font-size: clamp(0.62rem, 1.6vw, 0.7rem);
+  font-weight: 500;
+  color: var(--app-text-faint);
+  line-height: 1.3;
+}
+
 .summary-card__value {
   font-size: clamp(0.9rem, 2.8vw, 1.1rem);
   font-weight: 700;
