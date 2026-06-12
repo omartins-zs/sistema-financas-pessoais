@@ -814,7 +814,7 @@ const exportCSV = () => {
     `Entradas (lucro);${formatValuePlain(summary.income)}`,
     `Despesas;${formatValuePlain(summary.expense)}`,
     `Investimentos (reserva);${formatValuePlain(summary.investment)}`,
-    `Restou;${formatValuePlain(afterExpenses)}`,
+    // `Restou;${formatValuePlain(afterExpenses)}`,
     `Sobra;${formatValuePlain(surplus)}`,
     `Pago;${formatValuePlain(summary.paid)}`,
     `Reservado;${formatValuePlain(summary.reserved)}`,
@@ -859,7 +859,7 @@ const exportExcel = () => {
     ['Entradas (lucro)', summary.income],
     ['Despesas', summary.expense],
     ['Investimentos (reserva)', summary.investment],
-    ['Restou', afterExpenses],
+    // ['Restou', afterExpenses],
     ['Sobra', surplus],
     ['Pago', summary.paid],
     ['Reservado', summary.reserved],
@@ -920,7 +920,7 @@ const exportPDF = () => {
       ['Entradas (lucro)', formatCurrency(summary.income)],
       ['Despesas', formatCurrency(summary.expense)],
       ['Investimentos (reserva)', formatCurrency(summary.investment)],
-      ['Restou', formatCurrency(afterExpenses)],
+      // ['Restou', formatCurrency(afterExpenses)],
       ['Sobra', formatCurrency(surplus)],
       ['Pago', formatCurrency(summary.paid)],
       ['Reservado', formatCurrency(summary.reserved)],
@@ -1308,10 +1308,11 @@ const updateSummary = (entries) => {
   dom.totalReserved.textContent = formatCurrency(summary.reserved);
   dom.totalUnpaid.textContent = formatCurrency(summary.unpaid);
 
-  if (dom.calcAfterExpenses) {
-    dom.calcAfterExpenses.textContent = formatCurrency(afterExpenses);
-    dom.calcAfterExpenses.style.color = afterExpenses >= 0 ? 'var(--app-balance)' : 'var(--app-expense)';
-  }
+  // Restou (entradas − despesas) — desativado na UI; descomente index.html + bloco abaixo
+  // if (dom.calcAfterExpenses) {
+  //   dom.calcAfterExpenses.textContent = formatCurrency(afterExpenses);
+  //   dom.calcAfterExpenses.style.color = afterExpenses >= 0 ? 'var(--app-balance)' : 'var(--app-expense)';
+  // }
   if (dom.calcSurplus) {
     dom.calcSurplus.textContent = formatCurrency(surplus);
     dom.calcSurplus.style.color = surplus >= 0 ? 'var(--app-investment)' : 'var(--app-expense)';
