@@ -68,7 +68,7 @@
             this.ie?.destroy();
             this.ie = new Chart(this.$refs.ie, {
                 type: 'bar',
-                data: { labels: ie.labels, datasets: [{ data: ie.values, backgroundColor: ['#10b981', '#f43f5e'], borderRadius: 8 }] },
+                data: { labels: ie.labels, datasets: [{ data: ie.values, backgroundColor: ['#10b981', '#f43f5e', '#8b5cf6'], borderRadius: 8 }] },
                 options: {
                     plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => fmt(x.raw) } } },
                     scales: {

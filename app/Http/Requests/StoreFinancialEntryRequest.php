@@ -20,6 +20,7 @@ class StoreFinancialEntryRequest extends FormRequest
             'description' => ['required', 'string', 'max:255'],
             'category' => ['required', 'string', Rule::in(config('financial.categories'))],
             'type' => ['required', Rule::enum(EntryType::class)],
+            'person' => ['nullable', Rule::enum(\App\Enums\EntryPerson::class)],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:999999999.99'],
             'status' => ['required', Rule::enum(EntryStatus::class)],
             'month' => ['required', 'integer', 'min:1', 'max:12'],

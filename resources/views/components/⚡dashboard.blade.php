@@ -17,6 +17,7 @@ new class extends Component
     public string $description = '';
     public string $category = '';
     public string $type = 'expense';
+    public ?string $person = null;
     public ?string $amount = null;
     public string $status = 'unpaid';
     public ?int $due_day = null;
@@ -27,6 +28,7 @@ new class extends Component
     public string $e_description = '';
     public string $e_category = '';
     public string $e_type = 'expense';
+    public ?string $e_person = null;
     public ?string $e_amount = null;
     public string $e_status = 'unpaid';
     public ?int $e_due_day = null;
@@ -90,6 +92,14 @@ new class extends Component
         if (in_array($name, ['month', 'year'], true)) {
             $this->refreshCharts();
         }
+
+        if ($name === 'type' && $this->type === 'investment') {
+            $this->category = 'Investimentos';
+        }
+
+        if ($name === 'e_type' && $this->e_type === 'investment') {
+            $this->e_category = 'Investimentos';
+        }
     }
 
     public function addEntry(): void
@@ -97,7 +107,8 @@ new class extends Component
         $data = $this->validate([
             'description' => ['required', 'string', 'max:255'],
             'category' => ['required', 'string'],
-            'type' => ['required', 'in:income,expense'],
+            'type' => ['required', 'in:income,expense,investment'],
+            'person' => ['required', 'in:gabriel,barbara,casa,familia'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'status' => ['required', 'in:paid,reserved,unpaid'],
             'due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
@@ -110,7 +121,7 @@ new class extends Component
             'year' => $this->year,
         ]);
 
-        $this->reset(['description', 'amount', 'due_day', 'notes']);
+        $this->reset(['description', 'amount', 'due_day', 'notes', 'person']);
         $this->type = 'expense';
         $this->status = 'unpaid';
         $this->category = config('financial.categories')[0];
@@ -136,6 +147,7 @@ new class extends Component
         $this->e_description = $entry->description;
         $this->e_category = $entry->category;
         $this->e_type = $entry->type->value;
+        $this->e_person = $entry->person?->value;
         $this->e_amount = (string) $entry->amount;
         $this->e_status = $entry->status->value;
         $this->e_due_day = $entry->due_day;
@@ -159,7 +171,8 @@ new class extends Component
         $data = $this->validate([
             'e_description' => ['required', 'string', 'max:255'],
             'e_category' => ['required', 'string'],
-            'e_type' => ['required', 'in:income,expense'],
+            'e_type' => ['required', 'in:income,expense,investment'],
+            'e_person' => ['required', 'in:gabriel,barbara,casa,familia'],
             'e_amount' => ['required', 'numeric', 'min:0.01'],
             'e_status' => ['required', 'in:paid,reserved,unpaid'],
             'e_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
@@ -170,6 +183,7 @@ new class extends Component
             'description' => $data['e_description'],
             'category' => $data['e_category'],
             'type' => $data['e_type'],
+            'person' => $data['e_person'],
             'amount' => $data['e_amount'],
             'status' => $data['e_status'],
             'due_day' => $data['e_due_day'],
@@ -231,6 +245,8 @@ new class extends Component
             'entries' => $entries,
             'incomeEntries' => $entries->where('type', \App\Enums\EntryType::Income),
             'expenseEntries' => $entries->where('type', \App\Enums\EntryType::Expense),
+            'investmentEntries' => $entries->where('type', \App\Enums\EntryType::Investment),
+            'persons' => config('financial.persons'),
             'summary' => $this->service()->getSummary($user, $this->month, $this->year),
             'chartData' => $this->service()->getChartData($user, $this->month, $this->year),
         ]);
@@ -284,53 +300,43 @@ new class extends Component
         </div>
     </div>
 
-    {{-- Saldo --}}
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
-        <div class="rounded-2xl p-5 bg-brand text-white">
-            <p class="text-xs font-semibold uppercase tracking-wide text-white/70">Saldo do mês</p>
-            <p class="text-3xl font-bold mt-1">R$ {{ number_format($summary['balance'], 2, ',', '.') }}</p>
-            <p class="text-xs text-white/70 mt-2">
-                <i class="fa-solid fa-arrow-trend-up"></i>
-                {{ $summary['balance'] >= 0 ? 'Contas no azul' : 'Atenção: saldo negativo' }}
-            </p>
+    {{-- Resumo --}}
+    <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-8">
+        <div class="{{ $card }} p-4 border-l-4 border-emerald-500">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Entradas</p>
+            <p class="text-lg font-bold text-emerald-600 dark:text-emerald-400">R$ {{ number_format($summary['income'], 2, ',', '.') }}</p>
         </div>
-        <div class="lg:col-span-2 grid grid-cols-2 gap-3">
-            <div class="{{ $card }} p-4">
-                <div class="flex items-center gap-2 text-emerald-500 mb-1">
-                    <i class="fa-solid fa-arrow-down text-xs"></i>
-                    <span class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Entradas</span>
-                </div>
-                <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">R$ {{ number_format($summary['income'], 2, ',', '.') }}</p>
-            </div>
-            <div class="{{ $card }} p-4">
-                <div class="flex items-center gap-2 text-rose-500 mb-1">
-                    <i class="fa-solid fa-arrow-up text-xs"></i>
-                    <span class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Despesas</span>
-                </div>
-                <p class="text-xl font-bold text-rose-600 dark:text-rose-400">R$ {{ number_format($summary['expense'], 2, ',', '.') }}</p>
-            </div>
+        <div class="{{ $card }} p-4 border-l-4 border-rose-500">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Despesas</p>
+            <p class="text-lg font-bold text-rose-600 dark:text-rose-400">R$ {{ number_format($summary['expense'], 2, ',', '.') }}</p>
         </div>
-    </div>
-
-    {{-- Status --}}
-    <div class="grid grid-cols-3 gap-3 mb-8">
-        <div class="{{ $card }} p-4">
-            <span class="inline-flex items-center gap-1.5 text-[11px] uppercase font-bold tracking-wide text-slate-400">
-                <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Pago
-            </span>
-            <p class="text-lg font-bold mt-1">R$ {{ number_format($summary['paid'], 2, ',', '.') }}</p>
+        <div class="{{ $card }} p-4 border-l-4 border-violet-500">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Investimentos</p>
+            <p class="text-lg font-bold text-violet-600 dark:text-violet-400">R$ {{ number_format($summary['investment'], 2, ',', '.') }}</p>
         </div>
-        <div class="{{ $card }} p-4">
-            <span class="inline-flex items-center gap-1.5 text-[11px] uppercase font-bold tracking-wide text-slate-400">
-                <span class="w-2 h-2 rounded-full bg-amber-500"></span> Reservado
-            </span>
-            <p class="text-lg font-bold mt-1">R$ {{ number_format($summary['reserved'], 2, ',', '.') }}</p>
+        <div class="{{ $card }} p-4 border-l-4 border-emerald-400">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Pago</p>
+            <p class="text-lg font-bold">R$ {{ number_format($summary['paid'], 2, ',', '.') }}</p>
         </div>
-        <div class="{{ $card }} p-4">
-            <span class="inline-flex items-center gap-1.5 text-[11px] uppercase font-bold tracking-wide text-slate-400">
-                <span class="w-2 h-2 rounded-full bg-rose-500"></span> Não pago
-            </span>
-            <p class="text-lg font-bold mt-1">R$ {{ number_format($summary['unpaid'], 2, ',', '.') }}</p>
+        <div class="{{ $card }} p-4 border-l-4 border-amber-500">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Reservado</p>
+            <p class="text-lg font-bold">R$ {{ number_format($summary['reserved'], 2, ',', '.') }}</p>
+        </div>
+        <div class="{{ $card }} p-4 border-l-4 border-rose-400">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Não pago</p>
+            <p class="text-lg font-bold">R$ {{ number_format($summary['unpaid'], 2, ',', '.') }}</p>
+        </div>
+        {{-- Restou (entradas − despesas) — desativado; descomente para exibir
+        <div class="{{ $card }} p-4 border-l-4 border-indigo-500">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Restou</p>
+            <p class="text-[10px] text-slate-400">Entradas − Despesas</p>
+            <p class="text-lg font-bold text-indigo-600 dark:text-indigo-400">R$ {{ number_format($summary['after_expenses'], 2, ',', '.') }}</p>
+        </div>
+        --}}
+        <div class="{{ $card }} p-4 border-l-4 border-violet-500 md:col-span-2 xl:col-span-2">
+            <p class="text-[11px] uppercase font-bold tracking-wide text-slate-400">Sobra</p>
+            <p class="text-[10px] text-slate-400">Entradas − Despesas − Investimentos</p>
+            <p class="text-lg font-bold text-violet-600 dark:text-violet-400">R$ {{ number_format($summary['surplus'], 2, ',', '.') }}</p>
         </div>
     </div>
 
@@ -351,10 +357,21 @@ new class extends Component
             </div>
             <div>
                 <label class="{{ $lbl }}">Tipo</label>
-                <select wire:model="type" class="{{ $inp }}">
+                <select wire:model.live="type" class="{{ $inp }}">
                     <option value="expense">Despesa (-)</option>
                     <option value="income">Entrada (+)</option>
+                    <option value="investment">Investimento (reserva)</option>
                 </select>
+            </div>
+            <div>
+                <label class="{{ $lbl }}">Tag <span class="font-normal">(quem paga/recebe)</span></label>
+                <select wire:model="person" class="{{ $inp }}">
+                    <option value="">Selecione...</option>
+                    @foreach($persons as $val => $label)
+                        <option value="{{ $val }}">{{ $label }}</option>
+                    @endforeach
+                </select>
+                @error('person') <p class="{{ $err }}">{{ $message }}</p> @enderror
             </div>
             <div>
                 <label class="{{ $lbl }}">Valor (R$)</label>
@@ -408,9 +425,15 @@ new class extends Component
         </div>
     @else
         @php
+            $valueClass = fn ($entry) => match($entry->type) {
+                \App\Enums\EntryType::Income => 'text-emerald-600 dark:text-emerald-400',
+                \App\Enums\EntryType::Investment => 'text-violet-600 dark:text-violet-400',
+                default => 'text-rose-600 dark:text-rose-400',
+            };
             $sections = [
-                ['title' => 'Entradas e Rendas', 'icon' => 'fa-coins', 'accent' => 'emerald', 'text' => 'text-emerald-500', 'badge' => 'bg-emerald-500', 'total' => 'text-emerald-600 dark:text-emerald-400', 'hint' => 'Salários, renda extra e valores que entram', 'items' => $incomeEntries, 'subtotal' => $summary['income']],
-                ['title' => 'Despesas e Lançamentos', 'icon' => 'fa-cart-shopping', 'accent' => 'rose', 'text' => 'text-rose-500', 'badge' => 'bg-rose-500', 'total' => 'text-rose-600 dark:text-rose-400', 'hint' => 'Contas, mercado, cartão e gastos', 'items' => $expenseEntries, 'subtotal' => $summary['expense']],
+                ['title' => 'Entradas e Rendas', 'icon' => 'fa-coins', 'text' => 'text-emerald-500', 'badge' => 'bg-emerald-500', 'total' => 'text-emerald-600 dark:text-emerald-400', 'hint' => 'Salários, renda extra e valores que entram', 'items' => $incomeEntries, 'subtotal' => $summary['income']],
+                ['title' => 'Despesas e Lançamentos', 'icon' => 'fa-cart-shopping', 'text' => 'text-rose-500', 'badge' => 'bg-rose-500', 'total' => 'text-rose-600 dark:text-rose-400', 'hint' => 'Contas, mercado, cartão e gastos', 'items' => $expenseEntries, 'subtotal' => $summary['expense']],
+                ['title' => 'Investimentos e Reservas', 'icon' => 'fa-piggy-bank', 'text' => 'text-violet-500', 'badge' => 'bg-violet-500', 'total' => 'text-violet-600 dark:text-violet-400', 'hint' => 'Reservas e investimentos do mês', 'items' => $investmentEntries, 'subtotal' => $summary['investment']],
             ];
         @endphp
 
@@ -437,6 +460,7 @@ new class extends Component
                             <thead>
                                 <tr class="text-[10px] uppercase tracking-wider text-slate-400">
                                     <th class="px-4 text-left font-bold">Descrição</th>
+                                    <th class="px-4 text-left font-bold">Tag</th>
                                     <th class="px-4 text-left font-bold">Categoria</th>
                                     <th class="px-4 text-left font-bold">Valor</th>
                                     <th class="px-4 text-left font-bold">Status</th>
@@ -451,9 +475,16 @@ new class extends Component
                                     <tr wire:key="row-{{ $entry->id }}" class="group">
                                         <td class="{{ $cell }} rounded-l-xl border-l border-slate-100 dark:border-slate-800 font-semibold">{{ $entry->description }}</td>
                                         <td class="{{ $cell }}">
+                                            @if($entry->person)
+                                                <span class="text-xs px-2 py-0.5 rounded-full border {{ $entry->person->badgeClasses() }}">{{ $entry->person->label() }}</span>
+                                            @else
+                                                <span class="text-slate-300">—</span>
+                                            @endif
+                                        </td>
+                                        <td class="{{ $cell }}">
                                             <span class="text-xs px-2.5 py-1 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{{ $entry->category }}</span>
                                         </td>
-                                        <td class="{{ $cell }} font-bold {{ $entry->type === \App\Enums\EntryType::Income ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
+                                        <td class="{{ $cell }} font-bold {{ $valueClass($entry) }}">
                                             R$ {{ number_format($entry->amount, 2, ',', '.') }}
                                         </td>
                                         <td class="{{ $cell }}">
@@ -498,11 +529,14 @@ new class extends Component
                             <div wire:key="card-{{ $entry->id }}" class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-800">
                                 <div class="flex justify-between gap-3 mb-2">
                                     <p class="font-bold">{{ $entry->description }}</p>
-                                    <p class="font-bold whitespace-nowrap {{ $entry->type === \App\Enums\EntryType::Income ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400' }}">
+                                    <p class="font-bold whitespace-nowrap {{ $valueClass($entry) }}">
                                         R$ {{ number_format($entry->amount, 2, ',', '.') }}
                                     </p>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2 mt-1">
+                                    @if($entry->person)
+                                        <span class="text-xs px-2 py-0.5 rounded-full border {{ $entry->person->badgeClasses() }}">{{ $entry->person->label() }}</span>
+                                    @endif
                                     <span class="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">{{ $entry->category }}</span>
                                     @if($entry->due_day)
                                         <span class="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30">
@@ -551,7 +585,7 @@ new class extends Component
         <div x-show="open" x-cloak class="border-t border-slate-200 dark:border-slate-800 p-5">
             <div class="grid md:grid-cols-2 gap-5">
                 <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4">
-                    <p class="text-xs font-semibold text-slate-400 mb-2">Entradas x Despesas</p>
+                    <p class="text-xs font-semibold text-slate-400 mb-2">Entradas x Despesas x Investimentos</p>
                     <canvas x-ref="ie" height="200"></canvas>
                 </div>
                 <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4">
@@ -583,9 +617,18 @@ new class extends Component
                         </div>
                         <div>
                             <label class="{{ $lbl }}">Tipo</label>
-                            <select wire:model="e_type" class="{{ $inp }}">
+                            <select wire:model.live="e_type" class="{{ $inp }}">
                                 <option value="expense">Despesa</option>
                                 <option value="income">Entrada</option>
+                                <option value="investment">Investimento (reserva)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="{{ $lbl }}">Tag</label>
+                            <select wire:model="e_person" class="{{ $inp }}">
+                                @foreach($persons as $val => $label)
+                                    <option value="{{ $val }}">{{ $label }}</option>
+                                @endforeach
                             </select>
                         </div>
                     </div>

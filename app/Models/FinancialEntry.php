@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EntryPerson;
 use App\Enums\EntryStatus;
 use App\Enums\EntryType;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +14,7 @@ class FinancialEntry extends Model
         'user_id',
         'description',
         'category',
+        'person',
         'type',
         'amount',
         'status',
@@ -26,6 +28,7 @@ class FinancialEntry extends Model
     {
         return [
             'type' => EntryType::class,
+            'person' => EntryPerson::class,
             'status' => EntryStatus::class,
             'amount' => 'decimal:2',
             'month' => 'integer',

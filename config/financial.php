@@ -11,7 +11,15 @@ return [
         'Internet',
         'Cartão de crédito',
         'Farmácia',
+        'Investimentos',
         'Outros',
+    ],
+
+    'persons' => [
+        'gabriel' => 'Gabriel',
+        'barbara' => 'Barbara',
+        'casa' => 'Casa',
+        'familia' => 'Família',
     ],
 
     'months' => [

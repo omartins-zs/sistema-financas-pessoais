@@ -24,4 +24,10 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/month/copy', [FinancialDashboardController::class, 'copyMonth'])->name('month.copy');
     Route::delete('/month/clear', [FinancialDashboardController::class, 'clearMonth'])->name('month.clear');
+
+    Route::post('/data/import/sheet', [\App\Http\Controllers\FinancialDataController::class, 'importSheet'])->name('data.import.sheet');
+    Route::post('/data/import/json', [\App\Http\Controllers\FinancialDataController::class, 'importJson'])->name('data.import.json');
+    Route::get('/data/export/json', [\App\Http\Controllers\FinancialDataController::class, 'exportJson'])->name('data.export.json');
+    Route::get('/data/export/csv', [\App\Http\Controllers\FinancialDataController::class, 'exportCsv'])->name('data.export.csv');
+    Route::get('/data/export/excel', [\App\Http\Controllers\FinancialDataController::class, 'exportExcel'])->name('data.export.excel');
 });
