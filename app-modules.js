@@ -1,0 +1,1042 @@
+/**
+ * ============================================================
+ *  Finanças da Casa — Módulos avançados
+ * ============================================================
+ *  Estende o app existente (script.js) SEM reescrevê-lo.
+ *  Reaproveita os globais já declarados em script.js:
+ *    allData, saveData, formatCurrency, formatValuePlain,
+ *    parseValue, generateId, confirmAction, notify, dayjs,
+ *    CATEGORIAS, PERSON_LABELS, STATUS_LABELS, MESES,
+ *    currentDate, getMonthKey, calculateSummary, escapeHtml,
+ *    downloadBlob, CHART_COLORS, getChartTheme.
+ *
+ *  Os dados das novas entidades vivem em allData.__app,
+ *  chave que NÃO colide com as chaves de mês ("YYYY-MM"),
+ *  então nenhuma função existente os trata como lançamentos.
+ *  O backup/restauração JSON já os inclui automaticamente.
+ * ============================================================
+ */
+
+(() => {
+  'use strict';
+
+  // ----------------------------------------------------------
+  // Camada de dados global
+  // ----------------------------------------------------------
+  const STORE_KEY = '__app';
+
+  const getStore = () => {
+    if (!allData[STORE_KEY] || typeof allData[STORE_KEY] !== 'object') {
+      allData[STORE_KEY] = {};
+    }
+    return allData[STORE_KEY];
+  };
+
+  const coll = (name) => {
+    const s = getStore();
+    if (!Array.isArray(s[name])) s[name] = [];
+    return s[name];
+  };
+
+  const persist = () => {
+    saveData();
+    refreshActiveView();
+    refreshAlerts();
+  };
+
+  const upsert = (name, item) => {
+    const list = coll(name);
+    const idx = list.findIndex((x) => x.id === item.id);
+    if (idx >= 0) list[idx] = item;
+    else list.push(item);
+    persist();
+  };
+
+  const removeItem = (name, id) => {
+    const s = getStore();
+    s[name] = coll(name).filter((x) => x.id !== id);
+    persist();
+  };
+
+  // ----------------------------------------------------------
+  // Helpers de formatação / datas
+  // ----------------------------------------------------------
+  const today = () => dayjs();
+  const fmtDate = (iso) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
+  const daysUntil = (iso) => (iso ? dayjs(iso).startOf('day').diff(today().startOf('day'), 'day') : null);
+  const pct = (atual, alvo) => (alvo > 0 ? Math.min(100, Math.round((atual / alvo) * 100)) : 0);
+  const sum = (arr, f) => arr.reduce((a, x) => a + (f ? f(x) : x), 0);
+  const moneyColor = (v) => (v >= 0 ? 'var(--app-income)' : 'var(--app-expense)');
+
+  // Próximo vencimento (dia do mês) a partir de hoje → data ISO
+  const nextDueDate = (day) => {
+    if (!day) return null;
+    let d = today().date(Math.min(day, today().daysInMonth()));
+    if (d.isBefore(today(), 'day')) {
+      const nm = today().add(1, 'month');
+      d = nm.date(Math.min(day, nm.daysInMonth()));
+    }
+    return d.format('YYYY-MM-DD');
+  };
+
+  // ----------------------------------------------------------
+  // Modal de formulário genérico (via SweetAlert2)
+  // ----------------------------------------------------------
+  const fieldHtml = (f) => {
+    const id = `fm_${f.name}`;
+    const val = f.value ?? '';
+    if (f.type === 'select') {
+      const opts = (f.options || [])
+        .map((o) => `<option value="${escapeHtml(String(o.value))}" ${String(o.value) === String(val) ? 'selected' : ''}>${escapeHtml(o.label)}</option>`)
+        .join('');
+      return `<div class="fm-field ${f.wide ? 'fm-wide' : ''}"><label for="${id}">${escapeHtml(f.label)}</label><select id="${id}" class="fm-input">${opts}</select></div>`;
+    }
+    if (f.type === 'textarea') {
+      return `<div class="fm-field fm-wide"><label for="${id}">${escapeHtml(f.label)}</label><textarea id="${id}" class="fm-input" rows="2">${escapeHtml(String(val))}</textarea></div>`;
+    }
+    const inputType = f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text';
+    const extra = f.type === 'money' ? 'inputmode="decimal" placeholder="0,00"' : (f.placeholder ? `placeholder="${escapeHtml(f.placeholder)}"` : '');
+    const step = f.type === 'number' ? 'step="any"' : '';
+    return `<div class="fm-field ${f.wide ? 'fm-wide' : ''}"><label for="${id}">${escapeHtml(f.label)}</label><input id="${id}" type="${inputType}" class="fm-input" value="${escapeHtml(String(val))}" ${extra} ${step}></div>`;
+  };
+
+  const formModal = async ({ title, icon = 'pencil-square', fields, confirmText = 'Salvar' }) => {
+    const html = `<div class="fm-grid">${fields.map(fieldHtml).join('')}</div>`;
+    const { value } = await Swal.fire({
+      title: `<span class="fm-title"><i class="bi bi-${icon}"></i> ${escapeHtml(title)}</span>`,
+      html,
+      width: 640,
+      showCancelButton: true,
+      confirmButtonText: `<i class="bi bi-check-lg"></i> ${confirmText}`,
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#4f6ef7',
+      cancelButtonColor: '#94a3b8',
+      reverseButtons: true,
+      focusConfirm: false,
+      preConfirm: () => {
+        const out = {};
+        for (const f of fields) {
+          const elx = document.getElementById(`fm_${f.name}`);
+          let v = elx ? elx.value : '';
+          if (f.type === 'money') v = parseValue(v);
+          else if (f.type === 'number') v = v === '' ? null : Number(v);
+          else v = String(v).trim();
+          if (f.required && (v === '' || v === null || (f.type === 'money' && v <= 0))) {
+            Swal.showValidationMessage(`Preencha: ${f.label}`);
+            return false;
+          }
+          out[f.name] = v;
+        }
+        return out;
+      }
+    });
+    return value || null;
+  };
+
+  // ----------------------------------------------------------
+  // Componentes reutilizáveis
+  // ----------------------------------------------------------
+  const emptyBlock = (icon, msg) =>
+    `<div class="mod-empty"><i class="bi bi-${icon}"></i><p class="mb-0">${msg}</p></div>`;
+
+  const actionBtns = (entity, id, extra = '') => `
+    <div class="mod-card__actions">
+      ${extra}
+      <button class="mod-btn" data-mod="${entity}" data-act="edit" data-id="${id}" title="Editar"><i class="bi bi-pencil-fill"></i></button>
+      <button class="mod-btn mod-btn--danger" data-mod="${entity}" data-act="del" data-id="${id}" title="Excluir"><i class="bi bi-trash-fill"></i></button>
+    </div>`;
+
+  const progressBar = (atual, alvo, color = 'var(--app-income)') => {
+    const p = pct(atual, alvo);
+    return `
+      <div class="mod-progress"><div class="mod-progress__bar" style="width:${p}%;background:${color}"></div></div>
+      <div class="mod-progress__label"><span>${formatCurrency(atual)}</span><span>${p}% de ${formatCurrency(alvo)}</span></div>`;
+  };
+
+  // Charts: registro para destruir antes de recriar
+  const charts = {};
+  const drawChart = (id, config) => {
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(cv, config);
+  };
+
+  // ==========================================================
+  // MÓDULO: METAS
+  // ==========================================================
+  const PRIORIDADE = { alta: ['Alta', 'red'], media: ['Média', 'amber'], baixa: ['Baixa', 'gray'] };
+  const META_STATUS = { ativa: ['Ativa', 'blue'], concluida: ['Concluída', 'green'], pausada: ['Pausada', 'gray'] };
+
+  const metaAtual = (m) => sum(m.aportes || [], (a) => a.valor);
+
+  const Metas = {
+    fields: (m = {}) => [
+      { name: 'nome', label: 'Nome da meta', type: 'text', required: true, value: m.nome, placeholder: 'Ex: Viagem, Reserva de emergência', wide: true },
+      { name: 'valorObjetivo', label: 'Valor objetivo (R$)', type: 'money', required: true, value: m.valorObjetivo ? formatValuePlain(m.valorObjetivo) : '' },
+      { name: 'dataAlvo', label: 'Data alvo', type: 'date', value: m.dataAlvo },
+      { name: 'prioridade', label: 'Prioridade', type: 'select', value: m.prioridade || 'media', options: Object.entries(PRIORIDADE).map(([v, [l]]) => ({ value: v, label: l })) },
+      { name: 'status', label: 'Status', type: 'select', value: m.status || 'ativa', options: Object.entries(META_STATUS).map(([v, [l]]) => ({ value: v, label: l })) }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Nova meta', icon: 'bullseye', fields: this.fields() });
+      if (!v) return;
+      upsert('metas', { id: generateId(), aportes: [], ...v });
+      notify.success('Meta criada!');
+    },
+    async edit(id) {
+      const m = coll('metas').find((x) => x.id === id);
+      if (!m) return;
+      const v = await formModal({ title: 'Editar meta', icon: 'bullseye', fields: this.fields(m) });
+      if (!v) return;
+      upsert('metas', { ...m, ...v });
+      notify.success('Meta atualizada!');
+    },
+    async aporte(id) {
+      const m = coll('metas').find((x) => x.id === id);
+      if (!m) return;
+      const v = await formModal({
+        title: `Aporte — ${m.nome}`, icon: 'piggy-bank', confirmText: 'Adicionar aporte',
+        fields: [
+          { name: 'valor', label: 'Valor do aporte (R$)', type: 'money', required: true },
+          { name: 'data', label: 'Data', type: 'date', value: today().format('YYYY-MM-DD') }
+        ]
+      });
+      if (!v) return;
+      m.aportes = m.aportes || [];
+      m.aportes.push({ id: generateId(), valor: v.valor, data: v.data || today().format('YYYY-MM-DD') });
+      if (metaAtual(m) >= m.valorObjetivo) m.status = 'concluida';
+      upsert('metas', m);
+      notify.success('Aporte registrado!');
+    },
+    card(m) {
+      const atual = metaAtual(m);
+      const [pl, pc] = PRIORIDADE[m.prioridade] || PRIORIDADE.media;
+      const [sl, sc] = META_STATUS[m.status] || META_STATUS.ativa;
+      const dias = daysUntil(m.dataAlvo);
+      const atraso = dias !== null && dias < 0 && m.status !== 'concluida';
+      const prazo = m.dataAlvo
+        ? `<span class="mod-card__sub">${atraso ? '<i class="bi bi-exclamation-triangle-fill text-danger"></i> atrasada' : `faltam ${dias} dia(s)`} • ${fmtDate(m.dataAlvo)}</span>`
+        : '';
+      return `
+        <div class="mod-card">
+          <div class="mod-card__top">
+            <div><h3 class="mod-card__title">${escapeHtml(m.nome)}</h3>${prazo}</div>
+            <span class="mod-badge mod-badge--${sc}">${sl}</span>
+          </div>
+          ${progressBar(atual, m.valorObjetivo)}
+          <div class="mod-card__row"><span>Prioridade</span><span class="mod-badge mod-badge--${pc}">${pl}</span></div>
+          ${actionBtns('metas', m.id, `<button class="mod-btn mod-btn--primary" data-mod="metas" data-act="aporte" data-id="${m.id}"><i class="bi bi-plus-lg"></i> Aporte</button>`)}
+        </div>`;
+    },
+    render(c) {
+      const list = [...coll('metas')].sort((a, b) => metaAtual(b) / (b.valorObjetivo || 1) - metaAtual(a) / (a.valorObjetivo || 1));
+      const totObj = sum(list, (m) => m.valorObjetivo || 0);
+      const totAtual = sum(list, metaAtual);
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-bullseye app-icon"></i> Metas financeiras</h2>
+          <p class="view-header__hint">Objetivos com aportes, progresso e prazo</p></div>
+          <button class="btn btn-primary" data-mod="metas" data-act="add"><i class="bi bi-plus-lg"></i> Nova meta</button>
+        </div>
+        ${list.length ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Metas ativas</span><strong>${list.filter((m) => m.status === 'ativa').length}</strong></div>
+          <div class="mod-summary__item"><span>Total objetivo</span><strong>${formatCurrency(totObj)}</strong></div>
+          <div class="mod-summary__item"><span>Total acumulado</span><strong style="color:var(--app-income)">${formatCurrency(totAtual)}</strong></div>
+          <div class="mod-summary__item"><span>Progresso geral</span><strong>${pct(totAtual, totObj)}%</strong></div>
+        </div>` : ''}
+        ${list.length ? `<div class="mod-grid">${list.map((m) => this.card(m)).join('')}</div>` : emptyBlock('bullseye', 'Nenhuma meta ainda. Crie sua primeira meta!')}`;
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: RESERVAS
+  // ==========================================================
+  const reservaSaldo = (r) => sum(r.movimentacoes || [], (m) => (m.tipo === 'deposito' ? m.valor : -m.valor));
+
+  const Reservas = {
+    fields: (r = {}) => [
+      { name: 'nome', label: 'Nome da reserva', type: 'text', required: true, value: r.nome, placeholder: 'Ex: IPVA, Emergência, Viagem', wide: true },
+      { name: 'objetivo', label: 'Objetivo (R$) — opcional', type: 'money', value: r.objetivo ? formatValuePlain(r.objetivo) : '' }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Nova reserva', icon: 'safe2', fields: this.fields() });
+      if (!v) return;
+      upsert('reservas', { id: generateId(), movimentacoes: [], ...v });
+      notify.success('Reserva criada!');
+    },
+    async edit(id) {
+      const r = coll('reservas').find((x) => x.id === id);
+      if (!r) return;
+      const v = await formModal({ title: 'Editar reserva', icon: 'safe2', fields: this.fields(r) });
+      if (!v) return;
+      upsert('reservas', { ...r, ...v });
+      notify.success('Reserva atualizada!');
+    },
+    async mov(id, tipo) {
+      const r = coll('reservas').find((x) => x.id === id);
+      if (!r) return;
+      const v = await formModal({
+        title: `${tipo === 'deposito' ? 'Depositar em' : 'Retirar de'} ${r.nome}`,
+        icon: tipo === 'deposito' ? 'box-arrow-in-down' : 'box-arrow-up',
+        confirmText: tipo === 'deposito' ? 'Depositar' : 'Retirar',
+        fields: [
+          { name: 'valor', label: 'Valor (R$)', type: 'money', required: true },
+          { name: 'data', label: 'Data', type: 'date', value: today().format('YYYY-MM-DD') },
+          { name: 'obs', label: 'Observação', type: 'text', wide: true }
+        ]
+      });
+      if (!v) return;
+      if (tipo === 'saque' && v.valor > reservaSaldo(r)) {
+        notify.error('Saldo insuficiente na reserva.');
+        return;
+      }
+      r.movimentacoes = r.movimentacoes || [];
+      r.movimentacoes.push({ id: generateId(), tipo, valor: v.valor, data: v.data || today().format('YYYY-MM-DD'), obs: v.obs || '' });
+      upsert('reservas', r);
+      notify.success('Movimentação registrada!');
+    },
+    card(r) {
+      const saldo = reservaSaldo(r);
+      const movs = [...(r.movimentacoes || [])].sort((a, b) => (a.data < b.data ? 1 : -1)).slice(0, 4);
+      const hist = movs.length
+        ? `<ul class="mod-history">${movs.map((m) => `<li><span>${fmtDate(m.data)} ${m.obs ? '· ' + escapeHtml(m.obs) : ''}</span><strong style="color:${m.tipo === 'deposito' ? 'var(--app-income)' : 'var(--app-expense)'}">${m.tipo === 'deposito' ? '+' : '−'} ${formatCurrency(m.valor)}</strong></li>`).join('')}</ul>`
+        : '<p class="mod-card__sub mb-0">Sem movimentações</p>';
+      return `
+        <div class="mod-card">
+          <div class="mod-card__top">
+            <div><h3 class="mod-card__title">${escapeHtml(r.nome)}</h3>
+            <span class="mod-card__sub">Saldo atual</span></div>
+            <span class="mod-badge mod-badge--blue">${formatCurrency(saldo)}</span>
+          </div>
+          ${r.objetivo ? progressBar(saldo, r.objetivo, 'var(--app-balance)') : ''}
+          ${hist}
+          ${actionBtns('reservas', r.id, `
+            <button class="mod-btn" data-mod="reservas" data-act="dep" data-id="${r.id}" title="Depositar"><i class="bi bi-plus-circle text-success"></i></button>
+            <button class="mod-btn" data-mod="reservas" data-act="saq" data-id="${r.id}" title="Retirar"><i class="bi bi-dash-circle text-danger"></i></button>`)}
+        </div>`;
+    },
+    render(c) {
+      const list = coll('reservas');
+      const total = sum(list, reservaSaldo);
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-safe2 app-icon"></i> Reservas financeiras</h2>
+          <p class="view-header__hint">Separe dinheiro por objetivo (IPVA, emergência, viagem…)</p></div>
+          <button class="btn btn-primary" data-mod="reservas" data-act="add"><i class="bi bi-plus-lg"></i> Nova reserva</button>
+        </div>
+        ${list.length ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Total reservado</span><strong style="color:var(--app-balance)">${formatCurrency(total)}</strong></div>
+          <div class="mod-summary__item"><span>Nº de reservas</span><strong>${list.length}</strong></div>
+        </div>` : ''}
+        ${list.length ? `<div class="mod-grid">${list.map((r) => this.card(r)).join('')}</div>` : emptyBlock('safe2', 'Nenhuma reserva ainda.')}`;
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: CARTÕES DE CRÉDITO
+  // ==========================================================
+  const Cartoes = {
+    fields: (k = {}) => [
+      { name: 'nome', label: 'Nome do cartão', type: 'text', required: true, value: k.nome, placeholder: 'Ex: Nubank, Itaú Visa', wide: true },
+      { name: 'bandeira', label: 'Bandeira', type: 'select', value: k.bandeira || 'Visa', options: ['Visa', 'Mastercard', 'Elo', 'Amex', 'Hipercard', 'Outro'].map((b) => ({ value: b, label: b })) },
+      { name: 'limite', label: 'Limite (R$)', type: 'money', value: k.limite ? formatValuePlain(k.limite) : '' },
+      { name: 'fechamento', label: 'Dia de fechamento', type: 'number', value: k.fechamento, placeholder: '1-31' },
+      { name: 'vencimento', label: 'Dia de vencimento', type: 'number', value: k.vencimento, placeholder: '1-31' }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Novo cartão', icon: 'credit-card-2-front', fields: this.fields() });
+      if (!v) return;
+      upsert('cartoes', { id: generateId(), ...v });
+      notify.success('Cartão cadastrado!');
+    },
+    async edit(id) {
+      const k = coll('cartoes').find((x) => x.id === id);
+      if (!k) return;
+      const v = await formModal({ title: 'Editar cartão', icon: 'credit-card-2-front', fields: this.fields(k) });
+      if (!v) return;
+      upsert('cartoes', { ...k, ...v });
+      notify.success('Cartão atualizado!');
+    },
+    async compra(cartaoId) {
+      const k = coll('cartoes').find((x) => x.id === cartaoId);
+      if (!k) return;
+      const v = await formModal({
+        title: `Compra — ${k.nome}`, icon: 'bag-plus', confirmText: 'Lançar compra',
+        fields: [
+          { name: 'descricao', label: 'Descrição', type: 'text', required: true, wide: true },
+          { name: 'valor', label: 'Valor total (R$)', type: 'money', required: true },
+          { name: 'parcelas', label: 'Parcelas', type: 'number', value: 1 },
+          { name: 'data', label: 'Data da compra', type: 'date', value: today().format('YYYY-MM-DD') },
+          { name: 'categoria', label: 'Categoria', type: 'select', value: 'Outros', options: CATEGORIAS.map((x) => ({ value: x, label: x })) }
+        ]
+      });
+      if (!v) return;
+      upsert('comprasCartao', {
+        id: generateId(), cartaoId, descricao: v.descricao, valor: v.valor,
+        parcelas: Math.max(1, v.parcelas || 1), data: v.data || today().format('YYYY-MM-DD'), categoria: v.categoria
+      });
+      notify.success('Compra lançada!');
+    },
+    // Valor da fatura de um cartão para um mês de referência (dayjs)
+    faturaMes(cartaoId, ref) {
+      return sum(coll('comprasCartao').filter((c) => c.cartaoId === cartaoId), (c) => {
+        const start = dayjs(c.data).startOf('month');
+        const diff = ref.startOf('month').diff(start, 'month');
+        return diff >= 0 && diff < (c.parcelas || 1) ? c.valor / (c.parcelas || 1) : 0;
+      });
+    },
+    totalCartao(cartaoId) {
+      // soma das parcelas ainda não quitadas (deste mês em diante)
+      return sum(coll('comprasCartao').filter((c) => c.cartaoId === cartaoId), (c) => {
+        const start = dayjs(c.data).startOf('month');
+        const paid = Math.max(0, today().startOf('month').diff(start, 'month'));
+        const restantes = Math.max(0, (c.parcelas || 1) - paid);
+        return (c.valor / (c.parcelas || 1)) * restantes;
+      });
+    },
+    card(k) {
+      const ref = currentDate;
+      const fatura = this.faturaMes(k.id, ref);
+      const aberto = this.totalCartao(k.id);
+      const usoPct = k.limite ? pct(aberto, k.limite) : 0;
+      const comprasDoMes = coll('comprasCartao').filter((c) => c.cartaoId === k.id).length;
+      return `
+        <div class="mod-card">
+          <div class="mod-card__top">
+            <div><div class="mod-icon" style="background:color-mix(in srgb,var(--app-investment) 14%,transparent);color:var(--app-investment)"><i class="bi bi-credit-card-2-front"></i></div></div>
+            <div style="flex:1;margin-left:.6rem"><h3 class="mod-card__title">${escapeHtml(k.nome)}</h3>
+            <span class="mod-card__sub">${escapeHtml(k.bandeira || '')} · fecha dia ${k.fechamento || '—'} · vence dia ${k.vencimento || '—'}</span></div>
+          </div>
+          <div class="mod-card__row"><span>Fatura de ${MESES[ref.month()]}</span><strong style="color:var(--app-expense)">${formatCurrency(fatura)}</strong></div>
+          <div class="mod-card__row"><span>Total em aberto</span><strong>${formatCurrency(aberto)}</strong></div>
+          <div class="mod-card__row"><span>Compras lançadas</span><strong>${comprasDoMes}</strong></div>
+          ${k.limite ? `${progressBar(aberto, k.limite, usoPct > 80 ? 'var(--app-expense)' : 'var(--app-reserved)')}<div class="mod-card__row"><span>Limite</span><strong>${formatCurrency(k.limite)}</strong></div>` : ''}
+          ${actionBtns('cartoes', k.id, `<button class="mod-btn mod-btn--primary" data-mod="cartoes" data-act="compra" data-id="${k.id}"><i class="bi bi-bag-plus"></i> Compra</button>`)}
+        </div>`;
+    },
+    render(c) {
+      const list = coll('cartoes');
+      const totalFatura = sum(list, (k) => this.faturaMes(k.id, currentDate));
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-credit-card-2-front app-icon"></i> Cartões de crédito</h2>
+          <p class="view-header__hint">Limite, fechamento, vencimento e faturas (mês: ${MESES[currentDate.month()]}/${currentDate.year()})</p></div>
+          <button class="btn btn-primary" data-mod="cartoes" data-act="add"><i class="bi bi-plus-lg"></i> Novo cartão</button>
+        </div>
+        ${list.length ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Total das faturas do mês</span><strong style="color:var(--app-expense)">${formatCurrency(totalFatura)}</strong></div>
+          <div class="mod-summary__item"><span>Cartões</span><strong>${list.length}</strong></div>
+        </div>` : ''}
+        ${list.length ? `<div class="mod-grid">${list.map((k) => this.card(k)).join('')}</div>` : emptyBlock('credit-card-2-front', 'Nenhum cartão cadastrado.')}`;
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: INVESTIMENTOS (portfólio)
+  // ==========================================================
+  const TIPOS_INVEST = ['Poupança', 'CDB', 'Tesouro Direto', 'Fundos', 'Ações', 'FIIs', 'Criptomoedas', 'Outros'];
+
+  const Investimentos = {
+    fields: (i = {}) => [
+      { name: 'tipo', label: 'Tipo', type: 'select', value: i.tipo || 'CDB', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
+      { name: 'instituicao', label: 'Instituição', type: 'text', value: i.instituicao, placeholder: 'Ex: Nubank, XP', wide: true },
+      { name: 'valorAplicado', label: 'Valor aplicado (R$)', type: 'money', required: true, value: i.valorAplicado ? formatValuePlain(i.valorAplicado) : '' },
+      { name: 'valorAtual', label: 'Valor atual (R$)', type: 'money', value: i.valorAtual ? formatValuePlain(i.valorAtual) : '' },
+      { name: 'data', label: 'Data da aplicação', type: 'date', value: i.data || today().format('YYYY-MM-DD') }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Novo investimento', icon: 'graph-up-arrow', fields: this.fields() });
+      if (!v) return;
+      if (!v.valorAtual) v.valorAtual = v.valorAplicado;
+      upsert('investimentos', { id: generateId(), ...v });
+      notify.success('Investimento adicionado!');
+    },
+    async edit(id) {
+      const i = coll('investimentos').find((x) => x.id === id);
+      if (!i) return;
+      const v = await formModal({ title: 'Editar investimento', icon: 'graph-up-arrow', fields: this.fields(i) });
+      if (!v) return;
+      if (!v.valorAtual) v.valorAtual = v.valorAplicado;
+      upsert('investimentos', { ...i, ...v });
+      notify.success('Investimento atualizado!');
+    },
+    rent(i) {
+      if (!i.valorAplicado) return 0;
+      return ((i.valorAtual - i.valorAplicado) / i.valorAplicado) * 100;
+    },
+    render(c) {
+      const list = coll('investimentos');
+      const aplic = sum(list, (i) => i.valorAplicado || 0);
+      const atual = sum(list, (i) => i.valorAtual || 0);
+      const rentTotal = aplic ? ((atual - aplic) / aplic) * 100 : 0;
+      const rows = list.map((i) => {
+        const r = this.rent(i);
+        return `<tr>
+          <td><span class="mod-badge mod-badge--violet">${escapeHtml(i.tipo)}</span></td>
+          <td>${escapeHtml(i.instituicao || '—')}</td>
+          <td class="num">${formatCurrency(i.valorAplicado || 0)}</td>
+          <td class="num">${formatCurrency(i.valorAtual || 0)}</td>
+          <td class="num" style="color:${moneyColor(r)}">${r >= 0 ? '+' : ''}${r.toFixed(2)}%</td>
+          <td>${fmtDate(i.data)}</td>
+          <td class="num">${actionBtns('investimentos', i.id).replace('mod-card__actions', 'mod-card__actions justify-content-end')}</td>
+        </tr>`;
+      }).join('');
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-graph-up-arrow app-icon"></i> Investimentos</h2>
+          <p class="view-header__hint">Carteira: poupança, CDB, Tesouro, ações, FIIs, cripto…</p></div>
+          <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Novo investimento</button>
+        </div>
+        ${list.length ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Total aplicado</span><strong>${formatCurrency(aplic)}</strong></div>
+          <div class="mod-summary__item"><span>Valor atual</span><strong style="color:var(--app-investment)">${formatCurrency(atual)}</strong></div>
+          <div class="mod-summary__item"><span>Rentabilidade</span><strong style="color:${moneyColor(rentTotal)}">${rentTotal >= 0 ? '+' : ''}${rentTotal.toFixed(2)}%</strong></div>
+        </div>
+        <div class="row g-3 mb-3"><div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Alocação por tipo</h3><canvas id="chartInvestAloc" height="200"></canvas></div></div></div>
+        <div class="mod-table-wrap"><table class="mod-table">
+          <thead><tr><th>Tipo</th><th>Instituição</th><th class="num">Aplicado</th><th class="num">Atual</th><th class="num">Rent.</th><th>Data</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>` : emptyBlock('graph-up-arrow', 'Nenhum investimento cadastrado.')}`;
+
+      if (list.length) {
+        const byTipo = {};
+        list.forEach((i) => { byTipo[i.tipo] = (byTipo[i.tipo] || 0) + (i.valorAtual || 0); });
+        const { text } = getChartTheme();
+        drawChart('chartInvestAloc', {
+          type: 'doughnut',
+          data: { labels: Object.keys(byTipo), datasets: [{ data: Object.values(byTipo), backgroundColor: CHART_COLORS, borderWidth: 0 }] },
+          options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: text, font: { size: 11 } } }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } } }
+        });
+      }
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: PATRIMÔNIO
+  // ==========================================================
+  const TIPOS_BEM = ['Imóvel', 'Carro', 'Moto', 'Investimentos', 'Eletrônicos', 'Móveis', 'Outros'];
+
+  const Patrimonio = {
+    fields: (b = {}) => [
+      { name: 'nome', label: 'Nome do bem', type: 'text', required: true, value: b.nome, placeholder: 'Ex: Apartamento, Civic 2020', wide: true },
+      { name: 'tipo', label: 'Tipo', type: 'select', value: b.tipo || 'Outros', options: TIPOS_BEM.map((t) => ({ value: t, label: t })) },
+      { name: 'valorCompra', label: 'Valor de compra (R$)', type: 'money', value: b.valorCompra ? formatValuePlain(b.valorCompra) : '' },
+      { name: 'valorAtual', label: 'Valor atual (R$)', type: 'money', required: true, value: b.valorAtual ? formatValuePlain(b.valorAtual) : '' },
+      { name: 'dataAquisicao', label: 'Data de aquisição', type: 'date', value: b.dataAquisicao },
+      { name: 'obs', label: 'Observações', type: 'textarea', value: b.obs }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Novo bem', icon: 'house-add', fields: this.fields() });
+      if (!v) return;
+      upsert('patrimonio', { id: generateId(), ...v });
+      notify.success('Bem adicionado ao patrimônio!');
+    },
+    async edit(id) {
+      const b = coll('patrimonio').find((x) => x.id === id);
+      if (!b) return;
+      const v = await formModal({ title: 'Editar bem', icon: 'house-gear', fields: this.fields(b) });
+      if (!v) return;
+      upsert('patrimonio', { ...b, ...v });
+      notify.success('Bem atualizado!');
+    },
+    card(b) {
+      const dep = (b.valorCompra && b.valorAtual) ? b.valorAtual - b.valorCompra : null;
+      return `
+        <div class="mod-card">
+          <div class="mod-card__top">
+            <div><h3 class="mod-card__title">${escapeHtml(b.nome)}</h3>
+            <span class="mod-badge mod-badge--gray">${escapeHtml(b.tipo)}</span></div>
+            <strong style="font-size:1.1rem">${formatCurrency(b.valorAtual || 0)}</strong>
+          </div>
+          ${b.valorCompra ? `<div class="mod-card__row"><span>Compra</span><strong>${formatCurrency(b.valorCompra)}</strong></div>` : ''}
+          ${dep !== null ? `<div class="mod-card__row"><span>Variação</span><strong style="color:${moneyColor(dep)}">${dep >= 0 ? '+' : ''}${formatCurrency(dep)}</strong></div>` : ''}
+          ${b.dataAquisicao ? `<div class="mod-card__row"><span>Aquisição</span><strong>${fmtDate(b.dataAquisicao)}</strong></div>` : ''}
+          ${b.obs ? `<p class="mod-card__sub mb-0">${escapeHtml(b.obs)}</p>` : ''}
+          ${actionBtns('patrimonio', b.id)}
+        </div>`;
+    },
+    render(c) {
+      const list = coll('patrimonio');
+      const total = sum(list, (b) => b.valorAtual || 0);
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-houses app-icon"></i> Patrimônio</h2>
+          <p class="view-header__hint">Bens: imóveis, veículos, eletrônicos…</p></div>
+          <button class="btn btn-primary" data-mod="patrimonio" data-act="add"><i class="bi bi-plus-lg"></i> Novo bem</button>
+        </div>
+        ${list.length ? `<div class="mod-summary"><div class="mod-summary__item"><span>Patrimônio total</span><strong style="color:var(--app-balance)">${formatCurrency(total)}</strong></div>
+          <div class="mod-summary__item"><span>Itens</span><strong>${list.length}</strong></div></div>` : ''}
+        ${list.length ? `<div class="mod-grid">${list.map((b) => this.card(b)).join('')}</div>` : emptyBlock('houses', 'Nenhum bem cadastrado.')}`;
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: ASSINATURAS
+  // ==========================================================
+  const Assinaturas = {
+    fields: (a = {}) => [
+      { name: 'nome', label: 'Serviço', type: 'text', required: true, value: a.nome, placeholder: 'Ex: Netflix, Spotify', wide: true },
+      { name: 'valor', label: 'Valor mensal (R$)', type: 'money', required: true, value: a.valor ? formatValuePlain(a.valor) : '' },
+      { name: 'vencimentoDia', label: 'Dia de vencimento', type: 'number', value: a.vencimentoDia, placeholder: '1-31' },
+      { name: 'forma', label: 'Forma de pagamento', type: 'select', value: a.forma || 'Cartão', options: ['Cartão', 'Débito', 'Pix', 'Boleto', 'Outro'].map((x) => ({ value: x, label: x })) },
+      { name: 'status', label: 'Status', type: 'select', value: a.status || 'ativa', options: [{ value: 'ativa', label: 'Ativa' }, { value: 'cancelada', label: 'Cancelada' }] }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Nova assinatura', icon: 'repeat', fields: this.fields() });
+      if (!v) return;
+      upsert('assinaturas', { id: generateId(), ...v });
+      notify.success('Assinatura cadastrada!');
+    },
+    async edit(id) {
+      const a = coll('assinaturas').find((x) => x.id === id);
+      if (!a) return;
+      const v = await formModal({ title: 'Editar assinatura', icon: 'repeat', fields: this.fields(a) });
+      if (!v) return;
+      upsert('assinaturas', { ...a, ...v });
+      notify.success('Assinatura atualizada!');
+    },
+    render(c) {
+      const list = coll('assinaturas');
+      const ativas = list.filter((a) => a.status !== 'cancelada');
+      const totalMes = sum(ativas, (a) => a.valor || 0);
+      const cards = list.map((a) => {
+        const dias = a.vencimentoDia ? daysUntil(nextDueDate(a.vencimentoDia)) : null;
+        const proximo = dias !== null && dias <= 5;
+        const cancelada = a.status === 'cancelada';
+        return `<div class="mod-card">
+          <div class="mod-card__top">
+            <div><h3 class="mod-card__title">${escapeHtml(a.nome)}</h3>
+            <span class="mod-card__sub">${escapeHtml(a.forma || '')}${a.vencimentoDia ? ' · vence dia ' + a.vencimentoDia : ''}</span></div>
+            <span class="mod-badge mod-badge--${cancelada ? 'gray' : 'green'}">${cancelada ? 'Cancelada' : 'Ativa'}</span>
+          </div>
+          <div class="mod-card__row"><span>Mensal</span><strong>${formatCurrency(a.valor || 0)}</strong></div>
+          ${!cancelada && proximo ? `<div class="mod-badge mod-badge--amber"><i class="bi bi-bell-fill"></i> Vence em ${dias} dia(s)</div>` : ''}
+          ${actionBtns('assinaturas', a.id)}
+        </div>`;
+      }).join('');
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-arrow-repeat app-icon"></i> Assinaturas</h2>
+          <p class="view-header__hint">Serviços recorrentes e seus vencimentos</p></div>
+          <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova assinatura</button>
+        </div>
+        ${list.length ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Gasto mensal (ativas)</span><strong style="color:var(--app-expense)">${formatCurrency(totalMes)}</strong></div>
+          <div class="mod-summary__item"><span>Gasto anual</span><strong>${formatCurrency(totalMes * 12)}</strong></div>
+          <div class="mod-summary__item"><span>Assinaturas ativas</span><strong>${ativas.length}</strong></div>
+        </div>` : ''}
+        ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhuma assinatura cadastrada.')}`;
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: DASHBOARD
+  // ==========================================================
+  const Dashboard = {
+    render(c) {
+      const entries = allData[getMonthKey(currentDate)] || [];
+      const s = calculateSummary(entries);
+      const saldo = s.income - s.expense - s.investment;
+      const patrimonioTotal = sum(coll('patrimonio'), (b) => b.valorAtual || 0);
+      const investTotal = sum(coll('investimentos'), (i) => i.valorAtual || 0);
+      const reservasTotal = sum(coll('reservas'), reservaSaldo);
+      const metasAtivas = coll('metas').filter((m) => m.status === 'ativa');
+      const faturasTotal = sum(coll('cartoes'), (k) => Cartoes.faturaMes(k.id, currentDate));
+
+      const venc = this.proximosVencimentos();
+
+      const tile = (mod, label, value, icon) =>
+        `<div class="dash-tile dash-tile--${mod}"><span class="dash-tile__label"><i class="bi bi-${icon}"></i> ${label}</span><span class="dash-tile__value">${value}</span></div>`;
+
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-speedometer2 app-icon"></i> Dashboard</h2>
+          <p class="view-header__hint">Visão geral — ${MESES[currentDate.month()]} de ${currentDate.year()}</p></div>
+        </div>
+        <div class="dash-grid mb-4">
+          ${tile('income', 'Receita do mês', formatCurrency(s.income), 'arrow-down-circle')}
+          ${tile('expense', 'Despesas do mês', formatCurrency(s.expense), 'arrow-up-circle')}
+          ${tile('balance', 'Saldo do mês', formatCurrency(saldo), 'wallet2')}
+          ${tile('', 'Pago', formatCurrency(s.paid), 'check-circle')}
+          ${tile('', 'Pendente', formatCurrency(s.unpaid), 'exclamation-circle')}
+          ${tile('', 'Reservado (mês)', formatCurrency(s.reserved), 'clock-history')}
+          ${tile('invest', 'Investimentos', formatCurrency(investTotal), 'graph-up-arrow')}
+          ${tile('', 'Reservas', formatCurrency(reservasTotal), 'safe2')}
+          ${tile('balance', 'Patrimônio', formatCurrency(patrimonioTotal), 'houses')}
+          ${tile('expense', 'Faturas cartão', formatCurrency(faturasTotal), 'credit-card-2-front')}
+          ${tile('', 'Metas ativas', metasAtivas.length, 'bullseye')}
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Receitas x Despesas x Investimentos</h3><canvas id="dashChartIE" height="200"></canvas></div></div>
+          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Evolução do saldo (12 meses)</h3><canvas id="dashChartSaldo" height="200"></canvas></div></div>
+        </div>
+        <div class="row g-3">
+          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Progresso das metas</h3>
+            ${metasAtivas.length ? metasAtivas.slice(0, 5).map((m) => `<div class="mb-2"><div class="mod-card__row"><span>${escapeHtml(m.nome)}</span><span>${pct(metaAtual(m), m.valorObjetivo)}%</span></div>${progressBar(metaAtual(m), m.valorObjetivo)}</div>`).join('') : '<p class="text-muted mb-0">Nenhuma meta ativa.</p>'}
+          </div></div>
+          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Próximos vencimentos</h3>
+            ${venc.length ? `<ul class="mod-history">${venc.slice(0, 8).map((v) => `<li><span><i class="bi bi-${v.icon} me-1" style="color:${v.color}"></i>${escapeHtml(v.title)}</span><strong>${v.dias <= 0 ? 'hoje/atrasado' : 'em ' + v.dias + 'd'}</strong></li>`).join('')}</ul>` : '<p class="text-muted mb-0">Nada vencendo em breve.</p>'}
+          </div></div>
+        </div>`;
+
+      this.drawCharts(entries, s);
+    },
+    proximosVencimentos() {
+      const out = [];
+      // lançamentos do mês com dia de vencimento
+      (allData[getMonthKey(currentDate)] || []).forEach((e) => {
+        if (e.due_day && e.status !== 'pago' && e.type !== 'entrada') {
+          const dias = daysUntil(nextDueDate(e.due_day));
+          if (dias !== null && dias <= 7) out.push({ title: e.description, dias, icon: 'cash-coin', color: 'var(--app-expense)' });
+        }
+      });
+      coll('assinaturas').filter((a) => a.status !== 'cancelada' && a.vencimentoDia).forEach((a) => {
+        const dias = daysUntil(nextDueDate(a.vencimentoDia));
+        if (dias !== null && dias <= 7) out.push({ title: a.nome + ' (assinatura)', dias, icon: 'arrow-repeat', color: 'var(--app-reserved)' });
+      });
+      coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
+        const dias = daysUntil(nextDueDate(k.vencimento));
+        if (dias !== null && dias <= 7) out.push({ title: 'Fatura ' + k.nome, dias, icon: 'credit-card-2-front', color: 'var(--app-investment)' });
+      });
+      return out.sort((a, b) => a.dias - b.dias);
+    },
+    drawCharts(entries, s) {
+      const { grid, text } = getChartTheme();
+      drawChart('dashChartIE', {
+        type: 'bar',
+        data: { labels: ['Entradas', 'Despesas', 'Investimentos'], datasets: [{ data: [s.income, s.expense, s.investment], backgroundColor: ['#10b981', '#ef4444', '#8b5cf6'], borderRadius: 8 }] },
+        options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { beginAtZero: true, ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
+      });
+      // evolução do saldo dos últimos 12 meses
+      const labels = [], data = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = currentDate.subtract(i, 'month');
+        const es = allData[getMonthKey(d)] || [];
+        const sm = calculateSummary(es);
+        labels.push(MESES[d.month()].slice(0, 3));
+        data.push(sm.income - sm.expense - sm.investment);
+      }
+      drawChart('dashChartSaldo', {
+        type: 'line',
+        data: { labels, datasets: [{ data, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: 0.35, pointRadius: 3 }] },
+        options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
+      });
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: PLANEJAMENTO ANUAL
+  // ==========================================================
+  const Anual = {
+    render(c) {
+      const ano = currentDate.year();
+      let tot = { rec: 0, desp: 0, inv: 0 };
+      const rows = MESES.map((mes, i) => {
+        const key = dayjs(`${ano}-${String(i + 1).padStart(2, '0')}-01`).format('YYYY-MM');
+        const s = calculateSummary(allData[key] || []);
+        const saldo = s.income - s.expense - s.investment;
+        tot.rec += s.income; tot.desp += s.expense; tot.inv += s.investment;
+        return `<tr>
+          <td>${mes}</td>
+          <td class="num" style="color:var(--app-income)">${formatCurrency(s.income)}</td>
+          <td class="num" style="color:var(--app-expense)">${formatCurrency(s.expense)}</td>
+          <td class="num" style="color:var(--app-investment)">${formatCurrency(s.investment)}</td>
+          <td class="num" style="color:${moneyColor(saldo)};font-weight:700">${formatCurrency(saldo)}</td>
+        </tr>`;
+      }).join('');
+      const saldoAno = tot.rec - tot.desp - tot.inv;
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-calendar3 app-icon"></i> Planejamento anual</h2>
+          <p class="view-header__hint">Janeiro a dezembro de ${ano} (mude o ano no topo)</p></div>
+        </div>
+        <div class="mod-summary">
+          <div class="mod-summary__item"><span>Receitas no ano</span><strong style="color:var(--app-income)">${formatCurrency(tot.rec)}</strong></div>
+          <div class="mod-summary__item"><span>Despesas no ano</span><strong style="color:var(--app-expense)">${formatCurrency(tot.desp)}</strong></div>
+          <div class="mod-summary__item"><span>Investimentos</span><strong style="color:var(--app-investment)">${formatCurrency(tot.inv)}</strong></div>
+          <div class="mod-summary__item"><span>Saldo do ano</span><strong style="color:${moneyColor(saldoAno)}">${formatCurrency(saldoAno)}</strong></div>
+        </div>
+        <div class="mod-table-wrap"><table class="mod-table">
+          <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Investimentos</th><th class="num">Saldo</th></tr></thead>
+          <tbody>${rows}</tbody>
+          <tfoot><tr><td>Total</td><td class="num">${formatCurrency(tot.rec)}</td><td class="num">${formatCurrency(tot.desp)}</td><td class="num">${formatCurrency(tot.inv)}</td><td class="num">${formatCurrency(saldoAno)}</td></tr></tfoot>
+        </table></div>
+        <div class="row g-3 mt-1"><div class="col-12"><div class="chart-box"><h3 class="chart-box__title">Receitas x Despesas por mês</h3><canvas id="anualChart" height="120"></canvas></div></div></div>`;
+
+      const { grid, text } = getChartTheme();
+      const rec = [], desp = [];
+      MESES.forEach((_, i) => {
+        const key = dayjs(`${ano}-${String(i + 1).padStart(2, '0')}-01`).format('YYYY-MM');
+        const s = calculateSummary(allData[key] || []);
+        rec.push(s.income); desp.push(s.expense);
+      });
+      drawChart('anualChart', {
+        type: 'bar',
+        data: { labels: MESES.map((m) => m.slice(0, 3)), datasets: [
+          { label: 'Receitas', data: rec, backgroundColor: '#10b981', borderRadius: 5 },
+          { label: 'Despesas', data: desp, backgroundColor: '#ef4444', borderRadius: 5 }
+        ] },
+        options: { responsive: true, plugins: { legend: { labels: { color: text } }, tooltip: { callbacks: { label: (x) => `${x.dataset.label}: ${formatCurrency(x.raw)}` } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
+      });
+    }
+  };
+
+  // ==========================================================
+  // MÓDULO: RELATÓRIOS
+  // ==========================================================
+  const Relatorios = {
+    state: { de: '', ate: '', categoria: '', tag: '', status: '', tipo: '' },
+    // varre todos os meses, gera linhas com data de referência (1º dia do mês)
+    allEntries() {
+      const out = [];
+      Object.keys(allData).forEach((key) => {
+        if (!/^\d{4}-\d{2}$/.test(key)) return;
+        (allData[key] || []).forEach((e) => out.push({ ...e, mes: key }));
+      });
+      return out;
+    },
+    filtered() {
+      const f = this.state;
+      return this.allEntries().filter((e) => {
+        if (f.de && e.mes < f.de) return false;
+        if (f.ate && e.mes > f.ate) return false;
+        if (f.categoria && e.category !== f.categoria) return false;
+        if (f.tag && e.person !== f.tag) return false;
+        if (f.status && e.status !== f.status) return false;
+        if (f.tipo && e.type !== f.tipo) return false;
+        return true;
+      }).sort((a, b) => (a.mes < b.mes ? 1 : -1));
+    },
+    render(c) {
+      const f = this.state;
+      const opt = (val, label, sel) => `<option value="${val}" ${val === sel ? 'selected' : ''}>${label}</option>`;
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-funnel app-icon"></i> Relatórios</h2>
+          <p class="view-header__hint">Filtre e exporte seus lançamentos</p></div>
+        </div>
+        <div class="mod-filters">
+          <div class="fm-field"><label>De (mês)</label><input type="month" id="rep_de" class="fm-input" value="${f.de}"></div>
+          <div class="fm-field"><label>Até (mês)</label><input type="month" id="rep_ate" class="fm-input" value="${f.ate}"></div>
+          <div class="fm-field"><label>Tipo</label><select id="rep_tipo" class="fm-input">${opt('', 'Todos', f.tipo)}${opt('entrada', 'Entrada', f.tipo)}${opt('despesa', 'Despesa', f.tipo)}${opt('investimento', 'Investimento', f.tipo)}</select></div>
+          <div class="fm-field"><label>Categoria</label><select id="rep_categoria" class="fm-input">${opt('', 'Todas', f.categoria)}${CATEGORIAS.map((x) => opt(x, x, f.categoria)).join('')}</select></div>
+          <div class="fm-field"><label>Tag</label><select id="rep_tag" class="fm-input">${opt('', 'Todas', f.tag)}${Object.entries(PERSON_LABELS).map(([v, l]) => opt(v, l, f.tag)).join('')}</select></div>
+          <div class="fm-field"><label>Status</label><select id="rep_status" class="fm-input">${opt('', 'Todos', f.status)}${Object.entries(STATUS_LABELS).map(([v, l]) => opt(v, l, f.status)).join('')}</select></div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          <button class="btn btn-primary btn-sm" data-rep="apply"><i class="bi bi-funnel-fill"></i> Aplicar filtros</button>
+          <button class="btn btn-outline-secondary btn-sm" data-rep="clear"><i class="bi bi-x-circle"></i> Limpar</button>
+          <span class="flex-grow-1"></span>
+          <button class="btn btn-outline-success btn-sm" data-rep="csv"><i class="bi bi-filetype-csv"></i> CSV</button>
+          <button class="btn btn-outline-success btn-sm" data-rep="excel"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+          <button class="btn btn-outline-danger btn-sm" data-rep="pdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+        </div>
+        <div id="repResult"></div>`;
+      this.renderResult();
+    },
+    renderResult() {
+      const list = this.filtered();
+      const el = document.getElementById('repResult');
+      if (!el) return;
+      if (!list.length) { el.innerHTML = emptyBlock('inbox', 'Nenhum lançamento para os filtros selecionados.'); return; }
+      const tot = { entrada: 0, despesa: 0, investimento: 0 };
+      const rows = list.map((e) => {
+        tot[e.type] = (tot[e.type] || 0) + e.value;
+        return `<tr>
+          <td>${e.mes}</td>
+          <td>${escapeHtml(e.description)}</td>
+          <td>${escapeHtml(TYPE_LABELS[e.type] || e.type)}</td>
+          <td>${escapeHtml(e.category)}</td>
+          <td>${escapeHtml(PERSON_LABELS[e.person] || '—')}</td>
+          <td>${escapeHtml(STATUS_LABELS[e.status] || e.status)}</td>
+          <td class="num">${formatCurrency(e.value)}</td>
+        </tr>`;
+      }).join('');
+      el.innerHTML = `
+        <div class="mod-summary">
+          <div class="mod-summary__item"><span>Lançamentos</span><strong>${list.length}</strong></div>
+          <div class="mod-summary__item"><span>Entradas</span><strong style="color:var(--app-income)">${formatCurrency(tot.entrada)}</strong></div>
+          <div class="mod-summary__item"><span>Despesas</span><strong style="color:var(--app-expense)">${formatCurrency(tot.despesa)}</strong></div>
+          <div class="mod-summary__item"><span>Investimentos</span><strong style="color:var(--app-investment)">${formatCurrency(tot.investimento)}</strong></div>
+        </div>
+        <div class="mod-table-wrap"><table class="mod-table">
+          <thead><tr><th>Mês</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Tag</th><th>Status</th><th class="num">Valor</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`;
+    },
+    readFilters() {
+      const g = (id) => document.getElementById(id)?.value || '';
+      this.state = { de: g('rep_de'), ate: g('rep_ate'), tipo: g('rep_tipo'), categoria: g('rep_categoria'), tag: g('rep_tag'), status: g('rep_status') };
+    },
+    exportData(format) {
+      const list = this.filtered();
+      if (!list.length) { notify.error('Nada para exportar com esses filtros.'); return; }
+      const header = ['Mês', 'Descrição', 'Tipo', 'Categoria', 'Tag', 'Status', 'Valor'];
+      const rows = list.map((e) => [e.mes, e.description, TYPE_LABELS[e.type] || e.type, e.category, PERSON_LABELS[e.person] || '', STATUS_LABELS[e.status] || e.status, e.value]);
+      const stamp = dayjs().format('YYYY-MM-DD');
+      if (format === 'csv') {
+        const lines = [header.join(';'), ...rows.map((r) => r.map((v, i) => (i === 6 ? formatValuePlain(v) : v)).join(';'))];
+        downloadBlob(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }), `relatorio-${stamp}.csv`);
+      } else if (format === 'excel') {
+        const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Relatório');
+        XLSX.writeFile(wb, `relatorio-${stamp}.xlsx`);
+      } else if (format === 'pdf') {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(15); doc.text('Relatório — Finanças da Casa', 14, 16);
+        doc.autoTable({ startY: 22, head: [header], body: rows.map((r) => r.map((v, i) => (i === 6 ? formatCurrency(v) : String(v)))), theme: 'striped', headStyles: { fillColor: [79, 110, 247] }, styles: { fontSize: 8 } });
+        doc.save(`relatorio-${stamp}.pdf`);
+      }
+      notify.success('Relatório exportado!');
+    }
+  };
+
+  // ==========================================================
+  // ALERTAS
+  // ==========================================================
+  const computeAlerts = () => {
+    const out = [];
+    const entries = allData[getMonthKey(currentDate)] || [];
+    entries.forEach((e) => {
+      if (e.type === 'entrada' || e.status === 'pago' || !e.due_day) return;
+      const dias = daysUntil(nextDueDate(e.due_day));
+      if (dias === null) return;
+      if (dias < 0) out.push({ level: 'red', icon: 'exclamation-octagon-fill', title: `${e.description} atrasada`, desc: `Venceu dia ${e.due_day} · ${formatCurrency(e.value)}` });
+      else if (dias <= 3) out.push({ level: 'amber', icon: 'clock-fill', title: `${e.description} vence em ${dias}d`, desc: `Dia ${e.due_day} · ${formatCurrency(e.value)}` });
+    });
+    coll('metas').forEach((m) => {
+      if (m.status === 'concluida' || !m.dataAlvo) return;
+      const dias = daysUntil(m.dataAlvo);
+      if (dias !== null && dias < 0) out.push({ level: 'amber', icon: 'bullseye', title: `Meta atrasada: ${m.nome}`, desc: `Faltam ${formatCurrency((m.valorObjetivo || 0) - metaAtual(m))}` });
+    });
+    coll('assinaturas').filter((a) => a.status !== 'cancelada' && a.vencimentoDia).forEach((a) => {
+      const dias = daysUntil(nextDueDate(a.vencimentoDia));
+      if (dias !== null && dias <= 3) out.push({ level: 'blue', icon: 'arrow-repeat', title: `${a.nome} vence em ${dias}d`, desc: `Assinatura · ${formatCurrency(a.valor || 0)}` });
+    });
+    coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
+      const dias = daysUntil(nextDueDate(k.vencimento));
+      if (dias !== null && dias <= 3) out.push({ level: 'amber', icon: 'credit-card-2-front', title: `Fatura ${k.nome} em ${dias}d`, desc: `Vence dia ${k.vencimento} · ${formatCurrency(Cartoes.faturaMes(k.id, currentDate))}` });
+    });
+    coll('reservas').filter((r) => r.objetivo).forEach((r) => {
+      const saldo = reservaSaldo(r);
+      if (saldo < r.objetivo * 0.5) out.push({ level: 'blue', icon: 'safe2', title: `Reserva baixa: ${r.nome}`, desc: `${pct(saldo, r.objetivo)}% do objetivo` });
+    });
+    return out.sort((a, b) => ({ red: 0, amber: 1, blue: 2 }[a.level] - { red: 0, amber: 1, blue: 2 }[b.level]));
+  };
+
+  const refreshAlerts = () => {
+    const alerts = computeAlerts();
+    const badge = document.getElementById('alertCount');
+    if (badge) { badge.textContent = alerts.length; badge.hidden = alerts.length === 0; }
+    const panel = document.getElementById('alertPanel');
+    if (panel) {
+      panel.innerHTML = alerts.length
+        ? alerts.map((a) => `<div class="alert-item alert-item--${a.level}"><i class="bi bi-${a.icon} alert-item__icon"></i><div class="alert-item__body"><div class="alert-item__title">${escapeHtml(a.title)}</div><div class="alert-item__desc">${escapeHtml(a.desc)}</div></div></div>`).join('')
+        : '<div class="alert-item"><div class="alert-item__body"><div class="alert-item__desc">Nenhum alerta no momento 🎉</div></div></div>';
+    }
+  };
+
+  // ==========================================================
+  // CONTROLADOR DE NAVEGAÇÃO
+  // ==========================================================
+  const MODULES = {
+    metas: Metas, reservas: Reservas, cartoes: Cartoes,
+    investimentos: Investimentos, patrimonio: Patrimonio,
+    assinaturas: Assinaturas, dashboard: Dashboard, anual: Anual, relatorios: Relatorios
+  };
+
+  let activeTab = 'mes';
+
+  const refreshActiveView = () => {
+    if (activeTab === 'mes') return;
+    const mod = MODULES[activeTab];
+    const container = document.getElementById(`view-${activeTab}`);
+    if (mod && container) mod.render(container);
+  };
+
+  const activate = (tab) => {
+    activeTab = tab;
+    document.querySelectorAll('.app-tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tab));
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${tab}`));
+    if (tab !== 'mes') refreshActiveView();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Delegação de eventos para todos os botões dos módulos
+  const handleModuleClick = async (e) => {
+    const tab = e.target.closest('.app-tab');
+    if (tab) { activate(tab.dataset.tab); return; }
+
+    const btn = e.target.closest('[data-mod]');
+    if (btn) {
+      const { mod, act, id } = btn.dataset;
+      const M = MODULES[mod];
+      if (!M) return;
+      if (act === 'add') await M.add();
+      else if (act === 'edit') await M.edit(id);
+      else if (act === 'aporte') await M.aporte(id);
+      else if (act === 'compra') await M.compra(id);
+      else if (act === 'dep') await M.mov(id, 'deposito');
+      else if (act === 'saq') await M.mov(id, 'saque');
+      else if (act === 'del') {
+        const ok = await confirmAction({ title: 'Excluir?', text: 'Esta ação não pode ser desfeita.', icon: 'warning', confirmText: 'Sim, excluir' });
+        if (ok) { removeItem(mod, id); notify.info('Item excluído.'); }
+      }
+      return;
+    }
+
+    const rep = e.target.closest('[data-rep]');
+    if (rep) {
+      const act = rep.dataset.rep;
+      if (act === 'apply') { Relatorios.readFilters(); Relatorios.renderResult(); }
+      else if (act === 'clear') { Relatorios.state = { de: '', ate: '', categoria: '', tag: '', status: '', tipo: '' }; Relatorios.render(document.getElementById('view-relatorios')); }
+      else Relatorios.exportData(act);
+    }
+  };
+
+  // ==========================================================
+  // INICIALIZAÇÃO
+  // ==========================================================
+  const TABS = [
+    ['mes', 'house-door', 'Mês'],
+    ['dashboard', 'speedometer2', 'Dashboard'],
+    ['anual', 'calendar3', 'Anual'],
+    ['metas', 'bullseye', 'Metas'],
+    ['reservas', 'safe2', 'Reservas'],
+    ['cartoes', 'credit-card-2-front', 'Cartões'],
+    ['investimentos', 'graph-up-arrow', 'Investimentos'],
+    ['patrimonio', 'houses', 'Patrimônio'],
+    ['assinaturas', 'arrow-repeat', 'Assinaturas'],
+    ['relatorios', 'funnel', 'Relatórios']
+  ];
+
+  const buildTabs = () => {
+    const nav = document.getElementById('appTabsScroll');
+    if (!nav) return;
+    nav.innerHTML = TABS.map(([id, icon, label]) =>
+      `<button type="button" class="app-tab ${id === 'mes' ? 'is-active' : ''}" data-tab="${id}"><i class="bi bi-${icon}"></i> ${label}</button>`
+    ).join('');
+  };
+
+  const init = () => {
+    buildTabs();
+    document.addEventListener('click', handleModuleClick);
+
+    // Mantém dashboard/anual/relatórios sincronizados ao trocar de mês/ano
+    ['selectMonth', 'selectYear'].forEach((id) => document.getElementById(id)?.addEventListener('change', () => setTimeout(refreshActiveView, 0)));
+    ['btnPrevMonth', 'btnNextMonth'].forEach((id) => document.getElementById(id)?.addEventListener('click', () => setTimeout(refreshActiveView, 0)));
+
+    refreshAlerts();
+  };
+
+  // Hook chamado por render() em script.js após cada atualização de dados
+  window.AppModules = {
+    onDataRender() { refreshAlerts(); if (activeTab !== 'mes') refreshActiveView(); },
+    activate
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
