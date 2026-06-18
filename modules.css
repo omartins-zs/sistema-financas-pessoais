@@ -1,0 +1,312 @@
+/* ============================================
+   Finanças da Casa — Módulos avançados
+   Metas, Reservas, Cartões, Investimentos,
+   Patrimônio, Assinaturas, Dashboard, Anual,
+   Relatórios e Alertas.
+   Reaproveita as variáveis de style.css.
+   ============================================ */
+
+/* ---- Barra de abas ---- */
+.app-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: color-mix(in srgb, var(--header-bg) 94%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-tabs__scroll {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0.5rem 0;
+}
+.app-tabs__scroll::-webkit-scrollbar { display: none; }
+
+.app-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.app-tab:hover { background: var(--btn-hover); color: var(--app-text); }
+.app-tab.is-active {
+  background: var(--app-primary);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--app-primary) 40%, transparent);
+}
+.app-tab .bi { font-size: 1rem; }
+.app-tab__badge {
+  background: var(--app-expense);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  min-width: 1.2rem;
+  text-align: center;
+}
+
+/* ---- Views ---- */
+.view { display: none; }
+.view.is-active { display: block; animation: viewFade 0.2s ease; }
+@keyframes viewFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.view-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.view-header h2 { margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+.view-header__hint { color: var(--app-text-muted); font-size: 0.85rem; margin: 0.15rem 0 0; }
+
+/* ---- Cards de módulo ---- */
+.mod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.mod-card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 1.1rem;
+  box-shadow: 0 2px 10px var(--app-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  position: relative;
+}
+.mod-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.mod-card__title { font-weight: 700; font-size: 1.02rem; margin: 0; line-height: 1.3; }
+.mod-card__sub { color: var(--app-text-muted); font-size: 0.8rem; }
+.mod-card__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+}
+.mod-card__row span:first-child { color: var(--app-text-muted); }
+.mod-card__row strong { font-variant-numeric: tabular-nums; }
+.mod-card__actions { display: flex; gap: 0.35rem; margin-top: auto; }
+
+.mod-icon {
+  width: 42px; height: 42px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  display: grid; place-items: center;
+  font-size: 1.25rem;
+  background: var(--app-primary-soft);
+  color: var(--app-primary);
+}
+
+/* Barra de progresso (metas / reservas) */
+.mod-progress {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--app-surface-2);
+  overflow: hidden;
+}
+.mod-progress__bar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--app-income);
+  transition: width 0.4s ease;
+}
+.mod-progress__label {
+  display: flex; justify-content: space-between;
+  font-size: 0.78rem; color: var(--app-text-muted);
+}
+
+/* Badges de status / prioridade */
+.mod-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.72rem; font-weight: 700;
+  padding: 0.2rem 0.55rem; border-radius: 999px;
+  border: 1px solid transparent;
+}
+.mod-badge--green  { background: var(--status-pago-bg); color: var(--status-pago-text); border-color: var(--status-pago-border); }
+.mod-badge--amber  { background: var(--status-reservado-bg); color: var(--status-reservado-text); border-color: var(--status-reservado-border); }
+.mod-badge--red    { background: var(--status-nao-bg); color: var(--status-nao-text); border-color: var(--status-nao-border); }
+.mod-badge--blue   { background: color-mix(in srgb, var(--app-balance) 16%, transparent); color: var(--app-balance); }
+.mod-badge--gray   { background: var(--category-bg); color: var(--category-text); }
+.mod-badge--violet { background: color-mix(in srgb, var(--app-investment) 16%, transparent); color: var(--app-investment); }
+
+/* Botões pequenos de ação reaproveitando o estilo das linhas */
+.mod-btn {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  border-radius: 9px;
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.mod-btn:hover { color: var(--app-text); border-color: var(--app-primary); }
+.mod-btn--primary { background: var(--app-primary); color: #fff; border-color: var(--app-primary); width: auto; padding: 0 0.7rem; gap: 0.35rem; }
+.mod-btn--danger:hover { color: var(--app-expense); border-color: var(--app-expense); }
+
+/* Estado vazio dos módulos */
+.mod-empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--app-text-muted);
+  border: 2px dashed var(--app-border);
+  border-radius: var(--app-radius);
+}
+.mod-empty .bi { font-size: 2.4rem; display: block; margin-bottom: 0.5rem; opacity: 0.6; }
+
+/* ---- Dashboard ---- */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 0.85rem;
+}
+.dash-tile {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 0.95rem 1rem;
+  box-shadow: 0 2px 10px var(--app-shadow);
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.dash-tile__label { font-size: 0.78rem; color: var(--app-text-muted); display: flex; align-items: center; gap: 0.35rem; }
+.dash-tile__value { font-size: 1.35rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.dash-tile--income .dash-tile__value { color: var(--app-income); }
+.dash-tile--expense .dash-tile__value { color: var(--app-expense); }
+.dash-tile--invest .dash-tile__value { color: var(--app-investment); }
+.dash-tile--balance .dash-tile__value { color: var(--app-balance); }
+
+/* ---- Tabelas genéricas dos módulos / relatórios ---- */
+.mod-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  background: var(--app-surface);
+}
+.mod-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.mod-table th, .mod-table td { padding: 0.6rem 0.8rem; text-align: left; white-space: nowrap; }
+.mod-table thead th {
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  font-weight: 700; font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--app-border);
+}
+.mod-table tbody tr { border-bottom: 1px solid var(--app-border); }
+.mod-table tbody tr:last-child { border-bottom: none; }
+.mod-table tbody tr:hover { background: var(--app-surface-2); }
+.mod-table td.num, .mod-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mod-table tfoot td { font-weight: 800; border-top: 2px solid var(--app-border); }
+
+/* ---- Filtros ---- */
+.mod-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* ---- Alertas (dropdown sino) ---- */
+.alert-bell { position: relative; }
+.alert-bell__count {
+  position: absolute; top: -3px; right: -3px;
+  background: var(--app-expense); color: #fff;
+  font-size: 0.62rem; font-weight: 700;
+  border-radius: 999px; min-width: 16px; height: 16px;
+  display: grid; place-items: center; padding: 0 3px;
+}
+.alert-panel { width: min(340px, 92vw); max-height: 70vh; overflow-y: auto; padding: 0; }
+.alert-item {
+  display: flex; gap: 0.6rem; align-items: flex-start;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--app-border);
+}
+.alert-item:last-child { border-bottom: none; }
+.alert-item__icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.1rem; }
+.alert-item__body { min-width: 0; }
+.alert-item__title { font-weight: 600; font-size: 0.88rem; }
+.alert-item__desc { font-size: 0.78rem; color: var(--app-text-muted); }
+.alert-item--red .alert-item__icon { color: var(--app-expense); }
+.alert-item--amber .alert-item__icon { color: var(--app-reserved); }
+.alert-item--blue .alert-item__icon { color: var(--app-balance); }
+
+/* Mini histórico (aportes / movimentações) */
+.mod-history { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.mod-history li {
+  display: flex; justify-content: space-between; gap: 0.5rem;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--app-border);
+  font-size: 0.84rem;
+}
+.mod-history li:last-child { border-bottom: none; }
+
+/* Resumo em destaque no topo de um módulo */
+.mod-summary {
+  display: flex; flex-wrap: wrap; gap: 1.25rem;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.1rem;
+}
+.mod-summary__item { display: flex; flex-direction: column; }
+.mod-summary__item span { font-size: 0.78rem; color: var(--app-text-muted); }
+.mod-summary__item strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+
+/* ---- Modal de formulário (SweetAlert2) ---- */
+.fm-title { display: inline-flex; align-items: center; gap: 0.5rem; }
+.fm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  text-align: left;
+}
+.fm-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.fm-field.fm-wide { grid-column: 1 / -1; }
+.fm-field label { font-size: 0.8rem; font-weight: 600; color: var(--app-text-muted); }
+.fm-input {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.95rem;
+}
+.fm-input:focus {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 20%, transparent);
+}
+
+@media (max-width: 575px) {
+  .view-header { align-items: flex-start; }
+  .mod-summary { gap: 0.9rem; }
+  .fm-grid { grid-template-columns: 1fr; }
+}
