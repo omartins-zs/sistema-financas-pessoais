@@ -1366,6 +1366,9 @@ const render = () => {
 
   updateSummary(entries);
   updateCharts(entries);
+
+  // Atualiza módulos avançados (dashboard, alertas, etc.), se carregados
+  if (window.AppModules?.onDataRender) window.AppModules.onDataRender();
 };
 
 // ============================================
