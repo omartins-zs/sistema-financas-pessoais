@@ -37,6 +37,18 @@ const STATUS_LABELS = {
   nao_pago: 'Não pago'
 };
 
+const STATUS_SHORT_LABELS = {
+  pago: 'Pago',
+  reservado: 'Res.',
+  nao_pago: 'Não'
+};
+
+const STATUS_ICONS = {
+  pago: 'check-lg',
+  reservado: 'pause-fill',
+  nao_pago: 'x-lg'
+};
+
 const TYPE_LABELS = {
   entrada: 'Entrada',
   despesa: 'Despesa',
@@ -1358,15 +1370,23 @@ const onImportSheet = async (e) => {
 // Renderização
 // ============================================
 
-const createStatusSelect = (entry) => {
-  const options = Object.entries(STATUS_LABELS)
-    .map(([val, label]) =>
-      `<option value="${val}" ${entry.status === val ? 'selected' : ''}>${label}</option>`
-    ).join('');
+const createStatusPicker = (entry) => {
+  const buttons = Object.entries(STATUS_LABELS).map(([val, label]) => {
+    const active = entry.status === val;
+    return `<button type="button"
+      class="status-picker__btn status-picker__btn--${val}${active ? ' is-active' : ''}"
+      data-action="set-status"
+      data-id="${entry.id}"
+      data-status="${val}"
+      aria-pressed="${active}"
+      title="${escapeHtml(label)}"
+      aria-label="${escapeHtml(label)}">
+      <i class="bi bi-${STATUS_ICONS[val]}" aria-hidden="true"></i>
+      <span>${STATUS_SHORT_LABELS[val]}</span>
+    </button>`;
+  }).join('');
 
-  return `<select class="status-select status-select--${entry.status}"
-            data-id="${entry.id}" data-action="status"
-            aria-label="Status de ${escapeHtml(entry.description)}">${options}</select>`;
+  return `<div class="status-picker status-picker--${entry.status}" role="group" aria-label="Status de ${escapeHtml(entry.description)}">${buttons}</div>`;
 };
 
 const createActionButtons = (id) => `
@@ -1428,7 +1448,7 @@ const renderCreditCardRows = (entry, valueClass) => {
       <td>${renderPersonTag(entry.person)}</td>
       <td><span class="category-tag category-tag--card">${escapeHtml(entry.category)}</span></td>
       <td class="${valueClass}">${formatCurrency(entry.value)}</td>
-      <td>${createStatusSelect(entry)}</td>
+      <td>${createStatusPicker(entry)}</td>
       <td>${renderDueDay(entry.due_day)}</td>
       <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
       <td class="text-end">${createActionButtons(entry.id)}</td>
@@ -1447,7 +1467,7 @@ const renderEntryRow = (entry, valueClass) => {
     <td>${renderPersonTag(entry.person)}</td>
     <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
     <td class="${valueClass}">${formatCurrency(entry.value)}</td>
-    <td>${createStatusSelect(entry)}</td>
+    <td>${createStatusPicker(entry)}</td>
     <td>${renderDueDay(entry.due_day)}</td>
     <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
     <td class="text-end">${createActionButtons(entry.id)}</td>
@@ -1481,7 +1501,7 @@ const renderEntryCard = (entry, valueClass) => {
       ${obs}
       <div class="card-details-mobile ${expanded ? '' : 'd-none'}">${renderCardItemsPanel(entry, items)}</div>
       <div class="entry-card__footer">
-        ${createStatusSelect(entry)}
+        ${createStatusPicker(entry)}
         ${createActionButtons(entry.id)}
       </div>
     </div>`;
@@ -1499,7 +1519,7 @@ const renderEntryCard = (entry, valueClass) => {
       </div>
       ${obs}
       <div class="entry-card__footer">
-        ${createStatusSelect(entry)}
+        ${createStatusPicker(entry)}
         ${createActionButtons(entry.id)}
       </div>
     </div>`;
@@ -1625,23 +1645,18 @@ const handleListClick = (e) => {
     return;
   }
 
+  if (action === 'set-status') {
+    changeStatus(id, btn.dataset.status);
+    return;
+  }
+
   if (action === 'edit') openEditModal(id);
   if (action === 'delete') deleteEntry(id);
-};
-
-const handleStatusChange = (e) => {
-  const select = e.target.closest('[data-action="status"]');
-  if (!select) return;
-
-  changeStatus(select.dataset.id, select.value);
-  select.className = `status-select status-select--${select.value}`;
 };
 
 const bindListEvents = (tableEl, cardsEl) => {
   tableEl?.addEventListener('click', handleListClick);
   cardsEl?.addEventListener('click', handleListClick);
-  tableEl?.addEventListener('change', handleStatusChange);
-  cardsEl?.addEventListener('change', handleStatusChange);
 };
 
 const bindEvents = () => {

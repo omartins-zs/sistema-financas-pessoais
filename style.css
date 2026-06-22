@@ -722,6 +722,68 @@ body {
 
 /* ---- Status ---- */
 
+.status-picker {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.status-picker__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0.38rem 0.4rem;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--app-text-muted);
+  font-size: clamp(0.68rem, 2.2vw, 0.76rem);
+  font-weight: 700;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.status-picker__btn i {
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+.status-picker__btn:hover:not(.is-active) {
+  background: var(--app-surface-2);
+  color: var(--app-text);
+}
+
+.status-picker__btn.is-active.status-picker__btn--pago {
+  background: var(--status-pago-bg);
+  color: var(--status-pago-text);
+  box-shadow: inset 0 0 0 1px var(--status-pago-border);
+}
+
+.status-picker__btn.is-active.status-picker__btn--reservado {
+  background: var(--status-reservado-bg);
+  color: var(--status-reservado-text);
+  box-shadow: inset 0 0 0 1px var(--status-reservado-border);
+}
+
+.status-picker__btn.is-active.status-picker__btn--nao_pago {
+  background: var(--status-nao-bg);
+  color: var(--status-nao-text);
+  box-shadow: inset 0 0 0 1px var(--status-nao-border);
+}
+
+/* Legado: formulários / importação */
 .status-select {
   font-size: clamp(0.72rem, 2vw, 0.8rem);
   font-weight: 700;
@@ -906,19 +968,21 @@ body {
 }
 
 .entry-card__footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
   gap: 0.5rem;
   padding-top: 0.75rem;
   margin-top: 0.25rem;
   border-top: 1px solid color-mix(in srgb, var(--app-border) 50%, transparent);
 }
 
-.entry-card__footer .status-select {
-  flex: 1 1 140px;
-  min-width: 120px;
+.entry-card__footer .status-picker {
+  width: 100%;
+}
+
+.entry-card__footer .row-actions {
+  flex-shrink: 0;
 }
 
 /* ---- Vazio / Gráficos ---- */
@@ -1106,14 +1170,20 @@ body {
   .summary-card__value {
     font-size: 0.82rem;
   }
+}
 
-  .entry-card__footer {
-    flex-direction: column;
-    align-items: stretch;
+/* Status compacto em telas muito estreitas */
+@media (max-width: 400px) {
+  .status-picker__btn span {
+    display: none;
   }
 
-  .entry-card__footer .btn-group {
-    align-self: flex-end;
+  .status-picker__btn {
+    padding: 0.42rem 0.55rem;
+  }
+
+  .status-picker__btn i {
+    font-size: 0.95rem;
   }
 }
 
@@ -1144,6 +1214,25 @@ body {
   }
 
   .cell-description { max-width: 140px; }
+}
+
+.entries-table .status-picker {
+  width: 100%;
+  max-width: 168px;
+}
+
+.entries-table .status-picker__btn span {
+  display: none;
+}
+
+@media (min-width: 1200px) {
+  .entries-table .status-picker {
+    max-width: 220px;
+  }
+
+  .entries-table .status-picker__btn span {
+    display: inline;
+  }
 }
 
 /* Lista lançamentos header */
