@@ -1294,3 +1294,157 @@ body.auth-locked { overflow: hidden; }
 @media (max-width: 575px) {
   .topbar__user { display: none; }
 }
+
+/* ---- Cartão de crédito: itens da fatura ---- */
+
+.btn-card-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin-right: 0.35rem;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface-2);
+  color: var(--app-text-muted);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.btn-card-toggle:hover {
+  color: var(--app-primary);
+  border-color: color-mix(in srgb, var(--app-primary) 40%, var(--app-border));
+}
+
+.cell-description .btn-card-toggle {
+  margin-right: 0.45rem;
+}
+
+.entry-card--credit .entry-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.entry-card--credit .entry-card__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-items-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-investment) 18%, var(--app-surface-2));
+  color: var(--app-investment);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.category-tag--card {
+  background: color-mix(in srgb, var(--app-investment) 12%, var(--category-bg));
+  color: color-mix(in srgb, var(--app-investment) 80%, var(--category-text));
+}
+
+.card-details-cell {
+  padding: 0.65rem 1rem 1rem !important;
+  background: color-mix(in srgb, var(--app-investment) 5%, var(--app-surface-2));
+  border-top: 1px dashed var(--app-border) !important;
+}
+
+.card-items-panel__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--app-text-muted);
+}
+
+.card-items-list {
+  list-style: none;
+  margin: 0 0 0.65rem;
+  padding: 0;
+}
+
+.card-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+}
+
+.card-item:last-child {
+  border-bottom: none;
+}
+
+.card-item--empty {
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--app-text-faint);
+}
+
+.card-item__desc {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+}
+
+.card-item__value {
+  font-size: 0.88rem;
+  color: var(--app-expense);
+  white-space: nowrap;
+}
+
+.card-item__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-faint);
+}
+
+.card-item__remove:hover {
+  background: color-mix(in srgb, var(--app-expense) 12%, transparent);
+  color: var(--app-expense);
+}
+
+.card-items-sum {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  color: var(--app-text-muted);
+}
+
+.card-item-add {
+  display: grid;
+  grid-template-columns: 1fr minmax(5.5rem, 7rem) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.card-details-mobile {
+  margin: 0.5rem 0 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--app-border);
+}
+
+@media (max-width: 575px) {
+  .card-item-add {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .card-item-add .btn {
+    grid-column: 1 / -1;
+  }
+}
