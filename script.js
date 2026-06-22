@@ -199,6 +199,40 @@ const isCreditCardEntry = (entry) => {
   return cat.includes('cartão de crédito') || cat.includes('cartao de credito');
 };
 
+const defaultCardItemLabel = (entry) => {
+  const obs = String(entry.observation ?? '').trim();
+  if (obs) return obs;
+  return 'Fatura';
+};
+
+const createDefaultCardItem = (entry) => ({
+  id: generateId(),
+  description: defaultCardItemLabel(entry),
+  value: Number(entry.value) || 0
+});
+
+const syncDefaultFaturaItem = (entry) => {
+  if (!isCreditCardEntry(entry) || !entry.card_items?.length) return entry;
+
+  const items = [...entry.card_items];
+  const faturaIdx = items.findIndex((item) =>
+    /^fatura/i.test(String(item.description ?? '').trim())
+    || String(item.description ?? '').trim() === String(entry.observation ?? '').trim()
+  );
+
+  if (faturaIdx === -1 && items.length === 1) {
+    items[0] = { ...items[0], value: Number(entry.value) || 0 };
+    return { ...entry, card_items: items };
+  }
+
+  if (faturaIdx >= 0) {
+    items[faturaIdx] = { ...items[faturaIdx], value: Number(entry.value) || 0 };
+    return { ...entry, card_items: items };
+  }
+
+  return entry;
+};
+
 const normalizeEntry = (entry) => {
   const normalized = { ...entry };
   if (!Array.isArray(normalized.card_items)) normalized.card_items = [];
@@ -206,6 +240,13 @@ const normalizeEntry = (entry) => {
     if (normalized.person === 'gabriel') normalized.category = 'Cartão de crédito Gabriel';
     else if (normalized.person === 'barbara') normalized.category = 'Cartão de crédito Babi';
   }
+
+  if (isCreditCardEntry(normalized) && normalized.card_items.length === 0) {
+    normalized.card_items = [createDefaultCardItem(normalized)];
+  } else if (isCreditCardEntry(normalized)) {
+    return syncDefaultFaturaItem(normalized);
+  }
+
   return normalized;
 };
 
@@ -1316,7 +1357,7 @@ const renderCardItemsPanel = (entry, items) => {
             <i class="bi bi-x-lg"></i>
           </button>
         </li>`).join('')
-    : '<li class="card-item card-item--empty">Nenhum item detalhado — exibindo só o total da fatura</li>';
+    : '';
 
   const itemsSum = sumCardItems(items);
 
@@ -1324,7 +1365,7 @@ const renderCardItemsPanel = (entry, items) => {
     <div class="card-items-panel" data-card-id="${entry.id}">
       <p class="card-items-panel__title"><i class="bi bi-receipt"></i> Itens da fatura</p>
       <ul class="card-items-list">${itemsHtml}</ul>
-      ${items.length ? `<p class="card-items-sum">Soma dos itens: <strong>${formatCurrency(itemsSum)}</strong> · Total da fatura: <strong>${formatCurrency(entry.value)}</strong></p>` : ''}
+      <p class="card-items-sum">Soma dos itens: <strong>${formatCurrency(itemsSum)}</strong> · Total da fatura: <strong>${formatCurrency(entry.value)}</strong></p>
       <div class="card-item-add">
         <input type="text" class="form-control form-control-sm card-item-desc" placeholder="Ex: Gasolina" aria-label="Descrição do item">
         <input type="text" class="form-control form-control-sm card-item-val" placeholder="0,00" inputmode="decimal" aria-label="Valor do item">

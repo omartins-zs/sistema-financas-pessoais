@@ -572,9 +572,133 @@
   };
 
   // ==========================================================
+  // Detecção de assinaturas recorrentes (últimos N meses)
+  // ==========================================================
+  const SUBSCRIPTION_SKIP_CATEGORIES = new Set([
+    'Cartão de crédito Gabriel',
+    'Cartão de crédito Babi',
+    'Cartão de crédito',
+    'Investimentos'
+  ]);
+
+  const isOneOffExpense = (desc) => {
+    const d = String(desc || '').toLowerCase();
+    return /\b(parcela|multa|viagem|dívida|divida|emergência|emergencia|único|unico|reembolso)\b/.test(d)
+      || /\d+\s*[ªaº.]?\s*parcela/.test(d);
+  };
+
+  const normalizeSubName = (desc) => String(desc || '')
+    .replace(/\s*\([^)]*parcela[^)]*\)/gi, '')
+    .replace(/\s*-\s*\d+\s*[ªaº.]?\s*parcela.*/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const subscriptionDisplayName = (entry) => {
+    const base = normalizeSubName(entry.description);
+    if (!base) return '';
+    if (entry.person && PERSON_LABELS[entry.person]) {
+      return `${base} (${PERSON_LABELS[entry.person]})`;
+    }
+    return base;
+  };
+
+  const subscriptionAlreadyRegistered = (name) => {
+    const key = normalizeSubName(name).toLowerCase();
+    return coll('assinaturas').some((a) => {
+      const existing = normalizeSubName(a.nome).toLowerCase();
+      return existing === key || existing.includes(key) || key.includes(existing);
+    });
+  };
+
+  const valuesAreSimilar = (values) => {
+    if (!values.length) return false;
+    const avg = sum(values) / values.length;
+    if (avg <= 0) return false;
+    return values.every((v) => Math.abs(v - avg) / avg <= 0.18);
+  };
+
+  const mostCommon = (arr) => {
+    const counts = {};
+    arr.forEach((x) => { counts[x] = (counts[x] || 0) + 1; });
+    return Number(Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0) || null;
+  };
+
+  const getRecentMonthKeys = (count = 3) => {
+    const keys = [];
+    for (let i = 0; i < count; i++) keys.push(currentDate.subtract(i, 'month').format('YYYY-MM'));
+    return keys;
+  };
+
+  const monthKeyLabel = (key) => {
+    const [, m] = key.split('-');
+    const y = key.slice(2, 4);
+    return `${MESES[Number(m) - 1].slice(0, 3)}/${y}`;
+  };
+
+  const inferPaymentForm = (category) => {
+    const c = String(category || '').toLowerCase();
+    if (c.includes('internet') || c.includes('luz') || c.includes('água') || c.includes('agua')) return 'Boleto';
+    return 'Cartão';
+  };
+
+  const detectSubscriptionCandidates = (months = 3) => {
+    const monthKeys = getRecentMonthKeys(months);
+    const buckets = new Map();
+
+    monthKeys.forEach((monthKey) => {
+      (allData[monthKey] || []).forEach((entry) => {
+        if (entry.type !== 'despesa') return;
+        if (SUBSCRIPTION_SKIP_CATEGORIES.has(entry.category)) return;
+        if (typeof isCreditCardEntry === 'function' && isCreditCardEntry(entry)) return;
+        if (isOneOffExpense(entry.description)) return;
+
+        const displayName = subscriptionDisplayName(entry);
+        if (!displayName) return;
+        if (subscriptionAlreadyRegistered(displayName)) return;
+
+        const bucketKey = `${normalizeSubName(entry.description).toLowerCase()}|${entry.person || '_'}`;
+        if (!buckets.has(bucketKey)) {
+          buckets.set(bucketKey, {
+            nome: displayName,
+            months: new Set(),
+            values: [],
+            dueDays: [],
+            category: entry.category
+          });
+        }
+
+        const bucket = buckets.get(bucketKey);
+        if (bucket.months.has(monthKey)) return;
+        bucket.months.add(monthKey);
+        bucket.values.push(Number(entry.value) || 0);
+        if (entry.due_day) bucket.dueDays.push(entry.due_day);
+      });
+    });
+
+    const minMonths = Math.min(2, monthKeys.length);
+    return [...buckets.values()]
+      .filter((b) => b.months.size >= minMonths && valuesAreSimilar(b.values))
+      .map((b) => {
+        const meses = [...b.months].sort().reverse();
+        const valor = Math.round((sum(b.values) / b.values.length) * 100) / 100;
+        return {
+          nome: b.nome,
+          valor,
+          meses,
+          mesesLabel: meses.map(monthKeyLabel).join(', '),
+          ocorrencias: b.months.size,
+          vencimentoDia: mostCommon(b.dueDays),
+          forma: inferPaymentForm(b.category)
+        };
+      })
+      .sort((a, b) => b.ocorrencias - a.ocorrencias || b.valor - a.valor);
+  };
+
+  // ==========================================================
   // MÓDULO: ASSINATURAS
   // ==========================================================
   const Assinaturas = {
+    _suggestions: [],
     fields: (a = {}) => [
       { name: 'nome', label: 'Serviço', type: 'text', required: true, value: a.nome, placeholder: 'Ex: Netflix, Spotify', wide: true },
       { name: 'valor', label: 'Valor mensal (R$)', type: 'money', required: true, value: a.valor ? formatValuePlain(a.valor) : '' },
@@ -595,6 +719,52 @@
       if (!v) return;
       upsert('assinaturas', { ...a, ...v });
       notify.success('Assinatura atualizada!');
+    },
+    async addFromSuggestion(idx) {
+      const sug = (this._suggestions || [])[Number(idx)];
+      if (!sug) return;
+      const v = await formModal({
+        title: 'Adicionar assinatura sugerida',
+        icon: 'magic',
+        fields: this.fields({
+          nome: sug.nome,
+          valor: sug.valor,
+          vencimentoDia: sug.vencimentoDia,
+          forma: sug.forma
+        }),
+        confirmText: 'Cadastrar'
+      });
+      if (!v) return;
+      upsert('assinaturas', { id: generateId(), status: 'ativa', ...v });
+      notify.success(`"${sug.nome}" adicionada às assinaturas!`);
+    },
+    renderSuggestions() {
+      this._suggestions = detectSubscriptionCandidates(3);
+      const list = this._suggestions;
+      if (!list.length) {
+        return `<div class="mod-suggest mod-suggest--empty">
+          <p class="mod-suggest__title"><i class="bi bi-search"></i> Análise dos últimos 3 meses</p>
+          <p class="mod-suggest__hint mb-0">Nenhuma despesa recorrente nova encontrada. Cadastre lançamentos em meses anteriores ou adicione manualmente.</p>
+        </div>`;
+      }
+      const items = list.map((s, i) => `
+        <div class="mod-suggest__item">
+          <div class="mod-suggest__body">
+            <strong>${escapeHtml(s.nome)}</strong>
+            <span class="mod-suggest__meta">${escapeHtml(s.mesesLabel)} · ${s.ocorrencias} de 3 meses · ~${formatCurrency(s.valor)}/mês</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" data-mod="assinaturas" data-act="add-sug" data-idx="${i}">
+            <i class="bi bi-plus-lg"></i> Adicionar
+          </button>
+        </div>`).join('');
+      return `<div class="mod-suggest">
+        <div class="mod-suggest__head">
+          <p class="mod-suggest__title"><i class="bi bi-stars"></i> Sugestões dos últimos 3 meses</p>
+          <span class="mod-badge mod-badge--blue">${list.length} encontrada(s)</span>
+        </div>
+        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido. Revise e adicione às assinaturas.</p>
+        <div class="mod-suggest__list">${items}</div>
+      </div>`;
     },
     render(c) {
       const list = coll('assinaturas');
@@ -621,6 +791,7 @@
           <p class="view-header__hint">Serviços recorrentes e seus vencimentos</p></div>
           <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova assinatura</button>
         </div>
+        ${this.renderSuggestions()}
         ${list.length ? `<div class="mod-summary">
           <div class="mod-summary__item"><span>Gasto mensal (ativas)</span><strong style="color:var(--app-expense)">${formatCurrency(totalMes)}</strong></div>
           <div class="mod-summary__item"><span>Gasto anual</span><strong>${formatCurrency(totalMes * 12)}</strong></div>
@@ -976,6 +1147,7 @@
       const M = MODULES[mod];
       if (!M) return;
       if (act === 'add') await M.add();
+      else if (act === 'add-sug') await M.addFromSuggestion(btn.dataset.idx);
       else if (act === 'edit') await M.edit(id);
       else if (act === 'aporte') await M.aporte(id);
       else if (act === 'compra') await M.compra(id);
