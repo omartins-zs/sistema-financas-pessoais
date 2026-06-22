@@ -199,38 +199,65 @@ const isCreditCardEntry = (entry) => {
   return cat.includes('cartão de crédito') || cat.includes('cartao de credito');
 };
 
-const defaultCardItemLabel = (entry) => {
-  const obs = String(entry.observation ?? '').trim();
-  if (obs) return obs;
-  return 'Fatura';
+const DEFAULT_CARD_ITEM_DESC = 'Cartão';
+
+const isDefaultCardItem = (item) => {
+  const desc = String(item?.description ?? '').trim();
+  return item?.isDefault === true
+    || /^cart[aã]o$/i.test(desc)
+    || /^fatura/i.test(desc);
 };
+
+const defaultCardItemLabel = () => DEFAULT_CARD_ITEM_DESC;
 
 const createDefaultCardItem = (entry) => ({
   id: generateId(),
-  description: defaultCardItemLabel(entry),
-  value: Number(entry.value) || 0
+  description: defaultCardItemLabel(),
+  value: Number(entry.value) || 0,
+  isDefault: true
 });
 
-const syncDefaultFaturaItem = (entry) => {
+const sumCardItems = (items = []) =>
+  items.reduce((acc, item) => acc + (Number(item.value) || 0), 0);
+
+const syncCardEntryFromItems = (entry) => {
+  if (!isCreditCardEntry(entry) || !entry.card_items?.length) return entry;
+  return { ...entry, value: sumCardItems(entry.card_items) };
+};
+
+const syncDefaultCartaoItem = (entry) => {
   if (!isCreditCardEntry(entry) || !entry.card_items?.length) return entry;
 
   const items = [...entry.card_items];
-  const faturaIdx = items.findIndex((item) =>
-    /^fatura/i.test(String(item.description ?? '').trim())
-    || String(item.description ?? '').trim() === String(entry.observation ?? '').trim()
-  );
 
-  if (faturaIdx === -1 && items.length === 1) {
-    items[0] = { ...items[0], value: Number(entry.value) || 0 };
+  if (items.length === 1) {
+    items[0] = { ...items[0], description: DEFAULT_CARD_ITEM_DESC, isDefault: true, value: Number(entry.value) || 0 };
     return { ...entry, card_items: items };
   }
 
-  if (faturaIdx >= 0) {
-    items[faturaIdx] = { ...items[faturaIdx], value: Number(entry.value) || 0 };
-    return { ...entry, card_items: items };
-  }
+  return syncCardEntryFromItems(entry);
+};
 
-  return entry;
+const migrateLegacyCardItems = (entry) => {
+  if (!isCreditCardEntry(entry) || entry.card_items.length !== 1) return entry;
+
+  const [item] = entry.card_items;
+  const itemValue = Number(item.value) || 0;
+  const entryValue = Number(entry.value) || 0;
+  const desc = String(item.description ?? '').trim();
+  const obs = String(entry.observation ?? '').trim();
+
+  const looksLikePlaceholder = isDefaultCardItem(item)
+    || /^fatura/i.test(desc)
+    || desc === obs
+    || itemValue === entryValue;
+
+  if (!looksLikePlaceholder) return entry;
+
+  return {
+    ...entry,
+    card_items: [{ ...item, description: DEFAULT_CARD_ITEM_DESC, isDefault: true }]
+  };
 };
 
 const normalizeEntry = (entry) => {
@@ -241,17 +268,21 @@ const normalizeEntry = (entry) => {
     else if (normalized.person === 'barbara') normalized.category = 'Cartão de crédito Babi';
   }
 
-  if (isCreditCardEntry(normalized) && normalized.card_items.length === 0) {
+  if (!isCreditCardEntry(normalized)) return normalized;
+
+  if (normalized.card_items.length === 0) {
     normalized.card_items = [createDefaultCardItem(normalized)];
-  } else if (isCreditCardEntry(normalized)) {
-    return syncDefaultFaturaItem(normalized);
+    return normalized;
   }
 
-  return normalized;
-};
+  normalized.card_items = migrateLegacyCardItems(normalized).card_items;
 
-const sumCardItems = (items = []) =>
-  items.reduce((acc, item) => acc + (Number(item.value) || 0), 0);
+  if (normalized.card_items.length === 1) {
+    return syncDefaultCartaoItem(normalized);
+  }
+
+  return syncCardEntryFromItems(normalized);
+};
 
 const personFromCardCategory = (category) => {
   if (category === 'Cartão de crédito Gabriel') return 'gabriel';
@@ -400,7 +431,8 @@ const addCardItem = (entryId, description, value) => {
 
   const items = [...(entries[index].card_items ?? [])];
   items.push({ id: generateId(), description, value });
-  entries[index] = { ...entries[index], card_items: items };
+  const total = sumCardItems(items);
+  entries[index] = { ...entries[index], card_items: items, value: total };
   expandedCardEntries.add(entryId);
   setCurrentEntries(entries);
   notify.success('Item adicionado ao cartão.');
@@ -412,9 +444,13 @@ const deleteCardItem = (entryId, itemId) => {
   const index = entries.findIndex((e) => e.id === entryId);
   if (index === -1) return;
 
+  const items = (entries[index].card_items ?? []).filter((item) => item.id !== itemId);
+  const total = items.length ? sumCardItems(items) : entries[index].value;
+
   entries[index] = {
     ...entries[index],
-    card_items: (entries[index].card_items ?? []).filter((item) => item.id !== itemId)
+    card_items: items,
+    value: total
   };
   setCurrentEntries(entries);
   render();
