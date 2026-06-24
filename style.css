@@ -1275,9 +1275,34 @@ body {
   .app-card .card-body.p-4 {
     padding: 1.35rem !important;
   }
+
+  .chart-box {
+    padding: 1rem 1.1rem;
+  }
+
+  .chart-box canvas {
+    max-height: 280px;
+  }
+
+  .modal-dialog-edit {
+    max-width: min(720px, 94vw);
+  }
+
+  .modal-dialog-edit .modal-body {
+    padding: 1rem 1.35rem 1.25rem;
+  }
+
+  .entries-panel__subtotal {
+    font-size: 1rem;
+  }
+
+  .app-tabs__scroll {
+    padding: 0.55rem 0;
+    gap: 0.35rem;
+  }
 }
 
-/* Tablet retrato: cards em coluna única se a tela for estreita */
+/* Tablet retrato estreito: cards em coluna única */
 @media (min-width: 768px) and (max-width: 879.98px) {
   .entries-cards {
     grid-template-columns: 1fr;

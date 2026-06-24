@@ -839,14 +839,14 @@
           ${tile('', 'Metas ativas', metasAtivas.length, 'bullseye')}
         </div>
         <div class="row g-3 mb-3">
-          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Receitas x Despesas x Investimentos</h3><canvas id="dashChartIE" height="200"></canvas></div></div>
-          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Evolução do saldo (12 meses)</h3><canvas id="dashChartSaldo" height="200"></canvas></div></div>
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Receitas x Despesas x Investimentos</h3><canvas id="dashChartIE" height="200"></canvas></div></div>
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Evolução do saldo (12 meses)</h3><canvas id="dashChartSaldo" height="200"></canvas></div></div>
         </div>
         <div class="row g-3">
-          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Progresso das metas</h3>
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Progresso das metas</h3>
             ${metasAtivas.length ? metasAtivas.slice(0, 5).map((m) => `<div class="mb-2"><div class="mod-card__row"><span>${escapeHtml(m.nome)}</span><span>${pct(metaAtual(m), m.valorObjetivo)}%</span></div>${progressBar(metaAtual(m), m.valorObjetivo)}</div>`).join('') : '<p class="text-muted mb-0">Nenhuma meta ativa.</p>'}
           </div></div>
-          <div class="col-lg-6"><div class="chart-box"><h3 class="chart-box__title">Próximos vencimentos</h3>
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Próximos vencimentos</h3>
             ${venc.length ? `<ul class="mod-history">${venc.slice(0, 8).map((v) => `<li><span><i class="bi bi-${v.icon} me-1" style="color:${v.color}"></i>${escapeHtml(v.title)}</span><strong>${v.dias <= 0 ? 'hoje/atrasado' : 'em ' + v.dias + 'd'}</strong></li>`).join('')}</ul>` : '<p class="text-muted mb-0">Nada vencendo em breve.</p>'}
           </div></div>
         </div>`;

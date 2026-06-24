@@ -395,4 +395,30 @@
   .mod-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .dash-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dash-tile__value {
+    font-size: 1.15rem;
+  }
+
+  .mod-suggest__item {
+    flex-wrap: nowrap;
+  }
+
+  .view-header .btn {
+    flex-shrink: 0;
+  }
+}
+
+@media (min-width: 992px) and (max-width: 1199.98px) {
+  .dash-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .mod-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
