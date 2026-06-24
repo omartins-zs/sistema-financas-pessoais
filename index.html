@@ -158,42 +158,42 @@
 
       <!-- Resumo + Cálculo do mês -->
       <section class="row g-3 mb-3" aria-label="Resumo do mês">
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--income">
             <i class="bi bi-arrow-down-circle"></i>
             <span class="summary-card__label">Entradas</span>
             <strong class="summary-card__value" id="totalIncome">R$ 0,00</strong>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--expense">
             <i class="bi bi-arrow-up-circle"></i>
             <span class="summary-card__label">Despesas</span>
             <strong class="summary-card__value" id="totalExpense">R$ 0,00</strong>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--investment">
             <i class="bi bi-piggy-bank"></i>
             <span class="summary-card__label">Investimentos</span>
             <strong class="summary-card__value" id="totalInvestment">R$ 0,00</strong>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--paid">
             <i class="bi bi-check-circle"></i>
             <span class="summary-card__label">Pago</span>
             <strong class="summary-card__value" id="totalPaid">R$ 0,00</strong>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--reserved">
             <i class="bi bi-clock-history"></i>
             <span class="summary-card__label">Reservado</span>
             <strong class="summary-card__value" id="totalReserved">R$ 0,00</strong>
           </div>
         </div>
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--unpaid">
             <i class="bi bi-exclamation-circle"></i>
             <span class="summary-card__label">Não pago</span>
@@ -209,7 +209,7 @@
           </div>
         </div>
         -->
-        <div class="col-6 col-md-4 col-xl-2">
+        <div class="col-6 col-sm-4 col-lg-3 col-xl-2">
           <div class="summary-card summary-card--sobra">
             <span class="summary-card__label">Sobra</span>
             <span class="summary-card__formula">Entradas − Despesas − Investimentos</span>
@@ -311,7 +311,7 @@
           <p class="entries-panel__hint mb-0">Salários, renda extra e valores que entram na casa</p>
         </div>
         <div class="entries-panel__body">
-          <div class="entries-table-wrap d-none d-md-block" id="incomeTableWrapper">
+          <div class="entries-table-wrap d-none d-xl-block" id="incomeTableWrapper">
             <table class="entries-table" id="incomeTable">
               <thead>
                 <tr>
@@ -328,7 +328,7 @@
               <tbody id="incomeBody"></tbody>
             </table>
           </div>
-          <div class="entries-cards d-md-none" id="incomeCards"></div>
+          <div class="entries-cards d-xl-none" id="incomeCards"></div>
           <div class="empty-section text-center py-4" id="incomeEmpty" hidden>
             <i class="bi bi-plus-circle-dotted"></i>
             <p class="mb-0 small text-muted">Nenhuma entrada neste mês</p>
@@ -349,7 +349,7 @@
           <p class="entries-panel__hint mb-0">Contas, mercado, cartão e gastos do mês</p>
         </div>
         <div class="entries-panel__body">
-          <div class="entries-table-wrap d-none d-md-block" id="expenseTableWrapper">
+          <div class="entries-table-wrap d-none d-xl-block" id="expenseTableWrapper">
             <table class="entries-table" id="expenseTable">
               <thead>
                 <tr>
@@ -366,7 +366,7 @@
               <tbody id="expenseBody"></tbody>
             </table>
           </div>
-          <div class="entries-cards d-md-none" id="expenseCards"></div>
+          <div class="entries-cards d-xl-none" id="expenseCards"></div>
           <div class="empty-section text-center py-4" id="expenseEmpty" hidden>
             <i class="bi bi-plus-circle-dotted"></i>
             <p class="mb-0 small text-muted">Nenhuma despesa neste mês</p>
@@ -387,7 +387,7 @@
           <p class="entries-panel__hint mb-0">Dinheiro reservado — entra no cálculo do mês, mas não mistura com despesas comuns</p>
         </div>
         <div class="entries-panel__body">
-          <div class="entries-table-wrap d-none d-md-block" id="investmentTableWrapper">
+          <div class="entries-table-wrap d-none d-xl-block" id="investmentTableWrapper">
             <table class="entries-table" id="investmentTable">
               <thead>
                 <tr>
@@ -404,7 +404,7 @@
               <tbody id="investmentBody"></tbody>
             </table>
           </div>
-          <div class="entries-cards d-md-none" id="investmentCards"></div>
+          <div class="entries-cards d-xl-none" id="investmentCards"></div>
           <div class="empty-section text-center py-4" id="investmentEmpty" hidden>
             <i class="bi bi-piggy-bank"></i>
             <p class="mb-0 small text-muted">Nenhum investimento/reserva neste mês</p>

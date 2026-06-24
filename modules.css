@@ -355,3 +355,44 @@
   .mod-summary { gap: 0.9rem; }
   .fm-grid { grid-template-columns: 1fr; }
 }
+
+/* Tablet e médio */
+@media (min-width: 576px) and (max-width: 1199.98px) {
+  .view-header {
+    gap: 1rem;
+  }
+
+  .mod-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mod-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .mod-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+  }
+
+  .mod-summary__item strong {
+    font-size: 1.05rem;
+  }
+
+  .mod-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-tab {
+    font-size: 0.86rem;
+    padding: 0.48rem 0.85rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .mod-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
