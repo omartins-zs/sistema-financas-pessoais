@@ -1,0 +1,34 @@
+# ---- App estático (github-pages) + Laravel local (mesma pasta no Laragon) ----
+
+# Dependências
+/node_modules
+/vendor
+
+# Ambiente / segredos
+.env
+.env.*
+!.env.example
+
+# Build / cache frontend
+/.vite
+/public/build
+/public/hot
+/public/storage
+
+# Laravel (presente ao trocar para branch master ou rodar composer)
+/bootstrap/cache
+/storage
+/public
+
+# PHPUnit / IDE
+/.phpunit.cache
+.phpunit.result.cache
+.phpactor.json
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
