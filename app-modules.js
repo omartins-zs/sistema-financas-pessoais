@@ -695,8 +695,35 @@
   };
 
   // ==========================================================
-  // MÓDULO: ASSINATURAS
+  // MÓDULO: CONTAS FIXAS (assinaturas / serviços recorrentes)
   // ==========================================================
+  const PERSON_ORDER = { gabriel: 0, barbara: 1, casa: 2, familia: 3 };
+
+  const recurringCardItemsMonth = () => {
+    const out = [];
+    (allData[getMonthKey(currentDate)] || []).forEach((entry) => {
+      const cat = String(entry.category ?? '').toLowerCase();
+      if (!cat.includes('cartão') && !cat.includes('cartao')) return;
+      (entry.card_items || []).forEach((item) => {
+        if (!item.recurring) return;
+        const desc = String(item.description ?? '').trim();
+        if (/^cart[aã]o$/i.test(desc) || /^fatura/i.test(desc)) return;
+        out.push({
+          nome: item.description,
+          valor: item.value || 0,
+          cartao: entry.description,
+          person: entry.person
+        });
+      });
+    });
+    return out.sort((a, b) => {
+      const pa = PERSON_ORDER[a.person] ?? 99;
+      const pb = PERSON_ORDER[b.person] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return String(a.nome).localeCompare(String(b.nome), 'pt-BR');
+    });
+  };
+
   const Assinaturas = {
     _suggestions: [],
     fields: (a = {}) => [
@@ -707,24 +734,24 @@
       { name: 'status', label: 'Status', type: 'select', value: a.status || 'ativa', options: [{ value: 'ativa', label: 'Ativa' }, { value: 'cancelada', label: 'Cancelada' }] }
     ],
     async add() {
-      const v = await formModal({ title: 'Nova assinatura', icon: 'repeat', fields: this.fields() });
+      const v = await formModal({ title: 'Nova conta fixa', icon: 'repeat', fields: this.fields() });
       if (!v) return;
       upsert('assinaturas', { id: generateId(), ...v });
-      notify.success('Assinatura cadastrada!');
+      notify.success('Conta fixa cadastrada!');
     },
     async edit(id) {
       const a = coll('assinaturas').find((x) => x.id === id);
       if (!a) return;
-      const v = await formModal({ title: 'Editar assinatura', icon: 'repeat', fields: this.fields(a) });
+      const v = await formModal({ title: 'Editar conta fixa', icon: 'repeat', fields: this.fields(a) });
       if (!v) return;
       upsert('assinaturas', { ...a, ...v });
-      notify.success('Assinatura atualizada!');
+      notify.success('Conta fixa atualizada!');
     },
     async addFromSuggestion(idx) {
       const sug = (this._suggestions || [])[Number(idx)];
       if (!sug) return;
       const v = await formModal({
-        title: 'Adicionar assinatura sugerida',
+        title: 'Adicionar conta fixa sugerida',
         icon: 'magic',
         fields: this.fields({
           nome: sug.nome,
@@ -736,7 +763,7 @@
       });
       if (!v) return;
       upsert('assinaturas', { id: generateId(), status: 'ativa', ...v });
-      notify.success(`"${sug.nome}" adicionada às assinaturas!`);
+      notify.success(`"${sug.nome}" adicionada às contas fixas!`);
     },
     renderSuggestions() {
       this._suggestions = detectSubscriptionCandidates(3);
@@ -762,9 +789,32 @@
           <p class="mod-suggest__title"><i class="bi bi-stars"></i> Sugestões dos últimos 3 meses</p>
           <span class="mod-badge mod-badge--blue">${list.length} encontrada(s)</span>
         </div>
-        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido. Revise e adicione às assinaturas.</p>
+        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido. Revise e adicione às contas fixas.</p>
         <div class="mod-suggest__list">${items}</div>
       </div>`;
+    },
+    renderCardRecurringMonth() {
+      const items = recurringCardItemsMonth();
+      if (!items.length) return '';
+
+      const total = sum(items, (i) => i.valor || 0);
+      const rows = items.map((item) => `
+        <li class="card-recurring-row">
+          <div class="card-recurring-row__body">
+            <strong>${escapeHtml(item.nome)}</strong>
+            <span class="card-recurring-row__meta">${escapeHtml(item.cartao)} · ${escapeHtml(PERSON_LABELS[item.person] || '—')}</span>
+          </div>
+          <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
+        </li>`).join('');
+
+      return `
+        <div class="mod-card-recurring">
+          <div class="mod-card-recurring__head">
+            <p class="mod-card-recurring__title"><i class="bi bi-credit-card-2-front"></i> Recorrentes no cartão — ${MESES[currentDate.month()]}</p>
+            <span class="mod-badge mod-badge--amber">${formatCurrency(total)}</span>
+          </div>
+          <ul class="mod-card-recurring__list">${rows}</ul>
+        </div>`;
     },
     render(c) {
       const list = coll('assinaturas');
@@ -787,17 +837,18 @@
       }).join('');
       c.innerHTML = `
         <div class="view-header">
-          <div><h2 class="h4"><i class="bi bi-arrow-repeat app-icon"></i> Assinaturas</h2>
-          <p class="view-header__hint">Serviços recorrentes e seus vencimentos</p></div>
-          <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova assinatura</button>
+          <div><h2 class="h4"><i class="bi bi-arrow-repeat app-icon"></i> Contas fixas</h2>
+          <p class="view-header__hint">Serviços recorrentes</p></div>
+          <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova conta fixa</button>
         </div>
         ${this.renderSuggestions()}
+        ${this.renderCardRecurringMonth()}
         ${list.length ? `<div class="mod-summary">
           <div class="mod-summary__item"><span>Gasto mensal (ativas)</span><strong style="color:var(--app-expense)">${formatCurrency(totalMes)}</strong></div>
           <div class="mod-summary__item"><span>Gasto anual</span><strong>${formatCurrency(totalMes * 12)}</strong></div>
-          <div class="mod-summary__item"><span>Assinaturas ativas</span><strong>${ativas.length}</strong></div>
+          <div class="mod-summary__item"><span>Contas ativas</span><strong>${ativas.length}</strong></div>
         </div>` : ''}
-        ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhuma assinatura cadastrada.')}`;
+        ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhuma conta fixa cadastrada.')}`;
     }
   };
 
@@ -864,7 +915,7 @@
       });
       coll('assinaturas').filter((a) => a.status !== 'cancelada' && a.vencimentoDia).forEach((a) => {
         const dias = daysUntil(nextDueDate(a.vencimentoDia));
-        if (dias !== null && dias <= 7) out.push({ title: a.nome + ' (assinatura)', dias, icon: 'arrow-repeat', color: 'var(--app-reserved)' });
+        if (dias !== null && dias <= 7) out.push({ title: a.nome + ' (conta fixa)', dias, icon: 'arrow-repeat', color: 'var(--app-reserved)' });
       });
       coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
         const dias = daysUntil(nextDueDate(k.vencimento));
@@ -1085,7 +1136,7 @@
     });
     coll('assinaturas').filter((a) => a.status !== 'cancelada' && a.vencimentoDia).forEach((a) => {
       const dias = daysUntil(nextDueDate(a.vencimentoDia));
-      if (dias !== null && dias <= 3) out.push({ level: 'blue', icon: 'arrow-repeat', title: `${a.nome} vence em ${dias}d`, desc: `Assinatura · ${formatCurrency(a.valor || 0)}` });
+      if (dias !== null && dias <= 3) out.push({ level: 'blue', icon: 'arrow-repeat', title: `${a.nome} vence em ${dias}d`, desc: `Conta fixa · ${formatCurrency(a.valor || 0)}` });
     });
     coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
       const dias = daysUntil(nextDueDate(k.vencimento));
@@ -1181,7 +1232,7 @@
     ['cartoes', 'credit-card-2-front', 'Cartões'],
     ['investimentos', 'graph-up-arrow', 'Investimentos'],
     ['patrimonio', 'houses', 'Patrimônio'],
-    ['assinaturas', 'arrow-repeat', 'Assinaturas'],
+    ['assinaturas', 'arrow-repeat', 'Contas fixas'],
     ['relatorios', 'funnel', 'Relatórios']
   ];
 

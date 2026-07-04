@@ -62,6 +62,20 @@ const PERSON_LABELS = {
   familia: 'Família'
 };
 
+const PERSON_SORT_ORDER = {
+  gabriel: 0,
+  barbara: 1,
+  casa: 2,
+  familia: 3
+};
+
+const sortByPersonThenDescription = (a, b) => {
+  const pa = PERSON_SORT_ORDER[a.person] ?? 99;
+  const pb = PERSON_SORT_ORDER[b.person] ?? 99;
+  if (pa !== pb) return pa - pb;
+  return a.description.localeCompare(b.description, 'pt-BR');
+};
+
 const PERSON_MAP = {
   gabriel: 'gabriel',
   gab: 'gabriel',
@@ -275,6 +289,10 @@ const migrateLegacyCardItems = (entry) => {
 const normalizeEntry = (entry) => {
   const normalized = { ...entry };
   if (!Array.isArray(normalized.card_items)) normalized.card_items = [];
+  normalized.card_items = normalized.card_items.map((item) => ({
+    ...item,
+    recurring: item.recurring === true
+  }));
   if (normalized.category === 'Cartão de crédito') {
     if (normalized.person === 'gabriel') normalized.category = 'Cartão de crédito Gabriel';
     else if (normalized.person === 'barbara') normalized.category = 'Cartão de crédito Babi';
@@ -433,7 +451,7 @@ const setCurrentEntries = (entries) => {
   saveData();
 };
 
-const addCardItem = (entryId, description, value) => {
+const addCardItem = (entryId, description, value, recurring = false) => {
   if (!description) { notify.error('Informe a descrição do item.'); return; }
   if (value <= 0) { notify.error('Informe um valor maior que zero.'); return; }
 
@@ -442,12 +460,28 @@ const addCardItem = (entryId, description, value) => {
   if (index === -1) return;
 
   const items = [...(entries[index].card_items ?? [])];
-  items.push({ id: generateId(), description, value });
+  items.push({ id: generateId(), description, value, recurring: recurring === true });
   const total = sumCardItems(items);
   entries[index] = { ...entries[index], card_items: items, value: total };
   expandedCardEntries.add(entryId);
   setCurrentEntries(entries);
-  notify.success('Item adicionado ao cartão.');
+  notify.success(recurring ? 'Item recorrente adicionado ao cartão.' : 'Item adicionado ao cartão.');
+  render();
+};
+
+const toggleCardItemRecurring = (entryId, itemId) => {
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return;
+
+  const items = (entries[index].card_items ?? []).map((item) => {
+    if (item.id !== itemId || isDefaultCardItem(item)) return item;
+    return { ...item, recurring: !item.recurring };
+  });
+
+  entries[index] = { ...entries[index], card_items: items };
+  expandedCardEntries.add(entryId);
+  setCurrentEntries(entries);
   render();
 };
 
@@ -614,13 +648,13 @@ const getMonthBalances = (summary) => {
 const splitEntries = (entries) => ({
   income: entries
     .filter((e) => e.type === 'entrada')
-    .sort((a, b) => a.description.localeCompare(b.description, 'pt-BR')),
+    .sort(sortByPersonThenDescription),
   expense: entries
     .filter((e) => e.type === 'despesa')
-    .sort((a, b) => a.description.localeCompare(b.description, 'pt-BR')),
+    .sort(sortByPersonThenDescription),
   investment: entries
     .filter((e) => e.type === 'investimento')
-    .sort((a, b) => a.description.localeCompare(b.description, 'pt-BR'))
+    .sort(sortByPersonThenDescription)
 });
 
 const getExpensesByCategory = (entries) =>
@@ -1403,30 +1437,60 @@ const renderDueDay = (due_day) => due_day
   ? `<span class="badge text-bg-light border" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>dia ${due_day}</span>`
   : '<span class="text-muted">—</span>';
 
+const renderCardItemRow = (entry, item) => {
+  const isDefault = isDefaultCardItem(item);
+  const recurring = item.recurring === true;
+  return `
+    <li class="card-item${recurring ? ' card-item--recurring' : ''}">
+      <span class="card-item__desc">
+        ${escapeHtml(item.description)}
+        ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
+      </span>
+      <strong class="card-item__value">${formatCurrency(item.value)}</strong>
+      <div class="card-item__actions">
+        ${isDefault ? '' : `<button type="button" class="card-item__recurring${recurring ? ' is-active' : ''}" data-action="toggle-card-recurring" data-id="${entry.id}" data-item-id="${item.id}" title="${recurring ? 'Remover recorrência' : 'Marcar como recorrente'}" aria-label="Recorrente">
+          <i class="bi bi-arrow-repeat"></i>
+        </button>`}
+        ${isDefault ? '' : `<button type="button" class="card-item__remove" data-action="delete-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Remover item" aria-label="Remover item">
+          <i class="bi bi-x-lg"></i>
+        </button>`}
+      </div>
+    </li>`;
+};
+
 const renderCardItemsPanel = (entry, items) => {
-  const itemsHtml = items.length
-    ? items.map((item) => `
-        <li class="card-item">
-          <span class="card-item__desc">${escapeHtml(item.description)}</span>
-          <strong class="card-item__value">${formatCurrency(item.value)}</strong>
-          <button type="button" class="card-item__remove" data-action="delete-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Remover item" aria-label="Remover item">
-            <i class="bi bi-x-lg"></i>
-          </button>
-        </li>`).join('')
-    : '';
+  const regular = items.filter((item) => !item.recurring);
+  const recurring = items.filter((item) => item.recurring);
+  const regularHtml = regular.length
+    ? regular.map((item) => renderCardItemRow(entry, item)).join('')
+    : '<li class="card-item card-item--empty">Nenhum item avulso</li>';
+  const recurringHtml = recurring.length
+    ? recurring.map((item) => renderCardItemRow(entry, item)).join('')
+    : '<li class="card-item card-item--empty">Nenhum item recorrente neste cartão</li>';
 
   const itemsSum = sumCardItems(items);
+  const recurringSum = sumCardItems(recurring);
 
   return `
     <div class="card-items-panel" data-card-id="${entry.id}">
       <p class="card-items-panel__title"><i class="bi bi-receipt"></i> Itens da fatura</p>
-      <ul class="card-items-list">${itemsHtml}</ul>
-      <p class="card-items-sum">Soma dos itens: <strong>${formatCurrency(itemsSum)}</strong> · Total da fatura: <strong>${formatCurrency(entry.value)}</strong></p>
+      <ul class="card-items-list">${regularHtml}</ul>
+      <p class="card-items-panel__title card-items-panel__title--recurring"><i class="bi bi-arrow-repeat"></i> Recorrentes no cartão</p>
+      <ul class="card-items-list card-items-list--recurring">${recurringHtml}</ul>
+      <p class="card-items-sum">
+        Soma dos itens: <strong>${formatCurrency(itemsSum)}</strong>
+        · Recorrentes: <strong>${formatCurrency(recurringSum)}</strong>
+        · Total da fatura: <strong>${formatCurrency(entry.value)}</strong>
+      </p>
       <div class="card-item-add">
         <input type="text" class="form-control form-control-sm card-item-desc" placeholder="Ex: Gasolina" aria-label="Descrição do item">
         <input type="text" class="form-control form-control-sm card-item-val" placeholder="0,00" inputmode="decimal" aria-label="Valor do item">
+        <label class="card-item-recurring-check">
+          <input type="checkbox" class="card-item-recurring">
+          <span>Recorrente</span>
+        </label>
         <button type="button" class="btn btn-sm btn-primary" data-action="add-card-item" data-id="${entry.id}">
-          <i class="bi bi-plus-lg"></i> Adicionar item
+          <i class="bi bi-plus-lg"></i> Adicionar
         </button>
       </div>
     </div>`;
@@ -1435,6 +1499,7 @@ const renderCardItemsPanel = (entry, items) => {
 const renderCreditCardRows = (entry, valueClass) => {
   const expanded = expandedCardEntries.has(entry.id);
   const items = entry.card_items ?? [];
+  const recurringItems = items.filter((item) => item.recurring);
 
   return `
     <tr class="entry-row entry-row--card" data-id="${entry.id}">
@@ -1444,6 +1509,7 @@ const renderCreditCardRows = (entry, valueClass) => {
         </button>
         ${escapeHtml(entry.description)}
         ${items.length ? `<span class="card-items-badge">${items.length}</span>` : ''}
+        ${recurringItems.length ? `<span class="card-items-badge card-items-badge--recurring" title="Itens recorrentes">${recurringItems.length} rec.</span>` : ''}
       </td>
       <td>${renderPersonTag(entry.person)}</td>
       <td><span class="category-tag category-tag--card">${escapeHtml(entry.category)}</span></td>
@@ -1483,6 +1549,7 @@ const renderEntryCard = (entry, valueClass) => {
   if (isCreditCardEntry(entry)) {
     const expanded = expandedCardEntries.has(entry.id);
     const items = entry.card_items ?? [];
+    const recurringItems = items.filter((item) => item.recurring);
 
     return `
     <div class="entry-card entry-card--credit" data-id="${entry.id}">
@@ -1497,6 +1564,7 @@ const renderEntryCard = (entry, valueClass) => {
         ${renderPersonTag(entry.person)}
         <span class="category-tag category-tag--card">${escapeHtml(entry.category)}</span>${due}
         ${items.length ? `<span class="card-items-badge">${items.length} item(ns)</span>` : ''}
+        ${recurringItems.length ? `<span class="card-items-badge card-items-badge--recurring">${recurringItems.length} rec.</span>` : ''}
       </div>
       ${obs}
       <div class="card-details-mobile ${expanded ? '' : 'd-none'}">${renderCardItemsPanel(entry, items)}</div>
@@ -1636,7 +1704,13 @@ const handleListClick = (e) => {
     const panel = btn.closest('.card-items-panel');
     const description = panel?.querySelector('.card-item-desc')?.value?.trim() ?? '';
     const value = parseValue(panel?.querySelector('.card-item-val')?.value ?? '0');
-    addCardItem(id, description, value);
+    const recurring = panel?.querySelector('.card-item-recurring')?.checked ?? false;
+    addCardItem(id, description, value, recurring);
+    return;
+  }
+
+  if (action === 'toggle-card-recurring') {
+    toggleCardItemRecurring(id, itemId);
     return;
   }
 

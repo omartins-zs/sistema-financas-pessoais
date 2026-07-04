@@ -213,6 +213,71 @@
 .mod-suggest__body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
 .mod-suggest__meta { color: var(--app-text-muted); font-size: 0.78rem; }
 
+/* Recorrentes no cartão (Contas fixas) */
+.mod-card-recurring {
+  background: color-mix(in srgb, var(--app-reserved) 8%, var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--app-reserved) 30%, var(--app-border));
+  border-radius: var(--app-radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.mod-card-recurring__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.mod-card-recurring__title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mod-card-recurring__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.card-recurring-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+}
+
+.card-recurring-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.card-recurring-row__meta {
+  font-size: 0.76rem;
+  color: var(--app-text-muted);
+}
+
+.card-recurring-row__value {
+  color: var(--app-expense);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Estado vazio dos módulos */
 .mod-empty {
   text-align: center;

@@ -1689,9 +1689,85 @@ body.auth-locked { overflow: hidden; }
   color: var(--app-text-muted);
 }
 
+.card-items-badge--recurring {
+  background: color-mix(in srgb, var(--app-reserved) 20%, var(--app-surface-2));
+  color: var(--app-reserved);
+}
+
+.card-items-panel__title--recurring {
+  margin-top: 0.75rem;
+  color: color-mix(in srgb, var(--app-reserved) 85%, var(--app-text-muted));
+}
+
+.card-items-list--recurring {
+  background: color-mix(in srgb, var(--app-reserved) 6%, var(--app-surface-2));
+  border: 1px dashed color-mix(in srgb, var(--app-reserved) 35%, var(--app-border));
+  border-radius: 10px;
+  padding: 0.35rem 0.65rem;
+}
+
+.card-item--recurring {
+  border-bottom-color: color-mix(in srgb, var(--app-reserved) 20%, var(--app-border));
+}
+
+.card-item__tag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--app-reserved) 18%, var(--app-surface-2));
+  color: var(--app-reserved);
+  vertical-align: middle;
+}
+
+.card-item__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.card-item__recurring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-faint);
+}
+
+.card-item__recurring:hover,
+.card-item__recurring.is-active {
+  background: color-mix(in srgb, var(--app-reserved) 14%, transparent);
+  color: var(--app-reserved);
+}
+
+.card-item-recurring-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.card-item-recurring-check input {
+  accent-color: var(--app-reserved);
+}
+
 .card-item-add {
   display: grid;
-  grid-template-columns: 1fr minmax(5.5rem, 7rem) auto;
+  grid-template-columns: 1fr minmax(5.5rem, 7rem) auto auto;
   gap: 0.45rem;
   align-items: center;
 }
@@ -1707,6 +1783,10 @@ body.auth-locked { overflow: hidden; }
     grid-template-columns: 1fr 1fr;
   }
 
+  .card-item-recurring-check {
+    grid-column: 1 / -1;
+  }
+
   .card-item-add .btn {
     grid-column: 1 / -1;
   }
@@ -1714,6 +1794,6 @@ body.auth-locked { overflow: hidden; }
 
 @media (min-width: 768px) and (max-width: 1199.98px) {
   .card-item-add {
-    grid-template-columns: 1fr minmax(6rem, 8rem) auto;
+    grid-template-columns: 1fr minmax(6rem, 8rem) auto auto;
   }
 }
