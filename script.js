@@ -311,7 +311,11 @@ const normalizeEntry = (entry) => {
   normalized.card_items = migrateLegacyCardItems(normalized).card_items;
 
   if (normalized.card_items.length === 1) {
-    return syncDefaultCartaoItem(normalized);
+    const only = normalized.card_items[0];
+    if (isDefaultCardItem(only)) {
+      return syncDefaultCartaoItem(normalized);
+    }
+    return syncCardEntryFromItems(normalized);
   }
 
   return syncCardEntryFromItems(normalized);
@@ -623,20 +627,31 @@ const toggleCardItemRecurring = (entryId, itemId) => {
   render();
 };
 
+const canDeleteCardItem = (item, items = []) =>
+  items.length > 1;
+
 const deleteCardItem = (entryId, itemId) => {
   const entries = getCurrentEntries();
   const index = entries.findIndex((e) => e.id === entryId);
   if (index === -1) return;
 
-  const items = (entries[index].card_items ?? []).filter((item) => item.id !== itemId);
-  const total = items.length ? sumCardItems(items) : entries[index].value;
+  const currentItems = entries[index].card_items ?? [];
+  if (!canDeleteCardItem(null, currentItems)) {
+    notify.error('Adicione outros itens antes de remover o único restante.');
+    return;
+  }
 
-  entries[index] = {
+  const items = currentItems.filter((item) => item.id !== itemId);
+  const total = sumCardItems(items);
+
+  entries[index] = syncCardEntryFromItems({
     ...entries[index],
     card_items: items,
     value: total
-  };
+  });
+  expandedCardEntries.add(entryId);
   setCurrentEntries(entries);
+  notify.info('Item removido da fatura.');
   render();
 };
 
@@ -1579,6 +1594,9 @@ const renderCardItemRow = (entry, item) => {
   const isDefault = isDefaultCardItem(item);
   const recurring = item.recurring === true;
   const editKey = `${entry.id}:${item.id}`;
+  const allItems = entry.card_items ?? [];
+  const canDelete = canDeleteCardItem(item, allItems);
+  const deleteTitle = isDefault ? 'Remover valor base da fatura' : 'Remover item';
 
   if (editingCardItems.has(editKey)) {
     return `
@@ -1617,9 +1635,9 @@ const renderCardItemRow = (entry, item) => {
         ${isDefault ? '' : `<button type="button" class="card-item__recurring${recurring ? ' is-active' : ''}" data-action="toggle-card-recurring" data-id="${entry.id}" data-item-id="${item.id}" title="${recurring ? 'Remover recorrência' : 'Marcar como recorrente'}" aria-label="Recorrente">
           <i class="bi bi-arrow-repeat"></i>
         </button>`}
-        ${isDefault ? '' : `<button type="button" class="card-item__remove" data-action="delete-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Remover item" aria-label="Remover item">
+        ${canDelete ? `<button type="button" class="card-item__remove" data-action="delete-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="${deleteTitle}" aria-label="Remover item">
           <i class="bi bi-x-lg"></i>
-        </button>`}
+        </button>` : ''}
       </div>
     </li>`;
 };
