@@ -110,6 +110,9 @@ let maskEdit = null;
 let chartIncomeExpense = null;
 let chartCategories = null;
 const expandedCardEntries = new Set();
+const editingCardItems = new Set();
+let cardItemClip = null;
+let pendingCardFocusEntryId = null;
 
 const notyf = new Notyf({
   duration: 3000,
@@ -352,6 +355,8 @@ const escapeHtml = (str) => {
   return div.innerHTML;
 };
 
+const escapeAttr = (str) => escapeHtml(str).replace(/"/g, '&quot;');
+
 const notify = {
   success: (msg) => notyf.success(msg),
   error: (msg) => notyf.error(msg),
@@ -452,6 +457,104 @@ const setCurrentEntries = (entries) => {
 };
 
 const addCardItem = (entryId, description, value, recurring = false) => {
+  if (!description) { notify.error('Informe a descrição do item.'); return false; }
+  if (value <= 0) { notify.error('Informe um valor maior que zero.'); return false; }
+
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return false;
+
+  const items = [...(entries[index].card_items ?? [])];
+  items.push({ id: generateId(), description, value, recurring: recurring === true });
+  const total = sumCardItems(items);
+  entries[index] = { ...entries[index], card_items: items, value: total };
+  expandedCardEntries.add(entryId);
+  pendingCardFocusEntryId = entryId;
+  setCurrentEntries(entries);
+  notify.success(recurring ? 'Item recorrente adicionado ao cartão.' : 'Item adicionado ao cartão.');
+  render();
+  return true;
+};
+
+const clearCardItemAddForm = (panel) => {
+  if (!panel) return;
+  const desc = panel.querySelector('.card-item-desc');
+  const val = panel.querySelector('.card-item-val');
+  const rec = panel.querySelector('.card-item-recurring');
+  if (desc) desc.value = '';
+  if (val) val.value = '';
+  if (rec) rec.checked = false;
+};
+
+const submitCardItemAdd = (panel, entryId) => {
+  if (!panel || !entryId) return;
+  const description = panel.querySelector('.card-item-desc')?.value?.trim() ?? '';
+  const value = parseValue(panel.querySelector('.card-item-val')?.value ?? '0');
+  const recurring = panel.querySelector('.card-item-recurring')?.checked ?? false;
+  if (addCardItem(entryId, description, value, recurring)) {
+    clearCardItemAddForm(panel);
+  }
+};
+
+const parseCardItemPaste = (text) => {
+  const line = String(text ?? '').trim().split(/\r?\n/).find((l) => l.trim())?.trim() ?? '';
+  if (!line) return null;
+
+  if (line.includes('\t')) {
+    const [desc, val] = line.split('\t');
+    return { description: desc.trim(), value: parseValue(val) };
+  }
+  if (line.includes(';')) {
+    const [desc, val] = line.split(';');
+    return { description: desc.trim(), value: parseValue(val) };
+  }
+  const spaced = line.match(/^(.+?)\s+([\d.,]+)$/);
+  if (spaced) {
+    return { description: spaced[1].trim(), value: parseValue(spaced[2]) };
+  }
+  return { description: line, value: 0 };
+};
+
+const copyCardItem = (item) => {
+  cardItemClip = {
+    description: item.description,
+    value: Number(item.value) || 0,
+    recurring: item.recurring === true
+  };
+  const clipText = `${item.description}\t${formatValuePlain(item.value)}`;
+  navigator.clipboard?.writeText(clipText).catch(() => {});
+  notify.info('Item copiado. Use Colar ou Ctrl+V no formulário.');
+};
+
+const pasteCardItemToForm = async (panel) => {
+  let data = cardItemClip;
+
+  if (!data && navigator.clipboard?.readText) {
+    try {
+      const text = await navigator.clipboard.readText();
+      const parsed = parseCardItemPaste(text);
+      if (parsed?.description) data = { ...parsed, recurring: false };
+    } catch {
+      /* clipboard bloqueado */
+    }
+  }
+
+  if (!data?.description) {
+    notify.error('Nada para colar. Copie um item primeiro.');
+    return;
+  }
+
+  const desc = panel.querySelector('.card-item-desc');
+  const val = panel.querySelector('.card-item-val');
+  const rec = panel.querySelector('.card-item-recurring');
+  if (desc) desc.value = data.description;
+  if (val) val.value = formatValuePlain(data.value || 0);
+  if (rec) rec.checked = data.recurring === true;
+  desc?.focus();
+  desc?.select();
+};
+
+const updateCardItem = (entryId, itemId, description, value, recurring) => {
   if (!description) { notify.error('Informe a descrição do item.'); return; }
   if (value <= 0) { notify.error('Informe um valor maior que zero.'); return; }
 
@@ -459,13 +562,48 @@ const addCardItem = (entryId, description, value, recurring = false) => {
   const index = entries.findIndex((e) => e.id === entryId);
   if (index === -1) return;
 
-  const items = [...(entries[index].card_items ?? [])];
-  items.push({ id: generateId(), description, value, recurring: recurring === true });
-  const total = sumCardItems(items);
-  entries[index] = { ...entries[index], card_items: items, value: total };
+  const items = (entries[index].card_items ?? []).map((item) => {
+    if (item.id !== itemId) return item;
+
+    const wasDefault = isDefaultCardItem(item);
+    const next = {
+      ...item,
+      description,
+      value,
+      recurring: wasDefault ? false : recurring === true
+    };
+
+    if (wasDefault && /^cart[aã]o$/i.test(description.trim())) {
+      next.isDefault = true;
+    } else {
+      delete next.isDefault;
+    }
+
+    return next;
+  });
+
+  entries[index] = syncCardEntryFromItems({ ...entries[index], card_items: items });
+  editingCardItems.delete(`${entryId}:${itemId}`);
   expandedCardEntries.add(entryId);
+  pendingCardFocusEntryId = entryId;
   setCurrentEntries(entries);
-  notify.success(recurring ? 'Item recorrente adicionado ao cartão.' : 'Item adicionado ao cartão.');
+  notify.success('Item atualizado.');
+  render();
+};
+
+const startEditCardItem = (entryId, itemId) => {
+  editingCardItems.add(`${entryId}:${itemId}`);
+  expandedCardEntries.add(entryId);
+  render();
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`.card-item--editing[data-item-id="${itemId}"]`);
+    row?.querySelector('.card-item-edit-desc')?.focus();
+  });
+};
+
+const cancelEditCardItem = (entryId, itemId) => {
+  editingCardItems.delete(`${entryId}:${itemId}`);
+  pendingCardFocusEntryId = entryId;
   render();
 };
 
@@ -1440,14 +1578,42 @@ const renderDueDay = (due_day) => due_day
 const renderCardItemRow = (entry, item) => {
   const isDefault = isDefaultCardItem(item);
   const recurring = item.recurring === true;
+  const editKey = `${entry.id}:${item.id}`;
+
+  if (editingCardItems.has(editKey)) {
+    return `
+    <li class="card-item card-item--editing" data-item-id="${item.id}">
+      <input type="text" class="form-control form-control-sm card-item-edit-desc" value="${escapeAttr(item.description)}" aria-label="Editar descrição">
+      <input type="text" class="form-control form-control-sm card-item-edit-val" value="${escapeAttr(formatValuePlain(item.value))}" inputmode="decimal" aria-label="Editar valor">
+      ${isDefault ? '' : `<label class="card-item-recurring-check card-item-recurring-check--inline">
+        <input type="checkbox" class="card-item-edit-recurring"${recurring ? ' checked' : ''}>
+        <span>Rec.</span>
+      </label>`}
+      <div class="card-item__actions">
+        <button type="button" class="card-item__save" data-action="save-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Salvar" aria-label="Salvar">
+          <i class="bi bi-check-lg"></i>
+        </button>
+        <button type="button" class="card-item__cancel" data-action="cancel-card-item-edit" data-id="${entry.id}" data-item-id="${item.id}" title="Cancelar" aria-label="Cancelar">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+    </li>`;
+  }
+
   return `
-    <li class="card-item${recurring ? ' card-item--recurring' : ''}">
+    <li class="card-item${recurring ? ' card-item--recurring' : ''}" data-item-id="${item.id}">
       <span class="card-item__desc">
         ${escapeHtml(item.description)}
         ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
       </span>
       <strong class="card-item__value">${formatCurrency(item.value)}</strong>
       <div class="card-item__actions">
+        <button type="button" class="card-item__copy" data-action="copy-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Copiar" aria-label="Copiar item">
+          <i class="bi bi-clipboard"></i>
+        </button>
+        <button type="button" class="card-item__edit" data-action="edit-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Editar" aria-label="Editar item">
+          <i class="bi bi-pencil"></i>
+        </button>
         ${isDefault ? '' : `<button type="button" class="card-item__recurring${recurring ? ' is-active' : ''}" data-action="toggle-card-recurring" data-id="${entry.id}" data-item-id="${item.id}" title="${recurring ? 'Remover recorrência' : 'Marcar como recorrente'}" aria-label="Recorrente">
           <i class="bi bi-arrow-repeat"></i>
         </button>`}
@@ -1456,6 +1622,18 @@ const renderCardItemRow = (entry, item) => {
         </button>`}
       </div>
     </li>`;
+};
+
+const getCardItemFromEntry = (entryId, itemId) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  return entry?.card_items?.find((item) => item.id === itemId) ?? null;
+};
+
+const saveCardItemFromRow = (entryId, itemId, row) => {
+  const description = row.querySelector('.card-item-edit-desc')?.value?.trim() ?? '';
+  const value = parseValue(row.querySelector('.card-item-edit-val')?.value ?? '0');
+  const recurring = row.querySelector('.card-item-edit-recurring')?.checked ?? false;
+  updateCardItem(entryId, itemId, description, value, recurring);
 };
 
 const renderCardItemsPanel = (entry, items) => {
@@ -1489,10 +1667,16 @@ const renderCardItemsPanel = (entry, items) => {
           <input type="checkbox" class="card-item-recurring">
           <span>Recorrente</span>
         </label>
-        <button type="button" class="btn btn-sm btn-primary" data-action="add-card-item" data-id="${entry.id}">
-          <i class="bi bi-plus-lg"></i> Adicionar
-        </button>
+        <div class="card-item-add__actions">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-action="paste-card-item" data-id="${entry.id}" title="Colar item copiado">
+            <i class="bi bi-clipboard-plus"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-primary" data-action="add-card-item" data-id="${entry.id}">
+            <i class="bi bi-plus-lg"></i> Adicionar
+          </button>
+        </div>
       </div>
+      <p class="card-item-add__hint">Enter adiciona · Copie e cole itens entre faturas</p>
     </div>`;
 };
 
@@ -1681,6 +1865,15 @@ const render = () => {
 
   // Atualiza módulos avançados (dashboard, alertas, etc.), se carregados
   if (window.AppModules?.onDataRender) window.AppModules.onDataRender();
+
+  if (pendingCardFocusEntryId) {
+    const focusId = pendingCardFocusEntryId;
+    pendingCardFocusEntryId = null;
+    requestAnimationFrame(() => {
+      const panel = document.querySelector(`.card-items-panel[data-card-id="${focusId}"]`);
+      panel?.querySelector('.card-item-desc')?.focus();
+    });
+  }
 };
 
 // ============================================
@@ -1702,10 +1895,35 @@ const handleListClick = (e) => {
 
   if (action === 'add-card-item') {
     const panel = btn.closest('.card-items-panel');
-    const description = panel?.querySelector('.card-item-desc')?.value?.trim() ?? '';
-    const value = parseValue(panel?.querySelector('.card-item-val')?.value ?? '0');
-    const recurring = panel?.querySelector('.card-item-recurring')?.checked ?? false;
-    addCardItem(id, description, value, recurring);
+    submitCardItemAdd(panel, id);
+    return;
+  }
+
+  if (action === 'paste-card-item') {
+    const panel = btn.closest('.card-items-panel');
+    pasteCardItemToForm(panel);
+    return;
+  }
+
+  if (action === 'copy-card-item') {
+    const item = getCardItemFromEntry(id, itemId);
+    if (item) copyCardItem(item);
+    return;
+  }
+
+  if (action === 'edit-card-item') {
+    startEditCardItem(id, itemId);
+    return;
+  }
+
+  if (action === 'save-card-item') {
+    const row = btn.closest('.card-item--editing');
+    if (row) saveCardItemFromRow(id, itemId, row);
+    return;
+  }
+
+  if (action === 'cancel-card-item-edit') {
+    cancelEditCardItem(id, itemId);
     return;
   }
 
@@ -1731,6 +1949,54 @@ const handleListClick = (e) => {
 const bindListEvents = (tableEl, cardsEl) => {
   tableEl?.addEventListener('click', handleListClick);
   cardsEl?.addEventListener('click', handleListClick);
+  tableEl?.addEventListener('keydown', handleCardItemKeydown);
+  cardsEl?.addEventListener('keydown', handleCardItemKeydown);
+};
+
+const handleCardItemKeydown = (e) => {
+  const panel = e.target.closest('.card-items-panel');
+  if (!panel) return;
+
+  const entryId = panel.dataset.cardId;
+
+  if (e.key === 'Enter' && !e.shiftKey) {
+    const editRow = e.target.closest('.card-item--editing');
+    if (editRow) {
+      e.preventDefault();
+      saveCardItemFromRow(entryId, editRow.dataset.itemId, editRow);
+      return;
+    }
+
+    if (e.target.matches('.card-item-desc, .card-item-val')) {
+      e.preventDefault();
+      submitCardItemAdd(panel, entryId);
+    }
+    return;
+  }
+
+  if (e.key === 'Escape') {
+    const editRow = e.target.closest('.card-item--editing');
+    if (editRow) {
+      e.preventDefault();
+      cancelEditCardItem(entryId, editRow.dataset.itemId);
+    }
+  }
+};
+
+const handleCardItemPaste = (e) => {
+  const panel = e.target.closest('.card-items-panel');
+  if (!panel || !e.target.matches('.card-item-desc, .card-item-val')) return;
+
+  const text = e.clipboardData?.getData('text');
+  const parsed = parseCardItemPaste(text);
+  if (!parsed?.description) return;
+
+  e.preventDefault();
+  const desc = panel.querySelector('.card-item-desc');
+  const val = panel.querySelector('.card-item-val');
+  if (desc) desc.value = parsed.description;
+  if (val && parsed.value > 0) val.value = formatValuePlain(parsed.value);
+  (parsed.value > 0 ? val : desc)?.focus();
 };
 
 const bindEvents = () => {
@@ -1756,6 +2022,8 @@ const bindEvents = () => {
   bindListEvents(dom.incomeTable, dom.incomeCards);
   bindListEvents(dom.expenseTable, dom.expenseCards);
   bindListEvents(dom.investmentTable, dom.investmentCards);
+
+  document.addEventListener('paste', handleCardItemPaste);
 
   dom.inputType?.addEventListener('change', onTypeChange);
   dom.editType?.addEventListener('change', onEditTypeChange);

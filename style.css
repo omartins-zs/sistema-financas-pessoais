@@ -1765,6 +1765,75 @@ body.auth-locked { overflow: hidden; }
   accent-color: var(--app-reserved);
 }
 
+.card-item--editing {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem 0;
+  background: color-mix(in srgb, var(--app-primary) 6%, transparent);
+  border-radius: 8px;
+  margin: 0.15rem 0;
+}
+
+.card-item--editing .card-item-edit-desc {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.card-item--editing .card-item-edit-val {
+  flex: 0 1 5.5rem;
+  min-width: 4.5rem;
+}
+
+.card-item-recurring-check--inline {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.card-item__copy,
+.card-item__edit,
+.card-item__save,
+.card-item__cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-faint);
+}
+
+.card-item__copy:hover,
+.card-item__edit:hover {
+  background: color-mix(in srgb, var(--app-primary) 12%, transparent);
+  color: var(--app-primary);
+}
+
+.card-item__save:hover {
+  background: color-mix(in srgb, var(--app-income) 14%, transparent);
+  color: var(--app-income);
+}
+
+.card-item__cancel:hover {
+  background: color-mix(in srgb, var(--app-expense) 12%, transparent);
+  color: var(--app-expense);
+}
+
+.card-item-add__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.card-item-add__hint {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  color: var(--app-text-faint);
+}
+
 .card-item-add {
   display: grid;
   grid-template-columns: 1fr minmax(5.5rem, 7rem) auto auto;
@@ -1787,8 +1856,23 @@ body.auth-locked { overflow: hidden; }
     grid-column: 1 / -1;
   }
 
-  .card-item-add .btn {
+  .card-item-add__actions {
     grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .card-item-add__actions .btn {
+    flex: 1;
+  }
+
+  .card-item--editing {
+    padding: 0.5rem;
+  }
+
+  .card-item--editing .card-item-edit-desc,
+  .card-item--editing .card-item-edit-val {
+    flex: 1 1 100%;
+    width: 100%;
   }
 }
 
