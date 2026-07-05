@@ -81,6 +81,14 @@ Salve, faça commit e envie para o GitHub. Pronto! 🎉
 
 ---
 
+## 📄 Estrutura do banco de dados
+
+Documentação completa do JSON e do Firestore (Google):
+
+→ **[docs/ESTRUTURA-BANCO-DADOS.md](docs/ESTRUTURA-BANCO-DADOS.md)**
+
+---
+
 ## 6. Autorizar o domínio do GitHub Pages
 
 Para o login funcionar no site publicado:

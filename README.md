@@ -167,6 +167,7 @@ Projeto pensado para **controle financeiro familiar real** — Gabriel e Barbara
 
 | Arquivo / Pasta | Branch | Conteúdo |
 |-----------------|--------|----------|
+| [`docs/ESTRUTURA-BANCO-DADOS.md`](docs/ESTRUTURA-BANCO-DADOS.md) | `github-pages` | JSON + Firestore (Google) — estrutura completa |
 | [`FIREBASE.md`](FIREBASE.md) | `github-pages` | Configurar Auth + Firestore para sync na nuvem |
 | [`dados/README.md`](dados/README.md) | `github-pages` | Importação de planilhas CSV/Excel |
 | [`docs/COMO_EXECUTAR.md`](docs/COMO_EXECUTAR.md) | `master` | Índice de execução local e Docker |
