@@ -79,13 +79,7 @@ const firebaseConfig = {
 
 Salve, faça commit e envie para o GitHub. Pronto! 🎉
 
----
-
-## 📄 Estrutura do banco de dados
-
-Documentação completa do JSON e do Firestore (Google):
-
-→ **[docs/ESTRUTURA-BANCO-DADOS.md](docs/ESTRUTURA-BANCO-DADOS.md)**
+> Estrutura completa do banco (Google Firebase) também está no [README](README.md#-estrutura-de-banco-de-dados-google-firebase) — seção **gerada automaticamente**.
 
 ---
 

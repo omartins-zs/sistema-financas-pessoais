@@ -1,6 +1,6 @@
 # Estrutura de banco de dados — GitHub Pages (Firebase / Google)
 
-Esta branch **não usa MySQL**. Os dados ficam em um **único documento JSON** por usuário, armazenado em:
+> **Documentação gerada** — resumo no [README](../README.md#-estrutura-de-banco-de-dados-google-firebase). Este arquivo contém a versão detalhada com exemplos JSON.
 
 | Modo | Onde | Chave / caminho |
 |------|------|------------------|

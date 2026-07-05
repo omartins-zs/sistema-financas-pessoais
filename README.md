@@ -159,23 +159,98 @@ Projeto pensado para **controle financeiro familiar real** — Gabriel e Barbara
 
 ---
 
-## 📊 Documentação da API
+## 📊 Estrutura de banco de dados (Google Firebase)
 
-🚧 O projeto **não possui** documentação Swagger, collections Postman nem pasta `postman/`.
+> **Documentação gerada** com base no schema da branch `github-pages` (`cloud-sync.js`).  
+> Esta versão **não usa MySQL** — os dados ficam em um documento JSON por usuário no **Firebase Firestore** (Google) ou, sem login, no `localStorage`.
 
-### 📁 Documentação disponível
+### Armazenamento
 
-| Arquivo / Pasta | Branch | Conteúdo |
-|-----------------|--------|----------|
-| [`docs/ESTRUTURA-BANCO-DADOS.md`](docs/ESTRUTURA-BANCO-DADOS.md) | `github-pages` | JSON + Firestore (Google) — estrutura completa |
-| [`FIREBASE.md`](FIREBASE.md) | `github-pages` | Configurar Auth + Firestore para sync na nuvem |
-| [`dados/README.md`](dados/README.md) | `github-pages` | Importação de planilhas CSV/Excel |
-| [`docs/COMO_EXECUTAR.md`](docs/COMO_EXECUTAR.md) | `master` | Índice de execução local e Docker |
-| [`docs/COMO_EXECUTAR_LOCAL.md`](docs/COMO_EXECUTAR_LOCAL.md) | `master` | Laragon / `php artisan serve` |
-| [`docs/COMO_EXECUTAR_DOCKER.md`](docs/COMO_EXECUTAR_DOCKER.md) | `master` | Stack Docker completa |
-| [`docs/PERFORMANCE_DOCKER.md`](docs/PERFORMANCE_DOCKER.md) | `master` | Otimizações Docker |
+| Modo | Onde | Caminho |
+|------|------|---------|
+| **Nuvem (Google)** | Firebase **Firestore** | `financas` → `{uid}` |
+| **Local** | `localStorage` | chave `financas_casa_dados` |
 
-> ⚠️ Arquivos em `docs/` existem na branch **`master`**. Faça checkout para acessá-los localmente.
+```
+Firestore
+└── financas                    ← coleção
+    └── {uid}                   ← 1 documento por usuário (Firebase Auth)
+        ├── data      (string)  ← JSON completo do app
+        └── updatedAt (timestamp)
+```
+
+**Fluxo:** login com Firebase Authentication → carrega `financas/{uid}.data` → `JSON.parse` → ao salvar, serializa de volta (debounce ~600 ms).
+
+---
+
+### JSON raiz (`allData`)
+
+```json
+{
+  "2026-06": [ "lançamentos do mês" ],
+  "2026-07": [ "..." ],
+  "__app": {
+    "metas": [],
+    "reservas": [],
+    "cartoes": [],
+    "comprasCartao": [],
+    "investimentos": [],
+    "patrimonio": [],
+    "assinaturas": []
+  }
+}
+```
+
+| Chave | Tipo | Descrição |
+|-------|------|-----------|
+| `"YYYY-MM"` | array | Lançamentos daquele mês |
+| `"__app"` | object | Metas, cartões, contas fixas, etc. (não entra no cálculo mensal) |
+
+---
+
+### Lançamento (`"YYYY-MM"[]`)
+
+| Campo | Tipo | Valores |
+|-------|------|---------|
+| `id` | string | ID único |
+| `description` | string | Nome |
+| `category` | string | Ex.: Mercado, Cartão de crédito Gabriel |
+| `type` | string | `entrada` · `despesa` · `investimento` |
+| `person` | string | `gabriel` · `barbara` · `casa` · `familia` |
+| `value` | number | Valor (R$) |
+| `status` | string | `pago` · `reservado` · `nao_pago` |
+| `due_day` | number \| null | Dia de vencimento |
+| `observation` | string | Observação |
+| `card_items` | array | Itens da fatura (cartões) |
+
+**Item de cartão (`card_items[]`):** `id`, `description`, `value`, `recurring` (boolean), `isDefault` (opcional)
+
+---
+
+### Módulos em `__app`
+
+| Chave | Conteúdo principal |
+|-------|-------------------|
+| `metas[]` | `nome`, `valorObjetivo`, `dataAlvo`, `prioridade`, `status`, `aportes[]` |
+| `reservas[]` | `nome`, `objetivo`, `movimentacoes[]` (`deposito` / `saque`) |
+| `cartoes[]` | `nome`, `bandeira`, `limite`, `fechamento`, `vencimento` |
+| `comprasCartao[]` | `cartaoId`, `descricao`, `valor`, `parcelas`, `data`, `categoria` |
+| `investimentos[]` | `tipo`, `instituicao`, `valorAplicado`, `valorAtual`, `data` |
+| `patrimonio[]` | `nome`, `tipo`, `valorCompra`, `valorAtual`, `dataAquisicao` |
+| `assinaturas[]` | Contas fixas: `nome`, `valor`, `vencimentoDia`, `forma`, `status` |
+
+Configuração Firebase: [`FIREBASE.md`](FIREBASE.md) · Versão detalhada: [`docs/ESTRUTURA-BANCO-DADOS.md`](docs/ESTRUTURA-BANCO-DADOS.md)
+
+---
+
+## 📁 Outros guias
+
+| Arquivo | Conteúdo |
+|---------|----------|
+| [`FIREBASE.md`](FIREBASE.md) | Configurar Auth + Firestore |
+| [`dados/README.md`](dados/README.md) | Importação CSV/Excel |
+
+> Branch `master` (Laravel + MySQL): guias em `docs/COMO_EXECUTAR*.md` após `git checkout master`.
 
 ---
 
