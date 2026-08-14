@@ -113,6 +113,7 @@ const expandedCardEntries = new Set();
 const editingCardItems = new Set();
 let cardItemClip = null;
 let pendingCardFocusEntryId = null;
+let pendingCardItemFocusId = null;
 
 const notyf = new Notyf({
   duration: 3000,
@@ -246,8 +247,9 @@ const createDefaultCardItem = (entry) => ({
   isDefault: true
 });
 
+// Arredonda em centavos: sem isso a soma muda na 13ª casa só por reordenar os itens
 const sumCardItems = (items = []) =>
-  items.reduce((acc, item) => acc + (Number(item.value) || 0), 0);
+  Math.round(items.reduce((acc, item) => acc + (Number(item.value) || 0), 0) * 100) / 100;
 
 const syncCardEntryFromItems = (entry) => {
   if (!isCreditCardEntry(entry) || !entry.card_items?.length) return entry;
@@ -653,6 +655,53 @@ const deleteCardItem = (entryId, itemId) => {
   setCurrentEntries(entries);
   notify.info('Item removido da fatura.');
   render();
+};
+
+// Reordena apenas os ids informados, mantendo os demais itens nas posições atuais
+// (avulsos e recorrentes são grupos separados na tela).
+const applyCardItemsOrder = (entryId, orderedIds) => {
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return false;
+
+  const items = entries[index].card_items ?? [];
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const targets = orderedIds.filter((id) => byId.has(id));
+  if (targets.length < 2) return false;
+
+  const slots = new Set(targets);
+  let cursor = 0;
+  const next = items.map((item) => (slots.has(item.id) ? byId.get(targets[cursor++]) : item));
+
+  if (next.every((item, i) => item.id === items[i].id)) return false;
+
+  entries[index] = { ...entries[index], card_items: next };
+  expandedCardEntries.add(entryId);
+  setCurrentEntries(entries);
+  return true;
+};
+
+const reorderCardItems = (entryId, orderedIds) => {
+  if (!applyCardItemsOrder(entryId, orderedIds)) return false;
+  render();
+  return true;
+};
+
+const moveCardItemBy = (entryId, itemId, delta) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  const item = entry?.card_items?.find((i) => i.id === itemId);
+  if (!item) return;
+
+  const group = entry.card_items.filter((i) => (i.recurring === true) === (item.recurring === true));
+  const from = group.findIndex((i) => i.id === itemId);
+  const to = from + delta;
+  if (from === -1 || to < 0 || to >= group.length) return;
+
+  const ids = group.map((i) => i.id);
+  ids.splice(to, 0, ids.splice(from, 1)[0]);
+
+  pendingCardItemFocusId = itemId;
+  if (!reorderCardItems(entryId, ids)) pendingCardItemFocusId = null;
 };
 
 // ============================================
@@ -1590,17 +1639,26 @@ const renderDueDay = (due_day) => due_day
   ? `<span class="badge text-bg-light border" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>dia ${due_day}</span>`
   : '<span class="text-muted">—</span>';
 
-const renderCardItemRow = (entry, item) => {
+const renderCardItemDragHandle = (entry, item) => `
+  <button type="button" class="card-item__drag" data-card-drag data-id="${entry.id}" data-item-id="${item.id}"
+    title="Arraste para reordenar (ou use ↑ ↓)" aria-label="Reordenar ${escapeAttr(item.description)}">
+    <i class="bi bi-grip-vertical"></i>
+  </button>`;
+
+const renderCardItemRow = (entry, item, sortable = false) => {
   const isDefault = isDefaultCardItem(item);
   const recurring = item.recurring === true;
   const editKey = `${entry.id}:${item.id}`;
   const allItems = entry.card_items ?? [];
   const canDelete = canDeleteCardItem(item, allItems);
   const deleteTitle = isDefault ? 'Remover valor base da fatura' : 'Remover item';
+  const dragHandle = sortable ? renderCardItemDragHandle(entry, item) : '';
 
   if (editingCardItems.has(editKey)) {
+    // Sem handle ativo durante a edição: reordenar re-renderiza e descartaria o que foi digitado
     return `
     <li class="card-item card-item--editing" data-item-id="${item.id}">
+      ${sortable ? '<span class="card-item__drag card-item__drag--off" aria-hidden="true"><i class="bi bi-grip-vertical"></i></span>' : ''}
       <input type="text" class="form-control form-control-sm card-item-edit-desc" value="${escapeAttr(item.description)}" aria-label="Editar descrição">
       <input type="text" class="form-control form-control-sm card-item-edit-val" value="${escapeAttr(formatValuePlain(item.value))}" inputmode="decimal" aria-label="Editar valor">
       ${isDefault ? '' : `<label class="card-item-recurring-check card-item-recurring-check--inline">
@@ -1620,6 +1678,7 @@ const renderCardItemRow = (entry, item) => {
 
   return `
     <li class="card-item${recurring ? ' card-item--recurring' : ''}" data-item-id="${item.id}">
+      ${dragHandle}
       <span class="card-item__desc">
         ${escapeHtml(item.description)}
         ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
@@ -1658,10 +1717,10 @@ const renderCardItemsPanel = (entry, items) => {
   const regular = items.filter((item) => !item.recurring);
   const recurring = items.filter((item) => item.recurring);
   const regularHtml = regular.length
-    ? regular.map((item) => renderCardItemRow(entry, item)).join('')
+    ? regular.map((item) => renderCardItemRow(entry, item, regular.length > 1)).join('')
     : '<li class="card-item card-item--empty">Nenhum item avulso</li>';
   const recurringHtml = recurring.length
-    ? recurring.map((item) => renderCardItemRow(entry, item)).join('')
+    ? recurring.map((item) => renderCardItemRow(entry, item, recurring.length > 1)).join('')
     : '<li class="card-item card-item--empty">Nenhum item recorrente neste cartão</li>';
 
   const itemsSum = sumCardItems(items);
@@ -1694,7 +1753,7 @@ const renderCardItemsPanel = (entry, items) => {
           </button>
         </div>
       </div>
-      <p class="card-item-add__hint">Enter adiciona · Copie e cole itens entre faturas</p>
+      <p class="card-item-add__hint">Enter adiciona · Copie e cole itens entre faturas · Arraste <i class="bi bi-grip-vertical"></i> para reordenar (ou ↑ ↓ com o handle focado)</p>
     </div>`;
 };
 
@@ -1892,6 +1951,214 @@ const render = () => {
       panel?.querySelector('.card-item-desc')?.focus();
     });
   }
+
+  if (pendingCardItemFocusId) {
+    const itemId = pendingCardItemFocusId;
+    pendingCardItemFocusId = null;
+    requestAnimationFrame(() => focusCardItemHandle(itemId));
+  }
+};
+
+// ============================================
+// Drag & drop dos itens da fatura
+// ============================================
+
+const CARD_DRAG_THRESHOLD = 4;   // px antes de considerar arraste (evita roubar cliques)
+const CARD_DRAG_EDGE = 72;       // zona de autoscroll perto das bordas da viewport
+const CARD_DRAG_SPEED = 16;      // px por frame no autoscroll
+
+const cardDrag = {
+  pointerId: null,
+  handle: null,
+  row: null,
+  list: null,
+  placeholder: null,
+  entryId: null,
+  itemId: null,
+  startY: 0,
+  lastY: 0,
+  grabOffset: 0,
+  borderTop: 0,
+  rowHeight: 0,
+  startIds: [],
+  started: false,
+  raf: 0
+};
+
+// Linhas que participam da ordenação: ignora o vazio e a linha flutuante
+// (o placeholder carrega o data-item-id do item arrastado, ocupando o lugar dele).
+const cardDragRowsOf = (list) => [...list.children].filter((li) =>
+  li.classList.contains('card-item')
+  && !li.classList.contains('card-item--empty')
+  && !li.classList.contains('card-item--dragging'));
+
+const cardDragIdsOf = (list) => cardDragRowsOf(list).map((li) => li.dataset.itemId);
+
+const resetCardDrag = () => {
+  cardDrag.pointerId = null;
+  cardDrag.handle = null;
+  cardDrag.row = null;
+  cardDrag.list = null;
+  cardDrag.placeholder = null;
+  cardDrag.entryId = null;
+  cardDrag.itemId = null;
+  cardDrag.startIds = [];
+  cardDrag.started = false;
+  cardDrag.raf = 0;
+};
+
+const activateCardDrag = () => {
+  const { row, list } = cardDrag;
+  const rect = row.getBoundingClientRect();
+  const listRect = list.getBoundingClientRect();
+  const style = getComputedStyle(list);
+
+  // A linha flutuante é absoluta dentro da lista (top/left contam da borda interna),
+  // então guardamos a borda para casar com a posição original.
+  cardDrag.borderTop = parseFloat(style.borderTopWidth) || 0;
+  cardDrag.rowHeight = rect.height;
+  cardDrag.startIds = cardDragIdsOf(list);
+  cardDrag.grabOffset = cardDrag.startY - rect.top;
+
+  const placeholder = document.createElement('li');
+  placeholder.className = 'card-item card-item--placeholder';
+  placeholder.dataset.itemId = cardDrag.itemId;
+  placeholder.style.height = `${rect.height}px`;
+  list.insertBefore(placeholder, row);
+  cardDrag.placeholder = placeholder;
+
+  row.classList.add('card-item--dragging');
+  row.style.width = `${rect.width}px`;
+  row.style.height = `${rect.height}px`;
+  row.style.left = `${rect.left - listRect.left - (parseFloat(style.borderLeftWidth) || 0)}px`;
+
+  document.body.classList.add('is-dragging-card-item');
+  cardDrag.started = true;
+  cardDrag.raf = requestAnimationFrame(cardDragAutoScroll);
+  moveCardDrag(cardDrag.startY);
+};
+
+const moveCardDrag = (clientY) => {
+  const { row, list, placeholder } = cardDrag;
+  const listRect = list.getBoundingClientRect();
+  const rawTop = clientY - cardDrag.grabOffset - listRect.top - cardDrag.borderTop;
+  const maxTop = Math.max(list.clientHeight - cardDrag.rowHeight, 0);
+
+  // O visual fica preso dentro da lista...
+  row.style.top = `${Math.min(Math.max(rawTop, 0), maxTop)}px`;
+
+  // ...mas o alvo usa o centro sem limite: preso, o centro empataria exatamente com o
+  // meio da primeira/última linha e as pontas ficariam inalcançáveis.
+  const center = clientY - cardDrag.grabOffset + cardDrag.rowHeight / 2;
+  const targets = cardDragRowsOf(list).filter((li) => li !== placeholder);
+  const ref = targets.find((li) => {
+    const r = li.getBoundingClientRect();
+    return center < r.top + r.height / 2;
+  }) ?? null;
+
+  if (placeholder.nextElementSibling !== ref) list.insertBefore(placeholder, ref);
+};
+
+const cardDragAutoScroll = () => {
+  if (!cardDrag.started) return;
+
+  const y = cardDrag.lastY;
+  const bottomGap = window.innerHeight - y;
+  let dy = 0;
+  if (y < CARD_DRAG_EDGE) dy = -CARD_DRAG_SPEED * (1 - Math.max(y, 0) / CARD_DRAG_EDGE);
+  else if (bottomGap < CARD_DRAG_EDGE) dy = CARD_DRAG_SPEED * (1 - Math.max(bottomGap, 0) / CARD_DRAG_EDGE);
+
+  if (dy) {
+    const before = window.scrollY;
+    window.scrollBy(0, dy);
+    if (window.scrollY !== before) moveCardDrag(y);
+  }
+
+  cardDrag.raf = requestAnimationFrame(cardDragAutoScroll);
+};
+
+const finishCardDrag = (commit) => {
+  if (cardDrag.raf) cancelAnimationFrame(cardDrag.raf);
+
+  const { row, list, placeholder, entryId, itemId, startIds, started, handle, pointerId } = cardDrag;
+  try { handle?.releasePointerCapture?.(pointerId); } catch { /* já liberado */ }
+
+  if (!started) { resetCardDrag(); return; }
+
+  const ids = cardDragIdsOf(list);
+  const alive = list.isConnected; // uma re-renderização no meio do arraste invalida a ordem
+  placeholder.remove();
+  row.classList.remove('card-item--dragging');
+  row.removeAttribute('style');
+  document.body.classList.remove('is-dragging-card-item');
+  resetCardDrag();
+
+  // Cancelado: o item nunca saiu do lugar no DOM, só o placeholder se movia
+  if (!commit || !alive || ids.join('|') === startIds.join('|')) return;
+
+  pendingCardItemFocusId = itemId;
+  if (!reorderCardItems(entryId, ids)) pendingCardItemFocusId = null;
+};
+
+const handleCardItemPointerDown = (e) => {
+  if (cardDrag.pointerId !== null) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+  const handle = e.target.closest('[data-card-drag]');
+  if (!handle) return;
+
+  const row = handle.closest('.card-item');
+  const list = row?.parentElement;
+  const panel = row?.closest('.card-items-panel');
+  if (!row || !list?.classList.contains('card-items-list') || !panel) return;
+  if (cardDragRowsOf(list).length < 2) return;
+
+  e.preventDefault();
+  cardDrag.pointerId = e.pointerId;
+  cardDrag.handle = handle;
+  cardDrag.row = row;
+  cardDrag.list = list;
+  cardDrag.entryId = panel.dataset.cardId;
+  cardDrag.itemId = row.dataset.itemId;
+  cardDrag.startY = e.clientY;
+  cardDrag.lastY = e.clientY;
+  cardDrag.started = false;
+  handle.focus({ preventScroll: true }); // habilita ↑ ↓ logo após clicar no handle
+  try { handle.setPointerCapture?.(e.pointerId); } catch { /* sem captura: cai nos listeners do document */ }
+};
+
+const handleCardItemPointerMove = (e) => {
+  if (cardDrag.pointerId === null || e.pointerId !== cardDrag.pointerId) return;
+
+  cardDrag.lastY = e.clientY;
+
+  if (!cardDrag.started) {
+    if (Math.abs(e.clientY - cardDrag.startY) < CARD_DRAG_THRESHOLD) return;
+    activateCardDrag();
+  }
+
+  e.preventDefault();
+  moveCardDrag(e.clientY);
+};
+
+const handleCardItemPointerUp = (e) => {
+  if (cardDrag.pointerId === null || e.pointerId !== cardDrag.pointerId) return;
+  finishCardDrag(e.type === 'pointerup');
+};
+
+const bindCardDragEvents = () => {
+  document.addEventListener('pointermove', handleCardItemPointerMove, { passive: false });
+  document.addEventListener('pointerup', handleCardItemPointerUp);
+  document.addEventListener('pointercancel', handleCardItemPointerUp);
+  window.addEventListener('blur', () => { if (cardDrag.pointerId !== null) finishCardDrag(false); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && cardDrag.pointerId !== null) finishCardDrag(false);
+  });
+};
+
+const focusCardItemHandle = (itemId) => {
+  const handles = [...document.querySelectorAll(`.card-item[data-item-id="${itemId}"] [data-card-drag]`)];
+  (handles.find((el) => el.offsetParent !== null) ?? handles[0])?.focus();
 };
 
 // ============================================
@@ -1969,6 +2236,8 @@ const bindListEvents = (tableEl, cardsEl) => {
   cardsEl?.addEventListener('click', handleListClick);
   tableEl?.addEventListener('keydown', handleCardItemKeydown);
   cardsEl?.addEventListener('keydown', handleCardItemKeydown);
+  tableEl?.addEventListener('pointerdown', handleCardItemPointerDown);
+  cardsEl?.addEventListener('pointerdown', handleCardItemPointerDown);
 };
 
 const handleCardItemKeydown = (e) => {
@@ -1976,6 +2245,13 @@ const handleCardItemKeydown = (e) => {
   if (!panel) return;
 
   const entryId = panel.dataset.cardId;
+
+  const dragHandle = e.target.closest('[data-card-drag]');
+  if (dragHandle && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+    moveCardItemBy(entryId, dragHandle.dataset.itemId, e.key === 'ArrowUp' ? -1 : 1);
+    return;
+  }
 
   if (e.key === 'Enter' && !e.shiftKey) {
     const editRow = e.target.closest('.card-item--editing');
@@ -2042,6 +2318,7 @@ const bindEvents = () => {
   bindListEvents(dom.investmentTable, dom.investmentCards);
 
   document.addEventListener('paste', handleCardItemPaste);
+  bindCardDragEvents();
 
   dom.inputType?.addEventListener('change', onTypeChange);
   dom.editType?.addEventListener('change', onEditTypeChange);
