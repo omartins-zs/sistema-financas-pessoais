@@ -278,6 +278,23 @@ Acesse: **http://localhost:5500** (ou a porta do seu servidor)
 
 ---
 
+### 🚀 Publicar no GitHub Pages
+
+O Pages serve a própria branch `github-pages` na raiz: **basta o push** que o build roda sozinho.
+
+Antes do push, **troque o `?v=` no [`index.html`](index.html)** (é o mesmo valor nas 6 tags de CSS/JS):
+
+```bash
+# no Git Bash / Linux / macOS — troque a data pela de hoje
+sed -i 's/?v=[0-9-]*/?v=20260814-2/g' index.html
+```
+
+Sem isso, celulares e tablets podem continuar rodando a versão antiga: o GitHub Pages
+manda `Cache-Control: max-age=600`, e um refresh comum reaproveita o CSS/JS já em cache.
+Mudando o `?v=`, a URL é outra e todo dispositivo baixa a versão nova.
+
+---
+
 ### 🧱 Laravel — instalação local
 
 ```bash
