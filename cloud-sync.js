@@ -54,6 +54,12 @@ const AppStorage = (() => {
     auth = firebase.auth();
     db = firebase.firestore();
 
+    // Cache offline do Firestore (precisa vir antes de qualquer leitura/escrita).
+    // Sem isso, abrir o app instalado sem internet carregaria uma base vazia — e o
+    // primeiro lançamento sobrescreveria a nuvem com só ele. Com o cache, lê o que
+    // já foi sincronizado e as escritas ficam na fila até a conexão voltar.
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
     auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
 
     // Mostra elementos de usuário/sair

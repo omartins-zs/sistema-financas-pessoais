@@ -954,11 +954,13 @@
     render(c) {
       const ano = currentDate.year();
       let tot = { rec: 0, desp: 0, inv: 0 };
+      const serie = { rec: [], desp: [], inv: [] };
       const rows = MESES.map((mes, i) => {
         const key = dayjs(`${ano}-${String(i + 1).padStart(2, '0')}-01`).format('YYYY-MM');
         const s = calculateSummary(allData[key] || []);
         const saldo = s.income - s.expense - s.investment;
         tot.rec += s.income; tot.desp += s.expense; tot.inv += s.investment;
+        serie.rec.push(s.income); serie.desp.push(s.expense); serie.inv.push(s.investment);
         return `<tr>
           <td>${mes}</td>
           <td class="num" style="color:var(--app-income)">${formatCurrency(s.income)}</td>
@@ -974,32 +976,27 @@
           <p class="view-header__hint">Janeiro a dezembro de ${ano} (mude o ano no topo)</p></div>
         </div>
         <div class="mod-summary">
-          <div class="mod-summary__item"><span>Receitas no ano</span><strong style="color:var(--app-income)">${formatCurrency(tot.rec)}</strong></div>
+          <div class="mod-summary__item"><span>Entradas no ano</span><strong style="color:var(--app-income)">${formatCurrency(tot.rec)}</strong></div>
           <div class="mod-summary__item"><span>Despesas no ano</span><strong style="color:var(--app-expense)">${formatCurrency(tot.desp)}</strong></div>
           <div class="mod-summary__item"><span>Investimentos</span><strong style="color:var(--app-investment)">${formatCurrency(tot.inv)}</strong></div>
           <div class="mod-summary__item"><span>Saldo do ano</span><strong style="color:${moneyColor(saldoAno)}">${formatCurrency(saldoAno)}</strong></div>
         </div>
         <div class="mod-table-wrap"><table class="mod-table">
-          <thead><tr><th>Mês</th><th class="num">Receitas</th><th class="num">Despesas</th><th class="num">Investimentos</th><th class="num">Saldo</th></tr></thead>
+          <thead><tr><th>Mês</th><th class="num">Entradas</th><th class="num">Despesas</th><th class="num">Investimentos</th><th class="num">Saldo</th></tr></thead>
           <tbody>${rows}</tbody>
           <tfoot><tr><td>Total</td><td class="num">${formatCurrency(tot.rec)}</td><td class="num">${formatCurrency(tot.desp)}</td><td class="num">${formatCurrency(tot.inv)}</td><td class="num">${formatCurrency(saldoAno)}</td></tr></tfoot>
         </table></div>
-        <div class="row g-3 mt-1"><div class="col-12"><div class="chart-box"><h3 class="chart-box__title">Receitas x Despesas por mês</h3><canvas id="anualChart" height="120"></canvas></div></div></div>`;
+        <div class="row g-3 mt-1"><div class="col-12"><div class="chart-box"><h3 class="chart-box__title">Entradas, despesas e investimentos por mês</h3><canvas id="anualChart" height="120"></canvas></div></div></div>`;
 
       const { grid, text } = getChartTheme();
-      const rec = [], desp = [];
-      MESES.forEach((_, i) => {
-        const key = dayjs(`${ano}-${String(i + 1).padStart(2, '0')}-01`).format('YYYY-MM');
-        const s = calculateSummary(allData[key] || []);
-        rec.push(s.income); desp.push(s.expense);
-      });
       drawChart('anualChart', {
         type: 'bar',
         data: { labels: MESES.map((m) => m.slice(0, 3)), datasets: [
-          { label: 'Receitas', data: rec, backgroundColor: '#10b981', borderRadius: 5 },
-          { label: 'Despesas', data: desp, backgroundColor: '#ef4444', borderRadius: 5 }
+          { label: 'Entradas', data: serie.rec, backgroundColor: '#10b981', borderRadius: 5, maxBarThickness: 22 },
+          { label: 'Despesas', data: serie.desp, backgroundColor: '#ef4444', borderRadius: 5, maxBarThickness: 22 },
+          { label: 'Investimentos', data: serie.inv, backgroundColor: '#8b5cf6', borderRadius: 5, maxBarThickness: 22 }
         ] },
-        options: { responsive: true, plugins: { legend: { labels: { color: text } }, tooltip: { callbacks: { label: (x) => `${x.dataset.label}: ${formatCurrency(x.raw)}` } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
+        options: { responsive: true, plugins: { legend: { labels: { color: text, usePointStyle: true, pointStyle: 'circle' } }, tooltip: { callbacks: { label: (x) => `${x.dataset.label}: ${formatCurrency(x.raw)}` } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { beginAtZero: true, ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
       });
     }
   };

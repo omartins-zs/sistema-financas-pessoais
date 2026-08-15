@@ -193,7 +193,8 @@ const dom = {
   investmentCards: $('#investmentCards'),
   investmentTableWrapper: $('#investmentTableWrapper'),
   investmentEmpty: $('#investmentEmpty'),
-  investmentTable: $('#investmentTable')
+  investmentTable: $('#investmentTable'),
+  appVersion: $('#appVersion')
 };
 
 // ============================================
@@ -2364,8 +2365,54 @@ const startApp = async () => {
   render();
 };
 
+// ============================================
+// PWA — versão e service worker
+// ============================================
+
+// Fonte única da versão: a meta do index.html, que é o mesmo valor do ?v= dos arquivos
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content?.trim() || 'dev';
+
+const showAppVersion = () => {
+  if (!dom.appVersion) return;
+  dom.appVersion.textContent = `v${APP_VERSION}`;
+  dom.appVersion.hidden = false;
+  // Recarregar basta: o service worker busca o HTML sempre na rede
+  dom.appVersion.addEventListener('click', () => location.reload());
+};
+
+const registerServiceWorker = async () => {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+
+  try {
+    const reg = await navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(APP_VERSION)}`, {
+      scope: './',
+      updateViaCache: 'none' // o próprio sw.js nunca vem do cache do navegador
+    });
+
+    reg.addEventListener('updatefound', () => {
+      const novo = reg.installing;
+      // Sem controller é a primeira instalação: não há "versão nova" a anunciar
+      if (!novo || !navigator.serviceWorker.controller) return;
+      novo.addEventListener('statechange', () => {
+        if (novo.state === 'activated') {
+          notify.info('Nova versão instalada. Recarregue a página para usá-la.');
+        }
+      });
+    });
+
+    // Ao voltar para a aba, procura versão nova (útil em aba aberta há dias)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) reg.update().catch(() => {});
+    });
+  } catch {
+    /* O app funciona igual sem service worker — o PWA é um extra */
+  }
+};
+
 const init = () => {
   dayjs.locale('pt-br');
+  showAppVersion();
+  window.addEventListener('load', registerServiceWorker);
   initTheme();
   populateSelectors();
   populateCategories();

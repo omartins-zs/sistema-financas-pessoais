@@ -123,6 +123,7 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 - 🔔 **Alertas inteligentes** — vencimentos, metas, faturas e contas fixas
 - 📥 **Importação** — CSV, Excel e backup JSON
 - 📤 **Exportação** — CSV, Excel, PDF e JSON
+- 📱 **PWA instalável** — instala como app no celular/tablet, funciona offline e atualiza sozinho no refresh (service worker *network-first*); versão visível no cabeçalho
 - 🌙 **Tema claro/escuro**
 - 📱 **Responsivo** — mobile, tablet e desktop
 - ☁️ **Firebase opcional** — login e sync multi-dispositivo ([`FIREBASE.md`](FIREBASE.md))
@@ -282,16 +283,22 @@ Acesse: **http://localhost:5500** (ou a porta do seu servidor)
 
 O Pages serve a própria branch `github-pages` na raiz: **basta o push** que o build roda sozinho.
 
-Antes do push, **troque o `?v=` no [`index.html`](index.html)** (é o mesmo valor nas 6 tags de CSS/JS):
+Antes do push, **troque a versão no [`index.html`](index.html)** — ela aparece no
+`<meta name="app-version">` e no `?v=` de cada arquivo, sempre com o mesmo valor:
 
 ```bash
-# no Git Bash / Linux / macOS — troque a data pela de hoje
-sed -i 's/?v=[0-9-]*/?v=20260814-2/g' index.html
+# no Git Bash / Linux / macOS — troque o valor antigo pelo novo
+sed -i 's/20260815-1/20260815-2/g' index.html
 ```
 
-Sem isso, celulares e tablets podem continuar rodando a versão antiga: o GitHub Pages
-manda `Cache-Control: max-age=600`, e um refresh comum reaproveita o CSS/JS já em cache.
-Mudando o `?v=`, a URL é outra e todo dispositivo baixa a versão nova.
+Esse único valor comanda tudo: o selo de versão no cabeçalho, a URL do service
+worker (`sw.js?v=…`), o nome do cache e o `?v=` de CSS/JS.
+
+**Por que isso importa:** o GitHub Pages manda `Cache-Control: max-age=600` em tudo.
+Sem versão na URL, um refresh no celular reaproveita o CSS/JS antigo e o aparelho
+fica preso numa versão velha. Com o `?v=` novo, a URL é outra e todo dispositivo
+baixa a versão nova. O service worker fecha o cerco: ele busca o HTML sempre na
+rede (`cache: 'no-store'`), então o próprio refresh já traz a versão mais recente.
 
 ---
 
@@ -348,12 +355,15 @@ Acesse: **http://localhost:8080**
 ### Branch `github-pages`
 
 ```
-├── index.html              # Página principal
+├── index.html              # Página principal (e a versão do app, no <meta app-version>)
 ├── script.js               # Core: CRUD, cartões, import/export
 ├── app-modules.js          # Módulos: Dashboard, Metas, Cartões…
 ├── cloud-sync.js           # LocalStorage + Firebase
 ├── firebase-config.js      # Config Firebase (opcional)
 ├── style.css / modules.css # Estilos
+├── sw.js                   # Service worker (PWA, network-first)
+├── manifest.webmanifest    # Manifesto do PWA
+├── icon-*.png              # Ícones do PWA (192/512, normal e maskable)
 ├── template-importacao.*   # Templates CSV/Excel
 ├── FIREBASE.md             # Guia sync na nuvem
 └── dados/README.md         # Guia de importação
