@@ -120,6 +120,7 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 - 💳 **Cartões Gabriel e Babi** — itens colapsáveis na fatura, recorrentes, copiar/colar/editar, Enter para adicionar, arrastar para reordenar
 - 📋 **Contas fixas** — serviços recorrentes + sugestões automáticas dos últimos 3 meses
 - 📊 **Módulos** — Dashboard, Anual, Metas, Reservas, Cartões, Investimentos, Patrimônio, Relatórios
+- 🔎 **Relatórios** — busca por texto, filtros que aplicam na hora, colunas ordenáveis, gráfico de despesas por categoria e exportação (CSV/Excel/PDF) com totais
 - 🔔 **Alertas inteligentes** — vencimentos, metas, faturas e contas fixas
 - 📥 **Importação** — CSV, Excel e backup JSON
 - 📤 **Exportação** — CSV, Excel, PDF e JSON

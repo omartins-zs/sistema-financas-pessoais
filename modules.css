@@ -331,6 +331,31 @@
 .mod-table td.num, .mod-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .mod-table tfoot td { font-weight: 800; border-top: 2px solid var(--app-border); }
 
+/* ---- Cabeçalho ordenável (Relatórios) ---- */
+.mod-th-sort {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.mod-th-sort i { opacity: 0.45; font-size: 0.72rem; }
+.mod-th-sort:hover { color: var(--app-primary); background: color-mix(in srgb, var(--app-primary) 8%, var(--app-surface-2)); }
+.mod-th-sort:hover i { opacity: 0.8; }
+.mod-th-sort:focus-visible { outline: 2px solid var(--app-primary); outline-offset: -2px; }
+.mod-th-sort.is-active { color: var(--app-primary); }
+.mod-th-sort.is-active i { opacity: 1; }
+
+.rep-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  color: var(--app-text-faint);
+}
+.rep-hint i { color: var(--app-primary); }
+
+/* Gráfico com altura fixa (não usa proporção do canvas) */
+.chart-box__area { position: relative; width: 100%; }
+
 /* ---- Filtros ---- */
 .mod-filters {
   display: grid;

@@ -1004,9 +1004,20 @@
   // ==========================================================
   // MÓDULO: RELATÓRIOS
   // ==========================================================
+  const REL_FILTROS_VAZIOS = { de: '', ate: '', tipo: '', categoria: '', tag: '', status: '', busca: '' };
+
+  // Colunas ordenáveis: chave -> valor usado na comparação
+  const REL_ORDENACAO = {
+    mes: (e) => e.mes,
+    descricao: (e) => String(e.description || '').toLowerCase(),
+    categoria: (e) => String(e.category || '').toLowerCase(),
+    valor: (e) => Number(e.value) || 0
+  };
+
   const Relatorios = {
-    state: { de: '', ate: '', categoria: '', tag: '', status: '', tipo: '' },
-    // varre todos os meses, gera linhas com data de referência (1º dia do mês)
+    state: { ...REL_FILTROS_VAZIOS, ordem: 'mes', dir: 'desc' },
+
+    // varre todos os meses, marcando cada lançamento com o mês de origem
     allEntries() {
       const out = [];
       Object.keys(allData).forEach((key) => {
@@ -1015,17 +1026,77 @@
       });
       return out;
     },
+
     filtered() {
       const f = this.state;
-      return this.allEntries().filter((e) => {
+      const busca = f.busca.trim().toLowerCase();
+      const lista = this.allEntries().filter((e) => {
         if (f.de && e.mes < f.de) return false;
         if (f.ate && e.mes > f.ate) return false;
         if (f.categoria && e.category !== f.categoria) return false;
         if (f.tag && e.person !== f.tag) return false;
         if (f.status && e.status !== f.status) return false;
         if (f.tipo && e.type !== f.tipo) return false;
+        if (busca && !`${e.description} ${e.category} ${e.observation || ''}`.toLowerCase().includes(busca)) return false;
         return true;
-      }).sort((a, b) => (a.mes < b.mes ? 1 : -1));
+      });
+      return this.ordenar(lista);
+    },
+
+    ordenar(lista) {
+      const chave = REL_ORDENACAO[this.state.ordem] || REL_ORDENACAO.mes;
+      const sinal = this.state.dir === 'asc' ? 1 : -1;
+      return lista.sort((a, b) => {
+        const x = chave(a);
+        const y = chave(b);
+        if (x !== y) return (x < y ? -1 : 1) * sinal;
+        // empate: mês mais recente primeiro, para a ordem não variar entre renders
+        return a.mes < b.mes ? 1 : (a.mes > b.mes ? -1 : 0);
+      });
+    },
+
+    toggleSort(chave) {
+      if (!REL_ORDENACAO[chave]) return;
+      if (this.state.ordem === chave) {
+        this.state.dir = this.state.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.state.ordem = chave;
+        // texto começa de A→Z; mês e valor começam do maior
+        this.state.dir = (chave === 'descricao' || chave === 'categoria') ? 'asc' : 'desc';
+      }
+      this.renderResult();
+    },
+
+    totais(lista) {
+      const t = { entrada: 0, despesa: 0, investimento: 0 };
+      lista.forEach((e) => { t[e.type] = (t[e.type] || 0) + (Number(e.value) || 0); });
+      t.saldo = t.entrada - t.despesa - t.investimento;
+      return t;
+    },
+
+    // Maiores despesas por categoria, para o gráfico
+    porCategoria(lista) {
+      const mapa = new Map();
+      lista.forEach((e) => {
+        if (e.type !== 'despesa') return;
+        mapa.set(e.category, (mapa.get(e.category) || 0) + (Number(e.value) || 0));
+      });
+      return [...mapa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    },
+
+    mesLabel: (mes) => dayjs(`${mes}-01`).format('MMM/YYYY'),
+
+    filtrosDescritos() {
+      const f = this.state;
+      const partes = [];
+      if (f.de) partes.push(`de ${this.mesLabel(f.de)}`);
+      if (f.ate) partes.push(`até ${this.mesLabel(f.ate)}`);
+      if (f.tipo) partes.push(TYPE_LABELS[f.tipo] || f.tipo);
+      if (f.categoria) partes.push(f.categoria);
+      if (f.tag) partes.push(PERSON_LABELS[f.tag] || f.tag);
+      if (f.status) partes.push(STATUS_LABELS[f.status] || f.status);
+      if (f.busca.trim()) partes.push(`busca "${f.busca.trim()}"`);
+      return partes.length ? partes.join(' · ') : 'todos os lançamentos';
     },
     render(c) {
       const f = this.state;
@@ -1036,16 +1107,17 @@
           <p class="view-header__hint">Filtre e exporte seus lançamentos</p></div>
         </div>
         <div class="mod-filters">
-          <div class="fm-field"><label>De (mês)</label><input type="month" id="rep_de" class="fm-input" value="${f.de}"></div>
-          <div class="fm-field"><label>Até (mês)</label><input type="month" id="rep_ate" class="fm-input" value="${f.ate}"></div>
-          <div class="fm-field"><label>Tipo</label><select id="rep_tipo" class="fm-input">${opt('', 'Todos', f.tipo)}${opt('entrada', 'Entrada', f.tipo)}${opt('despesa', 'Despesa', f.tipo)}${opt('investimento', 'Investimento', f.tipo)}</select></div>
-          <div class="fm-field"><label>Categoria</label><select id="rep_categoria" class="fm-input">${opt('', 'Todas', f.categoria)}${CATEGORIAS.map((x) => opt(x, x, f.categoria)).join('')}</select></div>
-          <div class="fm-field"><label>Tag</label><select id="rep_tag" class="fm-input">${opt('', 'Todas', f.tag)}${Object.entries(PERSON_LABELS).map(([v, l]) => opt(v, l, f.tag)).join('')}</select></div>
-          <div class="fm-field"><label>Status</label><select id="rep_status" class="fm-input">${opt('', 'Todos', f.status)}${Object.entries(STATUS_LABELS).map(([v, l]) => opt(v, l, f.status)).join('')}</select></div>
+          <div class="fm-field"><label for="rep_busca">Buscar</label><input type="search" id="rep_busca" class="fm-input" placeholder="Descrição, categoria ou observação" value="${escapeAttr(f.busca)}"></div>
+          <div class="fm-field"><label for="rep_de">De (mês)</label><input type="month" id="rep_de" class="fm-input" value="${f.de}"></div>
+          <div class="fm-field"><label for="rep_ate">Até (mês)</label><input type="month" id="rep_ate" class="fm-input" value="${f.ate}"></div>
+          <div class="fm-field"><label for="rep_tipo">Tipo</label><select id="rep_tipo" class="fm-input">${opt('', 'Todos', f.tipo)}${opt('entrada', 'Entrada', f.tipo)}${opt('despesa', 'Despesa', f.tipo)}${opt('investimento', 'Investimento', f.tipo)}</select></div>
+          <div class="fm-field"><label for="rep_categoria">Categoria</label><select id="rep_categoria" class="fm-input">${opt('', 'Todas', f.categoria)}${CATEGORIAS.map((x) => opt(x, x, f.categoria)).join('')}</select></div>
+          <div class="fm-field"><label for="rep_tag">Tag</label><select id="rep_tag" class="fm-input">${opt('', 'Todas', f.tag)}${Object.entries(PERSON_LABELS).map(([v, l]) => opt(v, l, f.tag)).join('')}</select></div>
+          <div class="fm-field"><label for="rep_status">Status</label><select id="rep_status" class="fm-input">${opt('', 'Todos', f.status)}${Object.entries(STATUS_LABELS).map(([v, l]) => opt(v, l, f.status)).join('')}</select></div>
         </div>
-        <div class="d-flex flex-wrap gap-2 mb-3">
-          <button class="btn btn-primary btn-sm" data-rep="apply"><i class="bi bi-funnel-fill"></i> Aplicar filtros</button>
-          <button class="btn btn-outline-secondary btn-sm" data-rep="clear"><i class="bi bi-x-circle"></i> Limpar</button>
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+          <span class="rep-hint"><i class="bi bi-lightning-charge-fill"></i> Os filtros aplicam sozinhos</span>
+          <button class="btn btn-outline-secondary btn-sm" data-rep="clear"><i class="bi bi-x-circle"></i> Limpar filtros</button>
           <span class="flex-grow-1"></span>
           <button class="btn btn-outline-success btn-sm" data-rep="csv"><i class="bi bi-filetype-csv"></i> CSV</button>
           <button class="btn btn-outline-success btn-sm" data-rep="excel"><i class="bi bi-file-earmark-excel"></i> Excel</button>
@@ -1054,59 +1126,151 @@
         <div id="repResult"></div>`;
       this.renderResult();
     },
+    // Cabeçalho clicável para ordenar
+    th(chave, label, classe = '') {
+      const ativo = this.state.ordem === chave;
+      const icone = ativo ? (this.state.dir === 'asc' ? 'sort-up' : 'sort-down') : 'arrow-down-up';
+      return `<th class="mod-th-sort${ativo ? ' is-active' : ''}${classe ? ' ' + classe : ''}" data-rep-sort="${chave}"
+        tabindex="0" role="button" aria-label="Ordenar por ${label}"
+        aria-sort="${ativo ? (this.state.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label} <i class="bi bi-${icone}"></i></th>`;
+    },
+
     renderResult() {
-      const list = this.filtered();
       const el = document.getElementById('repResult');
       if (!el) return;
-      if (!list.length) { el.innerHTML = emptyBlock('inbox', 'Nenhum lançamento para os filtros selecionados.'); return; }
-      const tot = { entrada: 0, despesa: 0, investimento: 0 };
-      const rows = list.map((e) => {
-        tot[e.type] = (tot[e.type] || 0) + e.value;
-        return `<tr>
-          <td>${e.mes}</td>
+
+      const list = this.filtered();
+      if (!list.length) {
+        const temDados = this.allEntries().length > 0;
+        el.innerHTML = emptyBlock('inbox', temDados
+          ? 'Nenhum lançamento para os filtros selecionados.'
+          : 'Ainda não há lançamentos para relatar.');
+        return;
+      }
+
+      const tot = this.totais(list);
+      const categorias = this.porCategoria(list);
+      const rows = list.map((e) => `<tr>
+          <td>${this.mesLabel(e.mes)}</td>
           <td>${escapeHtml(e.description)}</td>
           <td>${escapeHtml(TYPE_LABELS[e.type] || e.type)}</td>
           <td>${escapeHtml(e.category)}</td>
           <td>${escapeHtml(PERSON_LABELS[e.person] || '—')}</td>
           <td>${escapeHtml(STATUS_LABELS[e.status] || e.status)}</td>
           <td class="num">${formatCurrency(e.value)}</td>
-        </tr>`;
-      }).join('');
+        </tr>`).join('');
+
       el.innerHTML = `
         <div class="mod-summary">
           <div class="mod-summary__item"><span>Lançamentos</span><strong>${list.length}</strong></div>
           <div class="mod-summary__item"><span>Entradas</span><strong style="color:var(--app-income)">${formatCurrency(tot.entrada)}</strong></div>
           <div class="mod-summary__item"><span>Despesas</span><strong style="color:var(--app-expense)">${formatCurrency(tot.despesa)}</strong></div>
           <div class="mod-summary__item"><span>Investimentos</span><strong style="color:var(--app-investment)">${formatCurrency(tot.investimento)}</strong></div>
+          <div class="mod-summary__item"><span>Saldo</span><strong style="color:${moneyColor(tot.saldo)}">${formatCurrency(tot.saldo)}</strong></div>
         </div>
         <div class="mod-table-wrap"><table class="mod-table">
-          <thead><tr><th>Mês</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Tag</th><th>Status</th><th class="num">Valor</th></tr></thead>
+          <thead><tr>
+            ${this.th('mes', 'Mês')}
+            ${this.th('descricao', 'Descrição')}
+            <th>Tipo</th>
+            ${this.th('categoria', 'Categoria')}
+            <th>Tag</th>
+            <th>Status</th>
+            ${this.th('valor', 'Valor', 'num')}
+          </tr></thead>
           <tbody>${rows}</tbody>
-        </table></div>`;
+        </table></div>
+        ${categorias.length ? `<div class="chart-box mt-3">
+          <h3 class="chart-box__title">Despesas por categoria${categorias.length === 8 ? ' (top 8)' : ''}</h3>
+          <div class="chart-box__area" style="height:${Math.max(180, categorias.length * 34)}px"><canvas id="repChart"></canvas></div>
+        </div>` : ''}`;
+
+      if (categorias.length) {
+        const { grid, text } = getChartTheme();
+        drawChart('repChart', {
+          type: 'bar',
+          data: {
+            labels: categorias.map(([nome]) => nome),
+            datasets: [{ data: categorias.map(([, valor]) => valor), backgroundColor: '#ef4444', borderRadius: 5 }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } },
+            scales: {
+              x: { beginAtZero: true, ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } },
+              y: { ticks: { color: text }, grid: { display: false } }
+            }
+          }
+        });
+      }
     },
+
     readFilters() {
       const g = (id) => document.getElementById(id)?.value || '';
-      this.state = { de: g('rep_de'), ate: g('rep_ate'), tipo: g('rep_tipo'), categoria: g('rep_categoria'), tag: g('rep_tag'), status: g('rep_status') };
+      // preserva ordem/direção: só os filtros vêm da tela
+      this.state = {
+        ...this.state,
+        busca: g('rep_busca'), de: g('rep_de'), ate: g('rep_ate'), tipo: g('rep_tipo'),
+        categoria: g('rep_categoria'), tag: g('rep_tag'), status: g('rep_status')
+      };
     },
     exportData(format) {
+      this.readFilters(); // garante que a exportação use o que está na tela agora
       const list = this.filtered();
       if (!list.length) { notify.error('Nada para exportar com esses filtros.'); return; }
+
+      const COL_VALOR = 6;
+      const tot = this.totais(list);
       const header = ['Mês', 'Descrição', 'Tipo', 'Categoria', 'Tag', 'Status', 'Valor'];
       const rows = list.map((e) => [e.mes, e.description, TYPE_LABELS[e.type] || e.type, e.category, PERSON_LABELS[e.person] || '', STATUS_LABELS[e.status] || e.status, e.value]);
+      const resumo = [
+        ['', '', '', '', '', 'Entradas', tot.entrada],
+        ['', '', '', '', '', 'Despesas', tot.despesa],
+        ['', '', '', '', '', 'Investimentos', tot.investimento],
+        ['', '', '', '', '', 'Saldo', tot.saldo]
+      ];
       const stamp = dayjs().format('YYYY-MM-DD');
+
       if (format === 'csv') {
-        const lines = [header.join(';'), ...rows.map((r) => r.map((v, i) => (i === 6 ? formatValuePlain(v) : v)).join(';'))];
-        downloadBlob(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }), `relatorio-${stamp}.csv`);
+        // Aspas, ";" e quebras de linha na descrição quebrariam as colunas
+        const celula = (v) => {
+          const s = String(v ?? '');
+          return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const linha = (r) => r.map((v, i) => celula(i === COL_VALOR && v !== '' ? formatValuePlain(v) : v)).join(';');
+        const texto = [header.join(';'), ...rows.map(linha), '', ...resumo.map(linha)].join('\n');
+        downloadBlob(new Blob(['﻿' + texto], { type: 'text/csv;charset=utf-8' }), `relatorio-${stamp}.csv`);
       } else if (format === 'excel') {
-        const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+        const ws = XLSX.utils.aoa_to_sheet([header, ...rows, [], ...resumo]);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Relatório');
         XLSX.writeFile(wb, `relatorio-${stamp}.xlsx`);
       } else if (format === 'pdf') {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.setFontSize(15); doc.text('Relatório — Finanças da Casa', 14, 16);
-        doc.autoTable({ startY: 22, head: [header], body: rows.map((r) => r.map((v, i) => (i === 6 ? formatCurrency(v) : String(v)))), theme: 'striped', headStyles: { fillColor: [79, 110, 247] }, styles: { fontSize: 8 } });
+        doc.setFontSize(15);
+        doc.text('Relatório — Finanças da Casa', 14, 16);
+
+        doc.setFontSize(9);
+        const linhasFiltro = doc.splitTextToSize(`Filtros: ${this.filtrosDescritos()}`, 182);
+        doc.text(linhasFiltro, 14, 22);
+
+        const yTotais = 22 + linhasFiltro.length * 4.5;
+        const linhasTotais = doc.splitTextToSize(
+          `${list.length} lançamentos · Entradas ${formatCurrency(tot.entrada)} · Despesas ${formatCurrency(tot.despesa)} · Investimentos ${formatCurrency(tot.investimento)} · Saldo ${formatCurrency(tot.saldo)}`, 182);
+        doc.text(linhasTotais, 14, yTotais);
+
+        doc.autoTable({
+          startY: yTotais + linhasTotais.length * 4.5 + 3,
+          head: [header],
+          body: rows.map((r) => r.map((v, i) => (i === COL_VALOR ? formatCurrency(v) : String(v)))),
+          theme: 'striped',
+          headStyles: { fillColor: [79, 110, 247] },
+          styles: { fontSize: 8 },
+          columnStyles: { [COL_VALOR]: { halign: 'right' } }
+        });
         doc.save(`relatorio-${stamp}.pdf`);
       }
       notify.success('Relatório exportado!');
@@ -1208,13 +1372,36 @@
       return;
     }
 
+    const ordenar = e.target.closest('[data-rep-sort]');
+    if (ordenar) { Relatorios.toggleSort(ordenar.dataset.repSort); return; }
+
     const rep = e.target.closest('[data-rep]');
     if (rep) {
       const act = rep.dataset.rep;
-      if (act === 'apply') { Relatorios.readFilters(); Relatorios.renderResult(); }
-      else if (act === 'clear') { Relatorios.state = { de: '', ate: '', categoria: '', tag: '', status: '', tipo: '' }; Relatorios.render(document.getElementById('view-relatorios')); }
-      else Relatorios.exportData(act);
+      if (act === 'clear') {
+        Relatorios.state = { ...Relatorios.state, ...REL_FILTROS_VAZIOS };
+        Relatorios.render(document.getElementById('view-relatorios'));
+      } else Relatorios.exportData(act);
     }
+  };
+
+  // Filtros de relatório valem na hora: nada de clicar em "Aplicar" e esquecer
+  const handleRelatorioFilter = (e) => {
+    const alvo = e.target;
+    if (!alvo?.id?.startsWith('rep_') || !alvo.closest('#view-relatorios')) return;
+    // a busca reage a cada tecla; selects e datas, só ao mudar
+    if (e.type === 'input' && alvo.id !== 'rep_busca') return;
+    if (e.type === 'change' && alvo.id === 'rep_busca') return;
+    Relatorios.readFilters();
+    Relatorios.renderResult();
+  };
+
+  const handleRelatorioKeydown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const ordenar = e.target.closest?.('[data-rep-sort]');
+    if (!ordenar) return;
+    e.preventDefault();
+    Relatorios.toggleSort(ordenar.dataset.repSort);
   };
 
   // ==========================================================
@@ -1244,6 +1431,9 @@
   const init = () => {
     buildTabs();
     document.addEventListener('click', handleModuleClick);
+    document.addEventListener('input', handleRelatorioFilter);
+    document.addEventListener('change', handleRelatorioFilter);
+    document.addEventListener('keydown', handleRelatorioKeydown);
 
     // Mantém dashboard/anual/relatórios sincronizados ao trocar de mês/ano
     ['selectMonth', 'selectYear'].forEach((id) => document.getElementById(id)?.addEventListener('change', () => setTimeout(refreshActiveView, 0)));
