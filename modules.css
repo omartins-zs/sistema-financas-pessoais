@@ -517,3 +517,29 @@
 .mod-sub { font-size: 0.68rem; font-weight: 400; color: var(--app-text-faint); white-space: nowrap; }
 .mod-hint { font-size: 0.8rem; color: var(--app-text-muted); }
 .mod-hint i { color: var(--app-primary); margin-right: 0.25rem; }
+
+/* ---- Investimentos: grupos de lançamentos mensais ---- */
+.inv-groups { display: flex; flex-direction: column; gap: 0.5rem; }
+.inv-group {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-sm);
+}
+.inv-group[open] { border-color: color-mix(in srgb, var(--app-investment) 45%, var(--app-border)); }
+.inv-group__sum {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.8rem;
+  align-items: center;
+  padding: 0.65rem 0.9rem;
+  cursor: pointer;
+  list-style: none;
+}
+.inv-group__sum::-webkit-details-marker { display: none; }
+.inv-group__name { font-weight: 700; grid-column: 1; }
+.inv-group__meta { grid-column: 1; font-size: 0.78rem; color: var(--app-text-muted); }
+.inv-group__state.is-linked { color: var(--app-investment); font-weight: 700; }
+.inv-group__total { grid-column: 2; grid-row: 1 / span 2; font-variant-numeric: tabular-nums; color: var(--app-investment); font-size: 1.02rem; }
+.inv-group__body { padding: 0 0.9rem 0.85rem; border-top: 1px dashed var(--app-border); }
+.inv-group__link { display: flex; align-items: center; gap: 0.5rem; margin: 0.65rem 0; font-size: 0.82rem; font-weight: 600; color: var(--app-text-muted); }
+.inv-group__link .fm-input { max-width: 22rem; }

@@ -26,31 +26,49 @@ const DEFAULT_CATEGORIAS = [
   'Outros'
 ];
 
-// Fixas: os cartões são reconhecidos pelo nome (isCreditCardEntry), 'Investimentos'
-// é forçada pelo tipo e 'Outros' é o destino das exclusões — não dá para mexer.
-const CATEGORIAS_FIXAS = new Set([
-  'Cartão de crédito Gabriel',
-  'Cartão de crédito Babi',
-  'Cartão de crédito',
-  'Investimentos',
-  'Outros'
-]);
+// Papéis: o app precisa saber qual categoria é o cartão de cada um, qual é
+// "Investimentos" (forçada pelo tipo) e qual é "Outros" (destino padrão).
+// O NOME pode ser editado à vontade — o papel acompanha o novo nome.
+const PAPEIS_PADRAO = {
+  cartaoGabriel: 'Cartão de crédito Gabriel',
+  cartaoBabi: 'Cartão de crédito Babi',
+  cartao: 'Cartão de crédito',
+  investimentos: 'Investimentos',
+  outros: 'Outros'
+};
+let PAPEIS_CATEGORIA = { ...PAPEIS_PADRAO };
+const catPapel = (papel) => PAPEIS_CATEGORIA[papel] || PAPEIS_PADRAO[papel];
+const papelDaCategoria = (nome) => Object.keys(PAPEIS_CATEGORIA).find((p) => PAPEIS_CATEGORIA[p] === nome) || null;
+// Categorias com papel podem ser renomeadas, mas não excluídas
+const categoriasComPapel = () => new Set(Object.values(PAPEIS_CATEGORIA));
 
 // Lista viva: o usuário pode adicionar, renomear e excluir (fora as fixas).
 // Persiste em allData.__app.categorias e sincroniza junto com os dados.
 let CATEGORIAS = [...DEFAULT_CATEGORIAS];
 
 const aplicarCategoriasSalvas = () => {
+  const papeis = allData.__app?.categoriasPapel;
+  PAPEIS_CATEGORIA = { ...PAPEIS_PADRAO, ...(papeis && typeof papeis === 'object' ? papeis : {}) };
+
   const salvas = allData.__app?.categorias;
-  if (!Array.isArray(salvas) || !salvas.length) { CATEGORIAS = [...DEFAULT_CATEGORIAS]; return; }
-  const lista = salvas.map((c) => String(c).trim()).filter(Boolean);
-  CATEGORIAS_FIXAS.forEach((fixa) => { if (!lista.includes(fixa)) lista.push(fixa); });
+  let lista;
+  if (Array.isArray(salvas) && salvas.length) {
+    lista = salvas.map((c) => String(c).trim()).filter(Boolean);
+  } else {
+    // sem lista salva: padrão, já com os nomes atuais dos papéis
+    lista = DEFAULT_CATEGORIAS.map((c) => {
+      const p = Object.keys(PAPEIS_PADRAO).find((k) => PAPEIS_PADRAO[k] === c);
+      return p ? catPapel(p) : c;
+    });
+  }
+  categoriasComPapel().forEach((nome) => { if (!lista.includes(nome)) lista.push(nome); });
   CATEGORIAS = lista;
 };
 
 const salvarCategorias = () => {
   if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
   allData.__app.categorias = [...CATEGORIAS];
+  allData.__app.categoriasPapel = { ...PAPEIS_CATEGORIA };
   saveData();
 };
 
@@ -259,8 +277,11 @@ const generateId = () =>
   `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 const isCreditCardEntry = (entry) => {
-  const cat = String(entry?.category ?? '').toLowerCase();
-  return cat.includes('cartão de crédito') || cat.includes('cartao de credito');
+  const cat = String(entry?.category ?? '').trim();
+  if (!cat) return false;
+  if (cat === catPapel('cartaoGabriel') || cat === catPapel('cartaoBabi') || cat === catPapel('cartao')) return true;
+  const baixo = cat.toLowerCase(); // nomes antigos, antes de renomear
+  return baixo.includes('cartão de crédito') || baixo.includes('cartao de credito');
 };
 
 const DEFAULT_CARD_ITEM_DESC = 'Cartão';
@@ -334,9 +355,9 @@ const normalizeEntry = (entry) => {
     ...item,
     recurring: item.recurring === true
   }));
-  if (normalized.category === 'Cartão de crédito') {
-    if (normalized.person === 'gabriel') normalized.category = 'Cartão de crédito Gabriel';
-    else if (normalized.person === 'barbara') normalized.category = 'Cartão de crédito Babi';
+  if (normalized.category === catPapel('cartao')) {
+    if (normalized.person === 'gabriel') normalized.category = catPapel('cartaoGabriel');
+    else if (normalized.person === 'barbara') normalized.category = catPapel('cartaoBabi');
   }
 
   if (!isCreditCardEntry(normalized)) return normalized;
@@ -360,8 +381,8 @@ const normalizeEntry = (entry) => {
 };
 
 const personFromCardCategory = (category) => {
-  if (category === 'Cartão de crédito Gabriel') return 'gabriel';
-  if (category === 'Cartão de crédito Babi') return 'barbara';
+  if (category === catPapel('cartaoGabriel')) return 'gabriel';
+  if (category === catPapel('cartaoBabi')) return 'barbara';
   return '';
 };
 
@@ -493,8 +514,167 @@ const saveData = () => {
 
 const getCurrentEntries = () => allData[getMonthKey(currentDate)] ?? [];
 
-const setCurrentEntries = (entries) => {
-  allData[getMonthKey(currentDate)] = entries.map(normalizeEntry);
+// ============================================
+// Histórico de alterações (auditoria + desfazer)
+// ============================================
+// Cada mudança guarda só o que mudou (antes/depois dos lançamentos afetados),
+// em allData.__app.historico — sincroniza junto com os dados. Tem teto de
+// tamanho porque o Firestore guarda tudo num único documento de 1 MiB.
+const HISTORICO_MAX = 150;
+const HISTORICO_MAX_CHARS = 150000;
+
+const NOMES_COLECAO = {
+  metas: 'Metas', reservas: 'Reservas', cartoes: 'Cartões', investimentos: 'Investimentos',
+  patrimonio: 'Patrimônio', assinaturas: 'Contas fixas'
+};
+
+// Instantâneo do último estado salvo de cada mês: várias ações alteram os objetos
+// no lugar antes de salvar, então comparar com o array vivo não enxergaria nada.
+const snapshotsMes = {};
+const cloneDados = (v) => JSON.parse(JSON.stringify(v ?? []));
+const iniciarSnapshotsHistorico = () => {
+  Object.keys(allData).forEach((k) => { if (/^\d{4}-\d{2}$/.test(k)) snapshotsMes[k] = cloneDados(allData[k]); });
+};
+
+const getHistorico = () => {
+  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+  if (!Array.isArray(allData.__app.historico)) allData.__app.historico = [];
+  return allData.__app.historico;
+};
+
+const podarHistorico = () => {
+  const h = getHistorico();
+  while (h.length > HISTORICO_MAX) h.pop();
+  while (h.length > 1 && JSON.stringify(h).length > HISTORICO_MAX_CHARS) h.pop();
+};
+
+const novoRegistroHistorico = (dados) => {
+  getHistorico().unshift({ id: generateId(), quando: dayjs().toISOString(), ...dados });
+  podarHistorico();
+};
+
+const resumoLancamento = (e) => `“${e.description}” (${formatCurrency(Number(e.value) || 0)})`;
+
+const diffListas = (antes, depois) => {
+  const mapA = new Map(antes.map((e) => [e.id, e]));
+  const mapD = new Map(depois.map((e) => [e.id, e]));
+  return {
+    adicionados: depois.filter((e) => !mapA.has(e.id)),
+    removidos: antes.filter((e) => !mapD.has(e.id)),
+    alterados: depois
+      .filter((e) => mapA.has(e.id) && JSON.stringify(mapA.get(e.id)) !== JSON.stringify(e))
+      .map((e) => ({ antes: mapA.get(e.id), depois: e }))
+  };
+};
+
+// Mudança nos lançamentos de um mês (usado por setCurrentEntries e pelas importações)
+const registrarHistoricoMes = (mes, antes, depois, acao) => {
+  const d = diffListas(antes || [], depois || []);
+  snapshotsMes[mes] = cloneDados(depois); // próximo diff parte daqui
+  if (!d.adicionados.length && !d.removidos.length && !d.alterados.length) return null;
+  if (!acao) {
+    const partes = [];
+    if (d.adicionados.length) partes.push(d.adicionados.length === 1 ? `adicionou ${resumoLancamento(d.adicionados[0])}` : `adicionou ${d.adicionados.length} lançamentos`);
+    if (d.removidos.length) partes.push(d.removidos.length === 1 ? `excluiu ${resumoLancamento(d.removidos[0])}` : `excluiu ${d.removidos.length} lançamentos`);
+    if (d.alterados.length) partes.push(d.alterados.length === 1 ? `alterou ${resumoLancamento(d.alterados[0].depois)}` : `alterou ${d.alterados.length} lançamentos`);
+    acao = partes.join(' · ');
+  }
+  const reg = { tipo: 'mes', mes, acao, reversivel: true, ...d };
+  novoRegistroHistorico(reg);
+  return reg;
+};
+
+// Mudança num item de módulo (metas, reservas, investimentos…) — chamado pelo app-modules
+const registrarHistoricoModulo = (colecao, antes, depois) => {
+  if (JSON.stringify(antes ?? null) === JSON.stringify(depois ?? null)) return;
+  const alvo = depois ?? antes ?? {};
+  const nome = alvo.nome || alvo.instituicao || alvo.description || alvo.tipo || '';
+  const verbo = !antes ? 'adicionou' : !depois ? 'excluiu' : 'alterou';
+  novoRegistroHistorico({
+    tipo: 'modulo', colecao, acao: `${NOMES_COLECAO[colecao] || colecao}: ${verbo} ${nome ? `“${nome}”` : 'item'}`,
+    antes: antes ?? null, depois: depois ?? null, reversivel: true
+  });
+};
+
+// Só auditoria (sem desfazer): ex. mudança nas categorias
+const registrarHistoricoInfo = (acao) => novoRegistroHistorico({ tipo: 'info', acao, reversivel: false });
+
+const desfazerRegistroHistorico = (id) => {
+  const reg = getHistorico().find((r) => r.id === id);
+  if (!reg || !reg.reversivel || reg.desfeito) return false;
+
+  if (reg.tipo === 'mes') {
+    const antesLista = allData[reg.mes] || [];
+    const addIds = new Set((reg.adicionados || []).map((e) => e.id));
+    const nova = antesLista.filter((e) => !addIds.has(e.id));
+    (reg.alterados || []).forEach(({ antes }) => {
+      const i = nova.findIndex((e) => e.id === antes.id);
+      if (i >= 0) nova[i] = antes; else nova.push(antes);
+    });
+    (reg.removidos || []).forEach((e) => { if (!nova.some((x) => x.id === e.id)) nova.push(e); });
+    allData[reg.mes] = nova.map(normalizeEntry);
+    reg.desfeito = true;
+    registrarHistoricoMes(reg.mes, antesLista, allData[reg.mes], `desfez: ${reg.acao}`);
+    if (reg.mes !== getMonthKey(currentDate)) { currentDate = dayjs(`${reg.mes}-01`); syncSelectors(); }
+  } else if (reg.tipo === 'modulo') {
+    if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+    if (!Array.isArray(allData.__app[reg.colecao])) allData.__app[reg.colecao] = [];
+    const lista = allData.__app[reg.colecao];
+    const alvoId = (reg.depois ?? reg.antes)?.id;
+    const i = lista.findIndex((x) => x.id === alvoId);
+    if (reg.antes) { if (i >= 0) lista[i] = reg.antes; else lista.push(reg.antes); }
+    else if (i >= 0) lista.splice(i, 1);
+    reg.desfeito = true;
+    novoRegistroHistorico({ tipo: 'modulo', colecao: reg.colecao, acao: `desfez: ${reg.acao}`, antes: reg.depois ?? null, depois: reg.antes ?? null, reversivel: true });
+  } else {
+    return false;
+  }
+
+  saveData();
+  render();
+  return true;
+};
+
+const abrirHistorico = async () => {
+  const h = getHistorico();
+  const linhas = h.slice(0, 80).map((r) => `
+    <div class="hist-row${r.desfeito ? ' is-undone' : ''}">
+      <span class="hist-row__when">${dayjs(r.quando).format('DD/MM HH:mm')}</span>
+      <span class="hist-row__what">${escapeHtml(r.acao)}${r.mes ? ` <span class="hist-row__mes">${dayjs(`${r.mes}-01`).format('MMM/YY')}</span>` : ''}${r.desfeito ? ' <span class="hist-row__tag">desfeito</span>' : ''}</span>
+      ${r.reversivel && !r.desfeito
+        ? `<button type="button" class="hist-row__undo" data-undo="${r.id}" title="Voltar como estava antes desta mudança"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>`
+        : '<span></span>'}
+    </div>`).join('');
+
+  await Swal.fire({
+    title: 'Histórico de alterações',
+    html: `<div class="hist">
+      ${linhas || '<p class="text-muted mb-0">Nada registrado ainda. A partir de agora toda mudança fica aqui.</p>'}
+      <p class="hist__hint">Guarda as últimas ${HISTORICO_MAX} mudanças. Desfazer também entra no histórico, então dá para desfazer o desfazer.</p>
+    </div>`,
+    width: '42rem',
+    showConfirmButton: false,
+    showCancelButton: true,
+    cancelButtonText: 'Fechar',
+    didOpen: () => {
+      Swal.getPopup().querySelectorAll('[data-undo]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const ok = desfazerRegistroHistorico(btn.dataset.undo);
+          Swal.close();
+          notify[ok ? 'success' : 'error'](ok ? 'Mudança desfeita.' : 'Não foi possível desfazer.');
+          if (ok) setTimeout(abrirHistorico, 150);
+        });
+      });
+    }
+  });
+};
+
+const setCurrentEntries = (entries, acao) => {
+  const mes = getMonthKey(currentDate);
+  const antes = snapshotsMes[mes] ?? cloneDados(allData[mes] || []);
+  const depois = entries.map(normalizeEntry);
+  registrarHistoricoMes(mes, antes, depois, acao);
+  allData[mes] = depois;
   saveData();
 };
 
@@ -812,20 +992,21 @@ const contarUsoCategorias = () => {
 const renomearCategoriaNosDados = (de, para) => {
   Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
     allData[k] = (allData[k] || []).map((e) => (e.category === de ? { ...e, category: para } : e));
+    snapshotsMes[k] = cloneDados(allData[k]); // mudança já auditada pelo registro de categorias
   });
 };
 
 const gerenciarCategorias = async () => {
   const uso = contarUsoCategorias();
   const linhas = CATEGORIAS.map((cat, i) => {
-    const fixa = CATEGORIAS_FIXAS.has(cat);
+    const comPapel = categoriasComPapel().has(cat);
     const usos = uso[cat] || 0;
     return `<div class="cat-manager__row" data-idx="${i}">
       <input type="text" class="cat-manager__name" value="${escapeAttr(cat)}" data-original="${escapeAttr(cat)}"
-        ${fixa ? 'disabled title="Categoria fixa do sistema"' : ''} aria-label="Nome da categoria">
+        title="${comPapel ? 'Pode renomear (corrige todos os meses). Não pode ser excluída: o app usa esta categoria.' : 'Renomear corrige todos os meses'}" aria-label="Nome da categoria">
       <span class="cat-manager__uso">${usos ? `${usos} uso(s)` : '—'}</span>
-      ${fixa
-        ? '<span class="cat-manager__lock" title="Categoria fixa"><i class="bi bi-lock-fill"></i></span>'
+      ${comPapel
+        ? '<span class="cat-manager__lock" title="Usada pelo app: pode renomear, não excluir"><i class="bi bi-lock-fill"></i></span>'
         : `<button type="button" class="cat-manager__del" data-del="${i}" title="Excluir (lançamentos vão para Outros)" aria-label="Excluir ${escapeAttr(cat)}"><i class="bi bi-trash"></i></button>`}
     </div>`;
   }).join('');
@@ -838,7 +1019,7 @@ const gerenciarCategorias = async () => {
         <input type="text" class="cat-manager__name" id="catNova" placeholder="Nova categoria" maxlength="40">
         <span class="cat-manager__uso"></span><span></span>
       </div>
-      <p class="cat-manager__hint">Renomear atualiza os lançamentos de todos os meses. Excluir manda os lançamentos para “Outros”.</p>
+      <p class="cat-manager__hint">Renomear corrige os lançamentos de <strong>todos os meses</strong> (vale para as de cartão também). Excluir manda os lançamentos para “${escapeHtml(catPapel('outros'))}”. As com cadeado o app usa internamente: dá para renomear, não excluir.</p>
     </div>`,
     width: '34rem',
     showCancelButton: true,
@@ -886,9 +1067,19 @@ const gerenciarCategorias = async () => {
   const { renames, excluir, nova, finais } = resultado;
   if (!renames.length && !excluir.length && !nova) return;
 
-  renames.forEach(([de, para]) => renomearCategoriaNosDados(de, para));
-  excluir.forEach((cat) => renomearCategoriaNosDados(cat, 'Outros'));
+  renames.forEach(([de, para]) => {
+    const papel = papelDaCategoria(de);
+    if (papel) PAPEIS_CATEGORIA[papel] = para; // o papel acompanha o novo nome
+    renomearCategoriaNosDados(de, para);
+  });
+  excluir.forEach((cat) => renomearCategoriaNosDados(cat, catPapel('outros')));
   CATEGORIAS = finais;
+  const mudancas = [
+    ...renames.map(([de, para]) => `renomeou “${de}” → “${para}”`),
+    ...excluir.map((c) => `excluiu “${c}” (lançamentos → Outros)`),
+    ...(nova ? [`adicionou “${nova}”`] : [])
+  ];
+  registrarHistoricoInfo(`Categorias: ${mudancas.join(' · ')}`);
   salvarCategorias();
   populateCategories();
   render();
@@ -1146,6 +1337,7 @@ const criarInvestimentoRapido = async (nomeSugerido) => {
     valorAplicado: 0, valorAtual: 0, data: dayjs().format('YYYY-MM-DD')
   };
   allData.__app.investimentos.push(inv);
+  registrarHistoricoModulo('investimentos', null, inv);
   saveData();
   notify.success(`Investimento "${inv.instituicao}" criado. Veja na aba Investimentos.`);
   return inv.id;
@@ -1639,7 +1831,7 @@ const mapStatus = (raw) => {
 
 const rowToEntry = (row) => {
   const desc = String(row.descricao ?? row.description ?? '').trim();
-  const category = String(row.categoria ?? row.category ?? 'Outros').trim();
+  const category = String(row.categoria ?? row.category ?? catPapel('outros')).trim();
   const type = mapTipo(row.tipo ?? row.type);
   const value = parseValue(String(row.valor ?? row.value ?? '0'));
   const status = mapStatus(row.status);
@@ -1652,8 +1844,8 @@ const rowToEntry = (row) => {
     id: generateId(),
     description: desc,
     category: type === 'investimento'
-      ? 'Investimentos'
-      : (CATEGORIAS.includes(category) ? category : 'Outros'),
+      ? catPapel('investimentos')
+      : (CATEGORIAS.includes(category) ? category : catPapel('outros')),
     type,
     person,
     value,
@@ -1709,6 +1901,7 @@ const importJSON = async (file) => {
   if (!confirmed) return;
 
   allData = imported;
+  iniciarSnapshotsHistorico();
   aplicarCategoriasSalvas();
   populateCategories();
   saveData();
@@ -1928,9 +2121,12 @@ const BANK_CATEGORY_HINTS = [
 
 const guessBankCategory = (desc) => {
   for (const [re, cat] of BANK_CATEGORY_HINTS) {
-    if (re.test(desc)) return CATEGORIAS.includes(cat) ? cat : 'Outros';
+    if (re.test(desc)) {
+      const nome = cat === 'Investimentos' ? catPapel('investimentos') : cat;
+      return CATEGORIAS.includes(nome) ? nome : catPapel('outros');
+    }
   }
-  return 'Outros';
+  return catPapel('outros');
 };
 
 // Linhas de saldo do extrato não são transações
@@ -2103,6 +2299,7 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
   if (!gastos.length) { notify.info('O arquivo só tinha pagamentos/estornos — nada a importar.'); return; }
 
   const lista = [...(allData[mes] || [])];
+  const antesLista = allData[mes] || [];
   let index = lista.findIndex((e) => isCreditCardEntry(e) && e.category === categoria);
   const entryCriada = index === -1;
   const valorAnterior = entryCriada ? 0 : Number(lista[index].value) || 0;
@@ -2169,6 +2366,7 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
   entry.card_items = items;
   entry.value = sumCardItems(items);
   allData[mes] = lista.map(normalizeEntry);
+  registrarHistoricoMes(mes, antesLista, allData[mes], `importou fatura do banco (${importados} itens em “${entry.description}”)`);
   expandedCardEntries.add(entry.id);
   registrarUndoImportacao({
     tipo: 'cartao', mes, entryId: entry.id, entryCriada,
@@ -2210,7 +2408,7 @@ const importBankStatement = async (file) => {
   const mesFaturaDefault = (nomeData ? `${nomeData[1]}-${nomeData[2]}` : null)
     || fim || Object.keys(porMes).sort().pop();
   const diaVencimento = nomeData ? +nomeData[3] : null;
-  const cardCats = CATEGORIAS.filter((c) => /^cart[aã]o de cr[ée]dito/i.test(c));
+  const cardCats = [catPapel('cartaoGabriel'), catPapel('cartaoBabi'), catPapel('cartao')].filter((c) => CATEGORIAS.includes(c));
   const nomeCartao = bankIssuerName(org, file.name);
 
   const { value: escolha, isConfirmed } = await Swal.fire({
@@ -2282,6 +2480,7 @@ const importBankStatement = async (file) => {
   let pulados = 0;
   const mesesTocados = new Set();
   const entradasNovas = [];
+  const antesPorMes = {};
 
   txs.forEach((t) => {
     const value = Math.abs(t.amount);
@@ -2290,9 +2489,9 @@ const importBankStatement = async (file) => {
     const description = normalizeBankDesc(t.desc);
     let category = guessBankCategory(`${t.desc} ${description}`);
     // Só vira investimento quando o dinheiro SAI (aplicação); resgate é entrada normal
-    if (category === 'Investimentos' && t.amount < 0) type = 'investimento';
-    if (type === 'investimento') category = 'Investimentos';
-    else if (type === 'entrada') category = 'Outros';
+    if (category === catPapel('investimentos') && t.amount < 0) type = 'investimento';
+    if (type === 'investimento') category = catPapel('investimentos');
+    else if (type === 'entrada') category = catPapel('outros');
 
     const mes = t.date.slice(0, 7);
     const dia = Number(t.date.slice(8, 10)) || null;
@@ -2318,6 +2517,7 @@ const importBankStatement = async (file) => {
       ...(t.fitid ? { fitid: t.fitid } : {})
     });
 
+    if (!antesPorMes[mes]) antesPorMes[mes] = [...(allData[mes] || [])];
     if (!allData[mes]) allData[mes] = [];
     allData[mes].push(entry);
     entradasNovas.push({ mes, id: entry.id });
@@ -2330,6 +2530,7 @@ const importBankStatement = async (file) => {
     return;
   }
 
+  Object.keys(antesPorMes).forEach((m) => registrarHistoricoMes(m, antesPorMes[m], allData[m], `importou extrato do banco (${entradasNovas.filter((x) => x.mes === m).length} lançamentos)`));
   registrarUndoImportacao({ tipo: 'conta', entradas: entradasNovas });
   saveData();
 
@@ -2380,7 +2581,9 @@ const desfazerUltimaImportacao = async () => {
         : sumCardItems(items);
       lista[idx] = { ...alvo, card_items: items, value };
     }
+    const antesFatura = allData[log.mes] || [];
     allData[log.mes] = lista.map(normalizeEntry);
+    registrarHistoricoMes(log.mes, antesFatura, allData[log.mes], 'desfez importação de fatura');
     delete allData.__app.ultimaImportacao;
     saveData();
     render();
@@ -2399,7 +2602,9 @@ const desfazerUltimaImportacao = async () => {
     const porMes = {};
     log.entradas.forEach(({ mes, id }) => { (porMes[mes] = porMes[mes] || new Set()).add(id); });
     Object.entries(porMes).forEach(([mes, ids]) => {
-      allData[mes] = (allData[mes] || []).filter((e) => !ids.has(e.id)).map(normalizeEntry);
+      const antesMes = allData[mes] || [];
+      allData[mes] = antesMes.filter((e) => !ids.has(e.id)).map(normalizeEntry);
+      registrarHistoricoMes(mes, antesMes, allData[mes], 'desfez importação de extrato');
     });
     delete allData.__app.ultimaImportacao;
     saveData();
@@ -2461,7 +2666,9 @@ const desfazerUltimaImportacao = async () => {
         return { ...e, card_items: items, value: sumCardItems(items) };
       });
     });
+    const antesMes = allData[mes] || [];
     allData[mes] = lista.map(normalizeEntry);
+    registrarHistoricoMes(mes, antesMes, allData[mes], 'removeu importações do banco');
   });
 
   saveData();
@@ -3213,6 +3420,7 @@ const bindEvents = () => {
   dom.btnCopyMonth.addEventListener('click', copyPreviousMonth);
   dom.btnClearMonth.addEventListener('click', clearCurrentMonth);
   dom.btnTheme.addEventListener('click', toggleTheme);
+  document.getElementById('btnHistory')?.addEventListener('click', abrirHistorico);
   document.querySelectorAll('[data-import]').forEach((btn) => {
     btn.addEventListener('click', () => handleImportClick(btn.dataset.import));
   });
@@ -3246,7 +3454,7 @@ const onCategoryChange = () => {
   const person = personFromCardCategory(dom.inputCategory.value);
   if (person) dom.inputPerson.value = person;
   if (dom.inputType.value === 'investimento') {
-    dom.inputCategory.value = 'Investimentos';
+    dom.inputCategory.value = catPapel('investimentos');
   }
 };
 
@@ -3254,20 +3462,20 @@ const onEditCategoryChange = () => {
   const person = personFromCardCategory(dom.editCategory.value);
   if (person) dom.editPerson.value = person;
   if (dom.editType.value === 'investimento') {
-    dom.editCategory.value = 'Investimentos';
+    dom.editCategory.value = catPapel('investimentos');
   }
 };
 
 const onTypeChange = () => {
   if (dom.inputType.value === 'investimento') {
-    dom.inputCategory.value = 'Investimentos';
+    dom.inputCategory.value = catPapel('investimentos');
   }
   toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap);
 };
 
 const onEditTypeChange = () => {
   if (dom.editType.value === 'investimento') {
-    dom.editCategory.value = 'Investimentos';
+    dom.editCategory.value = catPapel('investimentos');
   }
   toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap);
 };
@@ -3279,6 +3487,7 @@ const onEditTypeChange = () => {
 // Carrega os dados e desenha a tela (chamado quando o armazenamento está pronto)
 const startApp = async () => {
   await loadData();
+  iniciarSnapshotsHistorico();
   aplicarCategoriasSalvas();
   populateCategories();
   populateInvestimentoSelects();

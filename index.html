@@ -8,13 +8,13 @@
 
   <!-- Versão do app. Trocar SÓ aqui a cada deploy: um replace deste valor no arquivo
        atualiza o selo na tela, o service worker e o ?v= de todos os arquivos. -->
-  <meta name="app-version" content="20260901-4">
+  <meta name="app-version" content="20260901-5">
 
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest?v=20260901-4">
+  <link rel="manifest" href="manifest.webmanifest?v=20260901-5">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,8 +24,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css" rel="stylesheet">
   <!-- ?v=AAAAMMDD-N — trocar a cada deploy: muda a URL e nenhum dispositivo reusa o cache antigo -->
-  <link rel="stylesheet" href="style.css?v=20260901-4">
-  <link rel="stylesheet" href="modules.css?v=20260901-4">
+  <link rel="stylesheet" href="style.css?v=20260901-5">
+  <link rel="stylesheet" href="modules.css?v=20260901-5">
 </head>
 <body>
 
@@ -97,6 +97,10 @@
                 <div id="alertPanel"></div>
               </div>
             </div>
+
+            <button type="button" class="topbar__tool" id="btnHistory" title="Histórico de alterações (auditoria e desfazer)" aria-label="Histórico de alterações">
+              <i class="bi bi-clock-history"></i>
+            </button>
 
             <button type="button" class="topbar__tool" id="btnTheme" title="Alternar tema" aria-label="Alternar tema">
               <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
@@ -579,10 +583,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20260901-4"></script>
-  <script src="cloud-sync.js?v=20260901-4"></script>
+  <script src="firebase-config.js?v=20260901-5"></script>
+  <script src="cloud-sync.js?v=20260901-5"></script>
 
-  <script src="script.js?v=20260901-4"></script>
-  <script src="app-modules.js?v=20260901-4"></script>
+  <script src="script.js?v=20260901-5"></script>
+  <script src="app-modules.js?v=20260901-5"></script>
 </body>
 </html>

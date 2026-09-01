@@ -44,17 +44,22 @@
     refreshAlerts();
   };
 
+  // Toda mudança de módulo vai para o histórico (antes/depois do item), reversível
   const upsert = (name, item) => {
     const list = coll(name);
     const idx = list.findIndex((x) => x.id === item.id);
+    const antes = idx >= 0 ? list[idx] : null;
     if (idx >= 0) list[idx] = item;
     else list.push(item);
+    if (typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo(name, antes, item);
     persist();
   };
 
   const removeItem = (name, id) => {
     const s = getStore();
+    const antes = coll(name).find((x) => x.id === id) || null;
     s[name] = coll(name).filter((x) => x.id !== id);
+    if (antes && typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo(name, antes, null);
     persist();
   };
 
@@ -475,7 +480,99 @@
     return out;
   };
 
+  // Todos os lançamentos do tipo Investimento, de todos os meses, agrupados pelo nome
+  const gruposLancamentosInvestimento = () => {
+    const grupos = new Map();
+    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).sort().forEach((k) => {
+      (allData[k] || []).forEach((e) => {
+        if (e.type !== 'investimento') return;
+        const chave = String(e.description || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!grupos.has(chave)) grupos.set(chave, { chave, nome: String(e.description || '').trim(), total: 0, meses: [], vinculos: new Set() });
+        const g = grupos.get(chave);
+        g.total += Number(e.value) || 0;
+        g.meses.push({ mes: k, id: e.id, valor: Number(e.value) || 0, status: e.status, person: e.person });
+        if (e.investimento_id) g.vinculos.add(e.investimento_id);
+      });
+    });
+    return [...grupos.values()].sort((a, b) => b.total - a.total);
+  };
+
+  const rotuloInvestimento = (i) => [i.tipo, i.instituicao].filter(Boolean).join(' · ') || 'Investimento';
+
+  // Vincula (ou desvincula) TODOS os lançamentos de um grupo, em todos os meses
+  const vincularGrupoInvestimento = (chave, valor) => {
+    const g = gruposLancamentosInvestimento().find((x) => x.chave === chave);
+    if (!g) return;
+    let invId = valor;
+    if (valor === '__novo__') {
+      const item = { id: generateId(), tipo: 'Outros', instituicao: g.nome, valorAplicado: 0, valorAtual: 0, data: `${g.meses[0].mes}-01` };
+      upsert('investimentos', item);
+      invId = item.id;
+    }
+    const desvincular = !invId || invId === '__none__';
+    const inv = desvincular ? null : coll('investimentos').find((i) => i.id === invId);
+    if (!desvincular && !inv) return;
+
+    const porMes = {};
+    g.meses.forEach((x) => { (porMes[x.mes] = porMes[x.mes] || []).push(x.id); });
+    Object.entries(porMes).forEach(([mes, ids]) => {
+      const antes = JSON.parse(JSON.stringify(allData[mes] || []));
+      allData[mes] = (allData[mes] || []).map((e) => {
+        if (!ids.includes(e.id)) return e;
+        const { investimento_id, ...resto } = e;
+        return desvincular ? resto : { ...resto, investimento_id: invId };
+      });
+      if (typeof registrarHistoricoMes === 'function') {
+        registrarHistoricoMes(mes, antes, allData[mes], desvincular ? `desvinculou “${g.nome}” da carteira` : `vinculou “${g.nome}” a ${rotuloInvestimento(inv)}`);
+      }
+    });
+    saveData();
+    notify.success(desvincular ? `“${g.nome}” desvinculado.` : `“${g.nome}” vinculado a ${rotuloInvestimento(inv)} em ${Object.keys(porMes).length} mês(es).`);
+    render();
+  };
+
+  const handleInvestGroupChange = (e) => {
+    const sel = e.target.closest?.('[data-inv-group]');
+    if (!sel || !sel.value) return;
+    vincularGrupoInvestimento(sel.dataset.invGroup, sel.value);
+  };
+
   const Investimentos = {
+    grupoHtml(g, list) {
+      const vinc = [...g.vinculos];
+      const inv = vinc.length === 1 ? list.find((i) => i.id === vinc[0]) : null;
+      const estado = !vinc.length ? 'sem vínculo'
+        : inv ? `→ ${escapeHtml(rotuloInvestimento(inv))}`
+        : (vinc.length > 1 ? 'vínculos mistos' : 'vínculo com item apagado');
+      const opcoes = [
+        `<option value="">${vinc.length ? 'Trocar vínculo…' : 'Vincular a…'}</option>`,
+        ...list.map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(rotuloInvestimento(i))}</option>`),
+        '<option value="__novo__">＋ Criar investimento com este nome (do zero)</option>',
+        ...(vinc.length ? ['<option value="__none__">Desvincular</option>'] : [])
+      ].join('');
+      const linhas = g.meses.map((x) => `<tr>
+          <td>${dayjs(`${x.mes}-01`).format('MMM/YYYY')}</td>
+          <td>${escapeHtml(PERSON_LABELS[x.person] || '—')}</td>
+          <td>${escapeHtml(STATUS_LABELS[x.status] || x.status || '')}</td>
+          <td class="num">${formatCurrency(x.valor)}</td>
+        </tr>`).join('');
+      const nMeses = new Set(g.meses.map((x) => x.mes)).size;
+      return `<details class="inv-group">
+        <summary class="inv-group__sum">
+          <span class="inv-group__name">${escapeHtml(g.nome)}</span>
+          <span class="inv-group__meta">${g.meses.length} lanç. · ${nMeses} mês(es) · <span class="inv-group__state${vinc.length ? ' is-linked' : ''}">${estado}</span></span>
+          <strong class="inv-group__total">${formatCurrency(g.total)}</strong>
+        </summary>
+        <div class="inv-group__body">
+          <label class="inv-group__link">Carteira <select class="fm-input" data-inv-group="${escapeAttr(g.chave)}">${opcoes}</select></label>
+          <div class="mod-table-wrap"><table class="mod-table">
+            <thead><tr><th>Mês</th><th>Tag</th><th>Status</th><th class="num">Valor</th></tr></thead>
+            <tbody>${linhas}</tbody>
+            <tfoot><tr><td colspan="3">Total em todos os meses</td><td class="num">${formatCurrency(g.total)}</td></tr></tfoot>
+          </table></div>
+        </div>
+      </details>`;
+    },
     fields: (i = {}) => [
       { name: 'tipo', label: 'Tipo', type: 'select', value: i.tipo || 'CDB', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
       { name: 'instituicao', label: 'Nome / instituição', type: 'text', value: i.instituicao, placeholder: 'Ex: CDB Nubank, Tesouro Selic', wide: true },
@@ -527,7 +624,9 @@
       const t = this.totais();
       const rentTotal = t.aplicado ? ((t.atual - t.aplicado) / t.aplicado) * 100 : 0;
       const porMes = aportesPorMes(12);
-      const temMensal = porMes.some((p) => p.total > 0) || t.semVinculo.qtd > 0;
+      const grupos = gruposLancamentosInvestimento();
+      const totalMensal = sum(grupos, (g) => g.total);
+      const temMensal = grupos.length > 0;
 
       const rows = list.map((i) => {
         const men = aportesMensaisDe(i.id);
@@ -555,6 +654,7 @@
         ${(list.length || temMensal) ? `<div class="mod-summary">
           <div class="mod-summary__item"><span>Total investido hoje</span><strong style="color:var(--app-investment)">${formatCurrency(t.total)}</strong></div>
           <div class="mod-summary__item"><span>Aplicado na carteira</span><strong>${formatCurrency(t.aplicado)}</strong></div>
+          <div class="mod-summary__item"><span>Lançamentos mensais (todos os meses)</span><strong>${formatCurrency(totalMensal)}</strong></div>
           <div class="mod-summary__item"><span>Rentabilidade</span><strong style="color:${moneyColor(rentTotal)}">${rentTotal >= 0 ? '+' : ''}${rentTotal.toFixed(2)}%</strong></div>
           ${t.semVinculo.qtd ? `<div class="mod-summary__item"><span>Sem vínculo (${t.semVinculo.qtd} lanç.)</span><strong>${formatCurrency(t.semVinculo.total)}</strong></div>` : ''}
         </div>
@@ -566,7 +666,9 @@
           <thead><tr><th>Tipo</th><th>Nome</th><th class="num">Aplicado</th><th class="num">Atual</th><th class="num">Rent.</th><th>Início</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table></div>` : emptyBlock('graph-up-arrow', 'Nenhum investimento na carteira. Crie um (pode começar do zero) e vincule os lançamentos do tipo Investimento a ele.')}
-        ${t.semVinculo.qtd ? `<p class="mod-hint mt-2"><i class="bi bi-info-circle"></i> ${t.semVinculo.qtd} lançamento(s) do tipo Investimento ainda sem vínculo: edite-os no mês e escolha o investimento no campo “Investimento (carteira)”.</p>` : ''}`;
+        ${grupos.length ? `<h3 class="chart-box__title mt-4 mb-1"><i class="bi bi-calendar-check"></i> Lançamentos mensais de investimento — todos os meses</h3>
+        <p class="mod-hint mb-2"><i class="bi bi-info-circle"></i> Tudo que você lançou como Investimento, mês a mês, agrupado pelo nome. Abra um grupo para ver cada mês e vincule à carteira (ou crie um investimento do zero com o mesmo nome) para somar lá em cima.</p>
+        <div class="inv-groups">${grupos.map((g) => this.grupoHtml(g, list)).join('')}</div>` : ''}`;
 
       const { grid, text } = getChartTheme();
       if (list.length) {
@@ -650,11 +752,9 @@
   // ==========================================================
   // Detecção de assinaturas recorrentes (últimos N meses)
   // ==========================================================
-  const SUBSCRIPTION_SKIP_CATEGORIES = new Set([
-    'Cartão de crédito Gabriel',
-    'Cartão de crédito Babi',
-    'Cartão de crédito',
-    'Investimentos'
+  // categorias com papel (nomes podem ter sido renomeados)
+  const subscriptionSkipCategories = () => new Set([
+    catPapel('cartaoGabriel'), catPapel('cartaoBabi'), catPapel('cartao'), catPapel('investimentos')
   ]);
 
   const isOneOffExpense = (desc) => {
@@ -724,7 +824,7 @@
     monthKeys.forEach((monthKey) => {
       (allData[monthKey] || []).forEach((entry) => {
         if (entry.type !== 'despesa') return;
-        if (SUBSCRIPTION_SKIP_CATEGORIES.has(entry.category)) return;
+        if (subscriptionSkipCategories().has(entry.category)) return;
         if (typeof isCreditCardEntry === 'function' && isCreditCardEntry(entry)) return;
         if (isOneOffExpense(entry.description)) return;
 
@@ -1509,6 +1609,7 @@
     document.addEventListener('click', handleModuleClick);
     document.addEventListener('input', handleRelatorioFilter);
     document.addEventListener('change', handleRelatorioFilter);
+    document.addEventListener('change', handleInvestGroupChange);
     document.addEventListener('keydown', handleRelatorioKeydown);
 
     // Mantém dashboard/anual/relatórios sincronizados ao trocar de mês/ano

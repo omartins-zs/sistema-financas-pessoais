@@ -116,12 +116,14 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 - 📅 **Controle mensal** — navegação por mês/ano, copiar mês anterior e limpar mês
 - 💵 **Entradas, despesas e investimentos** — tipos separados com cálculo de **Sobra** (Entradas − Despesas − Investimentos)
 - 🏷️ **Tags** — Gabriel, Barbara, Casa, Família
-- 🏷️ **Categorias editáveis** — adicionar, renomear (propaga para todos os meses) e excluir (lançamentos vão para “Outros”); as de cartão, Investimentos e Outros são fixas
+- 🏷️ **Categorias editáveis** — adicionar, renomear e excluir; renomear corrige os lançamentos de todos os meses, inclusive as de cartão (o app reconhece cartão/Investimentos/Outros por papéis internos, não pelo texto); só a exclusão das categorias com papel fica travada
 - ✅ **Status** — Pago, Reservado, Não pago (seletor segmentado responsivo)
 - 💳 **Cartões Gabriel e Babi** — itens colapsáveis na fatura, recorrentes, copiar/colar/editar, Enter para adicionar, arrastar para reordenar
 - 📋 **Contas fixas** — serviços recorrentes + sugestões automáticas dos últimos 3 meses
 - 📊 **Módulos** — Dashboard, Anual, Metas, Reservas, Cartões, Investimentos, Patrimônio, Relatórios
 - 📈 **Investimentos mês a mês** — lançamentos do tipo Investimento se vinculam a um item da carteira (pode nascer zerado); aplicado = inicial + soma dos meses, valor atual informado, gráfico dos últimos 12 meses e total no Dashboard
+- 🗂️ **Lançamentos mensais na aba Investimentos** — tudo que foi lançado como Investimento em qualquer mês aparece agrupado pelo nome, com total, detalhe mês a mês e vínculo em lote à carteira (ou criação de um investimento do zero com o mesmo nome)
+- 🕰️ **Histórico de alterações** — botão de relógio na barra lista as últimas mudanças (lançamentos, itens de cartão, importações, módulos, categorias) com Desfazer por linha; guarda só o antes/depois do que mudou, com teto de 150 registros
 - 🔎 **Relatórios** — busca por texto, filtros que aplicam na hora, colunas ordenáveis, gráfico de despesas por categoria e exportação (CSV/Excel/PDF) com totais
 - 🔔 **Alertas inteligentes** — vencimentos, metas, faturas e contas fixas
 - 📥 **Importação** — CSV, Excel e backup JSON
