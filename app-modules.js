@@ -437,76 +437,152 @@
   // ==========================================================
   const TIPOS_INVEST = ['Poupança', 'CDB', 'Tesouro Direto', 'Fundos', 'Ações', 'FIIs', 'Criptomoedas', 'Outros'];
 
+  // Lançamentos do mês do tipo "investimento" vinculados a um item da carteira
+  const aportesMensaisDe = (id) => {
+    let total = 0;
+    let qtd = 0;
+    Object.keys(allData).forEach((k) => {
+      if (!/^\d{4}-\d{2}$/.test(k)) return;
+      (allData[k] || []).forEach((e) => {
+        if (e.type === 'investimento' && e.investimento_id === id) { total += Number(e.value) || 0; qtd++; }
+      });
+    });
+    return { total, qtd };
+  };
+
+  // Lançamentos "investimento" sem vínculo (ou apontando para item já apagado)
+  const aportesSemVinculo = () => {
+    const ids = new Set(coll('investimentos').map((i) => i.id));
+    let total = 0;
+    let qtd = 0;
+    Object.keys(allData).forEach((k) => {
+      if (!/^\d{4}-\d{2}$/.test(k)) return;
+      (allData[k] || []).forEach((e) => {
+        if (e.type === 'investimento' && !ids.has(e.investimento_id)) { total += Number(e.value) || 0; qtd++; }
+      });
+    });
+    return { total, qtd };
+  };
+
+  // Quanto foi investido em cada um dos últimos N meses (todos os lançamentos "investimento")
+  const aportesPorMes = (meses = 12) => {
+    const out = [];
+    for (let i = meses - 1; i >= 0; i--) {
+      const d = currentDate.subtract(i, 'month');
+      const lista = (allData[d.format('YYYY-MM')] || []).filter((e) => e.type === 'investimento');
+      out.push({ label: d.format('MMM/YY'), total: sum(lista, (e) => Number(e.value) || 0) });
+    }
+    return out;
+  };
+
   const Investimentos = {
     fields: (i = {}) => [
       { name: 'tipo', label: 'Tipo', type: 'select', value: i.tipo || 'CDB', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
-      { name: 'instituicao', label: 'Instituição', type: 'text', value: i.instituicao, placeholder: 'Ex: Nubank, XP', wide: true },
-      { name: 'valorAplicado', label: 'Valor aplicado (R$)', type: 'money', required: true, value: i.valorAplicado ? formatValuePlain(i.valorAplicado) : '' },
-      { name: 'valorAtual', label: 'Valor atual (R$)', type: 'money', value: i.valorAtual ? formatValuePlain(i.valorAtual) : '' },
-      { name: 'data', label: 'Data da aplicação', type: 'date', value: i.data || today().format('YYYY-MM-DD') }
+      { name: 'instituicao', label: 'Nome / instituição', type: 'text', value: i.instituicao, placeholder: 'Ex: CDB Nubank, Tesouro Selic', wide: true },
+      { name: 'valorAplicado', label: 'Aporte inicial (R$) — deixe 0 para começar do zero', type: 'money', value: i.valorAplicado ? formatValuePlain(i.valorAplicado) : '' },
+      { name: 'valorAtual', label: 'Valor atual informado (R$) — opcional', type: 'money', value: i.valorAtual ? formatValuePlain(i.valorAtual) : '' },
+      { name: 'data', label: 'Data de início', type: 'date', value: i.data || today().format('YYYY-MM-DD') }
     ],
     async add() {
       const v = await formModal({ title: 'Novo investimento', icon: 'graph-up-arrow', fields: this.fields() });
       if (!v) return;
-      if (!v.valorAtual) v.valorAtual = v.valorAplicado;
-      upsert('investimentos', { id: generateId(), ...v });
-      notify.success('Investimento adicionado!');
+      const item = { id: generateId(), ...v };
+      if (item.valorAtual > 0) item.valorAtualEm = today().format('YYYY-MM-DD');
+      upsert('investimentos', item);
+      notify.success('Investimento adicionado! Vincule os lançamentos do mês a ele no formulário.');
     },
     async edit(id) {
       const i = coll('investimentos').find((x) => x.id === id);
       if (!i) return;
       const v = await formModal({ title: 'Editar investimento', icon: 'graph-up-arrow', fields: this.fields(i) });
       if (!v) return;
-      if (!v.valorAtual) v.valorAtual = v.valorAplicado;
-      upsert('investimentos', { ...i, ...v });
+      const item = { ...i, ...v };
+      if (v.valorAtual > 0) {
+        if (v.valorAtual !== (Number(i.valorAtual) || 0)) item.valorAtualEm = today().format('YYYY-MM-DD');
+      } else {
+        delete item.valorAtualEm;
+      }
+      upsert('investimentos', item);
       notify.success('Investimento atualizado!');
     },
+    // aplicado = aporte inicial + tudo que entrou pelos lançamentos mensais
+    aplicado(i) { return (Number(i.valorAplicado) || 0) + aportesMensaisDe(i.id).total; },
+    // atual = o que você informou; sem informar, vale o aplicado
+    atual(i) { const v = Number(i.valorAtual) || 0; return v > 0 ? v : this.aplicado(i); },
     rent(i) {
-      if (!i.valorAplicado) return 0;
-      return ((i.valorAtual - i.valorAplicado) / i.valorAplicado) * 100;
+      const ap = this.aplicado(i);
+      const v = Number(i.valorAtual) || 0;
+      if (!ap || v <= 0) return 0;
+      return ((v - ap) / ap) * 100;
+    },
+    totais() {
+      const list = coll('investimentos');
+      const aplicado = sum(list, (i) => this.aplicado(i));
+      const atual = sum(list, (i) => this.atual(i));
+      const semVinculo = aportesSemVinculo();
+      return { aplicado, atual, semVinculo, total: atual + semVinculo.total };
     },
     render(c) {
       const list = coll('investimentos');
-      const aplic = sum(list, (i) => i.valorAplicado || 0);
-      const atual = sum(list, (i) => i.valorAtual || 0);
-      const rentTotal = aplic ? ((atual - aplic) / aplic) * 100 : 0;
+      const t = this.totais();
+      const rentTotal = t.aplicado ? ((t.atual - t.aplicado) / t.aplicado) * 100 : 0;
+      const porMes = aportesPorMes(12);
+      const temMensal = porMes.some((p) => p.total > 0) || t.semVinculo.qtd > 0;
+
       const rows = list.map((i) => {
+        const men = aportesMensaisDe(i.id);
+        const ap = this.aplicado(i);
+        const at = this.atual(i);
         const r = this.rent(i);
+        const informado = (Number(i.valorAtual) || 0) > 0;
         return `<tr>
           <td><span class="mod-badge mod-badge--violet">${escapeHtml(i.tipo)}</span></td>
           <td>${escapeHtml(i.instituicao || '—')}</td>
-          <td class="num">${formatCurrency(i.valorAplicado || 0)}</td>
-          <td class="num">${formatCurrency(i.valorAtual || 0)}</td>
-          <td class="num" style="color:${moneyColor(r)}">${r >= 0 ? '+' : ''}${r.toFixed(2)}%</td>
+          <td class="num">${formatCurrency(ap)}<div class="mod-sub">inicial ${formatCurrency(i.valorAplicado || 0)}${men.qtd ? ` · ${men.qtd} lanç. ${formatCurrency(men.total)}` : ''}</div></td>
+          <td class="num">${formatCurrency(at)}<div class="mod-sub">${informado ? `informado${i.valorAtualEm ? ` em ${fmtDate(i.valorAtualEm)}` : ''}` : '= aplicado'}</div></td>
+          <td class="num" style="color:${moneyColor(r)}">${informado ? `${r >= 0 ? '+' : ''}${r.toFixed(2)}%` : '—'}</td>
           <td>${fmtDate(i.data)}</td>
           <td class="num">${actionBtns('investimentos', i.id).replace('mod-card__actions', 'mod-card__actions justify-content-end')}</td>
         </tr>`;
       }).join('');
+
       c.innerHTML = `
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-graph-up-arrow app-icon"></i> Investimentos</h2>
-          <p class="view-header__hint">Carteira: poupança, CDB, Tesouro, ações, FIIs, cripto…</p></div>
+          <p class="view-header__hint">Carteira + o que entra mês a mês pelos lançamentos do tipo Investimento</p></div>
           <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Novo investimento</button>
         </div>
-        ${list.length ? `<div class="mod-summary">
-          <div class="mod-summary__item"><span>Total aplicado</span><strong>${formatCurrency(aplic)}</strong></div>
-          <div class="mod-summary__item"><span>Valor atual</span><strong style="color:var(--app-investment)">${formatCurrency(atual)}</strong></div>
+        ${(list.length || temMensal) ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Total investido hoje</span><strong style="color:var(--app-investment)">${formatCurrency(t.total)}</strong></div>
+          <div class="mod-summary__item"><span>Aplicado na carteira</span><strong>${formatCurrency(t.aplicado)}</strong></div>
           <div class="mod-summary__item"><span>Rentabilidade</span><strong style="color:${moneyColor(rentTotal)}">${rentTotal >= 0 ? '+' : ''}${rentTotal.toFixed(2)}%</strong></div>
+          ${t.semVinculo.qtd ? `<div class="mod-summary__item"><span>Sem vínculo (${t.semVinculo.qtd} lanç.)</span><strong>${formatCurrency(t.semVinculo.total)}</strong></div>` : ''}
         </div>
-        <div class="row g-3 mb-3"><div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Alocação por tipo</h3><canvas id="chartInvestAloc" height="200"></canvas></div></div></div>
-        <div class="mod-table-wrap"><table class="mod-table">
-          <thead><tr><th>Tipo</th><th>Instituição</th><th class="num">Aplicado</th><th class="num">Atual</th><th class="num">Rent.</th><th>Data</th><th></th></tr></thead>
+        <div class="row g-3 mb-3">
+          ${list.length ? '<div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Alocação por tipo</h3><canvas id="chartInvestAloc" height="200"></canvas></div></div>' : ''}
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Investido por mês (12 meses)</h3><canvas id="chartInvestMensal" height="200"></canvas></div></div>
+        </div>` : ''}
+        ${list.length ? `<div class="mod-table-wrap"><table class="mod-table">
+          <thead><tr><th>Tipo</th><th>Nome</th><th class="num">Aplicado</th><th class="num">Atual</th><th class="num">Rent.</th><th>Início</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
-        </table></div>` : emptyBlock('graph-up-arrow', 'Nenhum investimento cadastrado.')}`;
+        </table></div>` : emptyBlock('graph-up-arrow', 'Nenhum investimento na carteira. Crie um (pode começar do zero) e vincule os lançamentos do tipo Investimento a ele.')}
+        ${t.semVinculo.qtd ? `<p class="mod-hint mt-2"><i class="bi bi-info-circle"></i> ${t.semVinculo.qtd} lançamento(s) do tipo Investimento ainda sem vínculo: edite-os no mês e escolha o investimento no campo “Investimento (carteira)”.</p>` : ''}`;
 
+      const { grid, text } = getChartTheme();
       if (list.length) {
         const byTipo = {};
-        list.forEach((i) => { byTipo[i.tipo] = (byTipo[i.tipo] || 0) + (i.valorAtual || 0); });
-        const { text } = getChartTheme();
+        list.forEach((i) => { byTipo[i.tipo] = (byTipo[i.tipo] || 0) + this.atual(i); });
         drawChart('chartInvestAloc', {
           type: 'doughnut',
           data: { labels: Object.keys(byTipo), datasets: [{ data: Object.values(byTipo), backgroundColor: CHART_COLORS, borderWidth: 0 }] },
           options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: text, font: { size: 11 } } }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } } }
+        });
+      }
+      if (list.length || temMensal) {
+        drawChart('chartInvestMensal', {
+          type: 'bar',
+          data: { labels: porMes.map((p) => p.label), datasets: [{ data: porMes.map((p) => p.total), backgroundColor: '#8b5cf6', borderRadius: 5, maxBarThickness: 26 }] },
+          options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { beginAtZero: true, ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
         });
       }
     }
@@ -861,7 +937,7 @@
       const s = calculateSummary(entries);
       const saldo = s.income - s.expense - s.investment;
       const patrimonioTotal = sum(coll('patrimonio'), (b) => b.valorAtual || 0);
-      const investTotal = sum(coll('investimentos'), (i) => i.valorAtual || 0);
+      const investTotal = Investimentos.totais().total; // carteira + lançamentos mensais
       const reservasTotal = sum(coll('reservas'), reservaSaldo);
       const metasAtivas = coll('metas').filter((m) => m.status === 'ativa');
       const faturasTotal = sum(coll('cartoes'), (k) => Cartoes.faturaMes(k.id, currentDate));

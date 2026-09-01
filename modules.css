@@ -512,3 +512,8 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* Linha secundária dentro de célula (ex.: detalhe do aplicado) e dica de módulo */
+.mod-sub { font-size: 0.68rem; font-weight: 400; color: var(--app-text-faint); white-space: nowrap; }
+.mod-hint { font-size: 0.8rem; color: var(--app-text-muted); }
+.mod-hint i { color: var(--app-primary); margin-right: 0.25rem; }

@@ -10,7 +10,7 @@
 const STORAGE_KEY = 'financas_casa_dados';
 const THEME_KEY = 'financas_casa_theme';
 
-const CATEGORIAS = [
+const DEFAULT_CATEGORIAS = [
   'Contribuição para casa',
   'Aluguel',
   'Combustível',
@@ -25,6 +25,34 @@ const CATEGORIAS = [
   'Investimentos',
   'Outros'
 ];
+
+// Fixas: os cartões são reconhecidos pelo nome (isCreditCardEntry), 'Investimentos'
+// é forçada pelo tipo e 'Outros' é o destino das exclusões — não dá para mexer.
+const CATEGORIAS_FIXAS = new Set([
+  'Cartão de crédito Gabriel',
+  'Cartão de crédito Babi',
+  'Cartão de crédito',
+  'Investimentos',
+  'Outros'
+]);
+
+// Lista viva: o usuário pode adicionar, renomear e excluir (fora as fixas).
+// Persiste em allData.__app.categorias e sincroniza junto com os dados.
+let CATEGORIAS = [...DEFAULT_CATEGORIAS];
+
+const aplicarCategoriasSalvas = () => {
+  const salvas = allData.__app?.categorias;
+  if (!Array.isArray(salvas) || !salvas.length) { CATEGORIAS = [...DEFAULT_CATEGORIAS]; return; }
+  const lista = salvas.map((c) => String(c).trim()).filter(Boolean);
+  CATEGORIAS_FIXAS.forEach((fixa) => { if (!lista.includes(fixa)) lista.push(fixa); });
+  CATEGORIAS = lista;
+};
+
+const salvarCategorias = () => {
+  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+  allData.__app.categorias = [...CATEGORIAS];
+  saveData();
+};
 
 const MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -195,7 +223,11 @@ const dom = {
   investmentTableWrapper: $('#investmentTableWrapper'),
   investmentEmpty: $('#investmentEmpty'),
   investmentTable: $('#investmentTable'),
-  appVersion: $('#appVersion')
+  appVersion: $('#appVersion'),
+  inputInvestimento: $('#inputInvestimento'),
+  inputInvestimentoWrap: $('#inputInvestimentoWrap'),
+  editInvestimento: $('#editInvestimento'),
+  editInvestimentoWrap: $('#editInvestimentoWrap')
 };
 
 // ============================================
@@ -768,6 +800,101 @@ const populateSelectors = () => {
   syncSelectors();
 };
 
+// Quantos lançamentos usam cada categoria (todos os meses)
+const contarUsoCategorias = () => {
+  const uso = {};
+  Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+    (allData[k] || []).forEach((e) => { uso[e.category] = (uso[e.category] || 0) + 1; });
+  });
+  return uso;
+};
+
+const renomearCategoriaNosDados = (de, para) => {
+  Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+    allData[k] = (allData[k] || []).map((e) => (e.category === de ? { ...e, category: para } : e));
+  });
+};
+
+const gerenciarCategorias = async () => {
+  const uso = contarUsoCategorias();
+  const linhas = CATEGORIAS.map((cat, i) => {
+    const fixa = CATEGORIAS_FIXAS.has(cat);
+    const usos = uso[cat] || 0;
+    return `<div class="cat-manager__row" data-idx="${i}">
+      <input type="text" class="cat-manager__name" value="${escapeAttr(cat)}" data-original="${escapeAttr(cat)}"
+        ${fixa ? 'disabled title="Categoria fixa do sistema"' : ''} aria-label="Nome da categoria">
+      <span class="cat-manager__uso">${usos ? `${usos} uso(s)` : '—'}</span>
+      ${fixa
+        ? '<span class="cat-manager__lock" title="Categoria fixa"><i class="bi bi-lock-fill"></i></span>'
+        : `<button type="button" class="cat-manager__del" data-del="${i}" title="Excluir (lançamentos vão para Outros)" aria-label="Excluir ${escapeAttr(cat)}"><i class="bi bi-trash"></i></button>`}
+    </div>`;
+  }).join('');
+
+  const { value: resultado, isConfirmed } = await Swal.fire({
+    title: 'Categorias',
+    html: `<div class="cat-manager">
+      ${linhas}
+      <div class="cat-manager__row cat-manager__row--add">
+        <input type="text" class="cat-manager__name" id="catNova" placeholder="Nova categoria" maxlength="40">
+        <span class="cat-manager__uso"></span><span></span>
+      </div>
+      <p class="cat-manager__hint">Renomear atualiza os lançamentos de todos os meses. Excluir manda os lançamentos para “Outros”.</p>
+    </div>`,
+    width: '34rem',
+    showCancelButton: true,
+    confirmButtonText: 'Salvar',
+    cancelButtonText: 'Cancelar',
+    didOpen: () => {
+      Swal.getPopup().querySelectorAll('[data-del]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          btn.closest('.cat-manager__row').classList.toggle('is-deleting');
+        });
+      });
+    },
+    preConfirm: () => {
+      const popup = Swal.getPopup();
+      const renames = [];
+      const excluir = [];
+      const finais = [];
+      let erro = '';
+
+      popup.querySelectorAll('.cat-manager__row:not(.cat-manager__row--add)').forEach((row) => {
+        const input = row.querySelector('.cat-manager__name');
+        const original = input.dataset.original;
+        if (row.classList.contains('is-deleting')) { excluir.push(original); return; }
+        const nome = input.value.trim();
+        if (!nome) { erro = 'Categoria sem nome.'; return; }
+        if (nome !== original) renames.push([original, nome]);
+        finais.push(nome);
+      });
+
+      const nova = popup.querySelector('#catNova').value.trim();
+      if (nova) finais.push(nova);
+
+      const vistos = new Set();
+      finais.forEach((n) => {
+        const chave = n.toLowerCase();
+        if (vistos.has(chave)) erro = `Categoria duplicada: ${n}`;
+        vistos.add(chave);
+      });
+      if (erro) { Swal.showValidationMessage(erro); return false; }
+      return { renames, excluir, nova, finais };
+    }
+  });
+  if (!isConfirmed || !resultado) return;
+
+  const { renames, excluir, nova, finais } = resultado;
+  if (!renames.length && !excluir.length && !nova) return;
+
+  renames.forEach(([de, para]) => renomearCategoriaNosDados(de, para));
+  excluir.forEach((cat) => renomearCategoriaNosDados(cat, 'Outros'));
+  CATEGORIAS = finais;
+  salvarCategorias();
+  populateCategories();
+  render();
+  notify.success('Categorias atualizadas.');
+};
+
 const populateCategories = () => {
   const options = CATEGORIAS.map((c) => `<option value="${c}">${c}</option>`).join('');
   dom.inputCategory.innerHTML = options;
@@ -964,6 +1091,73 @@ const updateCharts = (entries) => {
 // CRUD
 // ============================================
 
+// ---- Vínculo lançamento mensal (tipo investimento) -> carteira (aba Investimentos) ----
+const getInvestimentosCarteira = () =>
+  (Array.isArray(allData.__app?.investimentos) ? allData.__app.investimentos : []);
+
+const investimentoLabel = (inv) =>
+  [inv.tipo, inv.instituicao].filter(Boolean).join(' · ') || 'Investimento';
+
+const getInvestimentoLabelById = (id) => {
+  if (!id) return '';
+  const inv = getInvestimentosCarteira().find((i) => i.id === id);
+  return inv ? investimentoLabel(inv) : '';
+};
+
+const populateInvestimentoSelects = () => {
+  const opts = [
+    '<option value="">Sem vínculo (só conta neste mês)</option>',
+    ...getInvestimentosCarteira().map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(investimentoLabel(i))}</option>`),
+    '<option value="__novo__">＋ Novo investimento (começa do zero)</option>'
+  ].join('');
+  [dom.inputInvestimento, dom.editInvestimento].forEach((sel) => {
+    if (!sel) return;
+    const atual = sel.value;
+    sel.innerHTML = opts;
+    if ([...sel.options].some((o) => o.value === atual)) sel.value = atual;
+  });
+};
+
+const toggleInvestimentoField = (typeSel, wrap) => {
+  if (!typeSel || !wrap) return;
+  const mostrar = typeSel.value === 'investimento';
+  wrap.hidden = !mostrar;
+  if (mostrar) populateInvestimentoSelects();
+};
+
+// "+ Novo investimento" direto do formulário do mês: nasce zerado e os lançamentos somam nele
+const criarInvestimentoRapido = async (nomeSugerido) => {
+  const { value, isConfirmed } = await Swal.fire({
+    title: 'Novo investimento',
+    text: 'Começa do zero: os lançamentos mensais vinculados vão somando nele. Tipo e valor atual você ajusta na aba Investimentos.',
+    input: 'text',
+    inputValue: nomeSugerido || '',
+    inputPlaceholder: 'Ex: CDB Nubank, Tesouro Selic',
+    inputValidator: (v) => (String(v).trim() ? undefined : 'Dê um nome ao investimento'),
+    showCancelButton: true,
+    confirmButtonText: 'Criar',
+    cancelButtonText: 'Cancelar'
+  });
+  if (!isConfirmed) return null;
+  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+  if (!Array.isArray(allData.__app.investimentos)) allData.__app.investimentos = [];
+  const inv = {
+    id: generateId(), tipo: 'Outros', instituicao: String(value).trim(),
+    valorAplicado: 0, valorAtual: 0, data: dayjs().format('YYYY-MM-DD')
+  };
+  allData.__app.investimentos.push(inv);
+  saveData();
+  notify.success(`Investimento "${inv.instituicao}" criado. Veja na aba Investimentos.`);
+  return inv.id;
+};
+
+const onInvestimentoSelectChange = async (sel, descInput) => {
+  if (!sel || sel.value !== '__novo__') return;
+  const novoId = await criarInvestimentoRapido(descInput?.value?.trim());
+  populateInvestimentoSelects();
+  sel.value = novoId || '';
+};
+
 const buildEntryFromForm = (formData) => normalizeEntry({
   id: formData.id ?? generateId(),
   description: formData.description.trim(),
@@ -974,7 +1168,9 @@ const buildEntryFromForm = (formData) => normalizeEntry({
   status: formData.status,
   due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
   observation: formData.observation.trim(),
-  card_items: formData.card_items ?? []
+  card_items: formData.card_items ?? [],
+  ...(formData.type === 'investimento' && formData.investimento_id && formData.investimento_id !== '__novo__'
+    ? { investimento_id: formData.investimento_id } : {})
 });
 
 const validateEntry = (entry) => {
@@ -995,7 +1191,8 @@ const handleAddEntry = (e) => {
     value: getMaskValue(maskAdd),
     status: dom.inputStatus.value,
     due_day: dom.inputDueDay.value || null,
-    observation: dom.inputObservation.value
+    observation: dom.inputObservation.value,
+    investimento_id: dom.inputInvestimento?.value || ''
   });
 
   if (!validateEntry(entry)) return;
@@ -1019,6 +1216,8 @@ const openEditModal = (id) => {
   dom.editObservation.value = entry.observation ?? '';
   dom.editPerson.value = entry.person ?? '';
   setMaskValue(maskEdit, entry.value);
+  toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap);
+  if (dom.editInvestimento) dom.editInvestimento.value = entry.investimento_id || '';
 
   editModal.show();
   dom.editDescription.focus();
@@ -1042,7 +1241,8 @@ const handleEditEntry = (e) => {
     status: dom.editStatus.value,
     due_day: dom.editDueDay.value || null,
     observation: dom.editObservation.value,
-    card_items: entries[index].card_items ?? []
+    card_items: entries[index].card_items ?? [],
+    investimento_id: dom.editInvestimento?.value || ''
   });
 
   if (!validateEntry(updated)) return;
@@ -1509,6 +1709,8 @@ const importJSON = async (file) => {
   if (!confirmed) return;
 
   allData = imported;
+  aplicarCategoriasSalvas();
+  populateCategories();
   saveData();
   render();
   notify.success('Backup restaurado com sucesso!');
@@ -1726,7 +1928,7 @@ const BANK_CATEGORY_HINTS = [
 
 const guessBankCategory = (desc) => {
   for (const [re, cat] of BANK_CATEGORY_HINTS) {
-    if (re.test(desc)) return cat;
+    if (re.test(desc)) return CATEGORIAS.includes(cat) ? cat : 'Outros';
   }
   return 'Outros';
 };
@@ -2490,12 +2692,17 @@ const renderCreditCardRows = (entry, valueClass) => {
     </tr>`;
 };
 
+const investLinkTag = (entry) => {
+  const label = entry.investimento_id ? getInvestimentoLabelById(entry.investimento_id) : '';
+  return label ? ` <span class="invest-link-tag" title="Soma na carteira (aba Investimentos)"><i class="bi bi-graph-up-arrow"></i> ${escapeHtml(label)}</span>` : '';
+};
+
 const renderEntryRow = (entry, valueClass) => {
   if (isCreditCardEntry(entry)) return renderCreditCardRows(entry, valueClass);
 
   return `
   <tr data-id="${entry.id}">
-    <td class="cell-description">${escapeHtml(entry.description)}</td>
+    <td class="cell-description">${escapeHtml(entry.description)}${investLinkTag(entry)}</td>
     <td>${renderPersonTag(entry.person)}</td>
     <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
     <td class="${valueClass}">${formatCurrency(entry.value)}</td>
@@ -2523,7 +2730,7 @@ const renderEntryCard = (entry, valueClass) => {
         <button type="button" class="btn-card-toggle" data-action="toggle-card" data-id="${entry.id}" aria-expanded="${expanded}">
           <i class="bi bi-chevron-${expanded ? 'up' : 'down'}"></i>
         </button>
-        <span class="entry-card__title">${escapeHtml(entry.description)}</span>
+        <span class="entry-card__title">${escapeHtml(entry.description)}${investLinkTag(entry)}</span>
         <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
       </div>
       <div class="entry-card__meta">
@@ -2544,7 +2751,7 @@ const renderEntryCard = (entry, valueClass) => {
   return `
     <div class="entry-card" data-id="${entry.id}">
       <div class="entry-card__header">
-        <span class="entry-card__title">${escapeHtml(entry.description)}</span>
+        <span class="entry-card__title">${escapeHtml(entry.description)}${investLinkTag(entry)}</span>
         <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
       </div>
       <div class="entry-card__meta">
@@ -3012,6 +3219,9 @@ const bindEvents = () => {
   dom.inputImportJson.addEventListener('change', onImportJson);
   dom.inputImportSheet.addEventListener('change', onImportSheet);
   dom.inputImportBank.addEventListener('change', onImportBank);
+  document.getElementById('btnManageCategories')?.addEventListener('click', gerenciarCategorias);
+  dom.inputInvestimento?.addEventListener('change', () => onInvestimentoSelectChange(dom.inputInvestimento, dom.inputDescription));
+  dom.editInvestimento?.addEventListener('change', () => onInvestimentoSelectChange(dom.editInvestimento, dom.editDescription));
   dom.formAdd.addEventListener('submit', handleAddEntry);
   dom.formEdit.addEventListener('submit', handleEditEntry);
 
@@ -3052,12 +3262,14 @@ const onTypeChange = () => {
   if (dom.inputType.value === 'investimento') {
     dom.inputCategory.value = 'Investimentos';
   }
+  toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap);
 };
 
 const onEditTypeChange = () => {
   if (dom.editType.value === 'investimento') {
     dom.editCategory.value = 'Investimentos';
   }
+  toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap);
 };
 
 // ============================================
@@ -3067,6 +3279,10 @@ const onEditTypeChange = () => {
 // Carrega os dados e desenha a tela (chamado quando o armazenamento está pronto)
 const startApp = async () => {
   await loadData();
+  aplicarCategoriasSalvas();
+  populateCategories();
+  populateInvestimentoSelects();
+  toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap);
   render();
 };
 

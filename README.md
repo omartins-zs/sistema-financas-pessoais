@@ -116,10 +116,12 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 - 📅 **Controle mensal** — navegação por mês/ano, copiar mês anterior e limpar mês
 - 💵 **Entradas, despesas e investimentos** — tipos separados com cálculo de **Sobra** (Entradas − Despesas − Investimentos)
 - 🏷️ **Tags** — Gabriel, Barbara, Casa, Família
+- 🏷️ **Categorias editáveis** — adicionar, renomear (propaga para todos os meses) e excluir (lançamentos vão para “Outros”); as de cartão, Investimentos e Outros são fixas
 - ✅ **Status** — Pago, Reservado, Não pago (seletor segmentado responsivo)
 - 💳 **Cartões Gabriel e Babi** — itens colapsáveis na fatura, recorrentes, copiar/colar/editar, Enter para adicionar, arrastar para reordenar
 - 📋 **Contas fixas** — serviços recorrentes + sugestões automáticas dos últimos 3 meses
 - 📊 **Módulos** — Dashboard, Anual, Metas, Reservas, Cartões, Investimentos, Patrimônio, Relatórios
+- 📈 **Investimentos mês a mês** — lançamentos do tipo Investimento se vinculam a um item da carteira (pode nascer zerado); aplicado = inicial + soma dos meses, valor atual informado, gráfico dos últimos 12 meses e total no Dashboard
 - 🔎 **Relatórios** — busca por texto, filtros que aplicam na hora, colunas ordenáveis, gráfico de despesas por categoria e exportação (CSV/Excel/PDF) com totais
 - 🔔 **Alertas inteligentes** — vencimentos, metas, faturas e contas fixas
 - 📥 **Importação** — CSV, Excel e backup JSON
