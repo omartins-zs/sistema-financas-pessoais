@@ -1636,7 +1636,7 @@ const BANK_MERCHANTS = [
   [/(?:^|\W)(?:pg|pag)\s*\*\s*(.*)/i, 'PagSeguro', true],
   [/(?:^|\W)paypal\s*\*\s*(.*)/i, 'PayPal', true],
   [/(?:^|\W)(?:ifd|ifood)\s*\*?\s*(.*)/i, 'iFood', true],
-  [/(?:^|\W)(?:amazon|amzn)(?:\s*\*?\s*|\.com\.?br?)(.*)/i, 'Amazon', false],
+  [/(?:^|\W)(?:amazon|amzn)(?:\.com\.?(?:br)?)?\s*\*?\s*(.*)/i, 'Amazon', true],
   [/(?:^|\W)aliexpress/i, 'AliExpress', false],
   [/(?:^|\W)spotify/i, 'Spotify', false],
   [/(?:^|\W)netflix/i, 'Netflix', false],
@@ -1645,7 +1645,7 @@ const BANK_MERCHANTS = [
   [/(?:^|\W)99\s*(?:app|pop|\*)/i, '99', false],
   [/(?:^|\W)rappi/i, 'Rappi', false],
   [/(?:^|\W)apple\.com\/bill|(?:^|\W)apple\s*\*/i, 'Apple', false],
-  [/(?:^|\W)(?:google|dl\s*\*google)/i, 'Google', false],
+  [/(?:^|\W)(?:dl\s*\*\s*)?google\s*\*?\s*(.*)/i, 'Google', true],
   [/(?:^|\W)steam(?:games|\s|\*|$)/i, 'Steam', false],
   [/(?:^|\W)playstation|(?:^|\W)sony\s*\*/i, 'PlayStation', false],
   [/(?:^|\W)(?:americanas|b2w)/i, 'Americanas', false],
@@ -1672,30 +1672,40 @@ const normalizeBankDesc = (raw) => {
   if (/^aplica[çc][ãa]o rdb/i.test(s)) return 'Aplicação RDB';
   if (/^resgate rdb/i.test(s)) return 'Resgate RDB';
 
-  // Guarda a parcela ("3/10", "PARC 03/10") antes de limpar
-  const parcela = s.match(/(?:parc\.?\s*)?(\d{1,2})\s*\/\s*(\d{1,2})\s*$/i);
-
   // Remove prefixos de operação que só poluem
   s = s.replace(/^(compra\s+(?:no\s+)?(?:cartao|cartão|debito|débito|credito|crédito)(?:\s+a\s+vista)?|compra\s+com\s+cart[aã]o)\s*[-:]?\s*/i, '');
 
+  // Anotação do dono feita no app do banco — "Uber(Carro Mecânica)" — volta no final
+  const nota = s.match(/\(([^()]{3,})\)\s*$/);
+  if (nota) s = s.slice(0, nota.index).trim();
+
+  // Parcela ("- Parcela 3/12", "PARC 03/10", "3/12") vira sufixo padronizado
+  const parcela = s.match(/(?:-\s*)?(?:parc(?:ela)?\.?\s*)?(\d{1,2})\s*\/\s*(\d{1,2})\s*$/i);
+  if (parcela) s = s.slice(0, parcela.index).replace(/[\s-]+$/, '');
+
+  // Sujeira comum: máscara de cartão ("*0000"), código de loja no fim, underscores
+  s = s.replace(/\*+\d+(?=\s|$)/g, '').replace(/[-\s]+\d{3,}$/, '').replace(/_/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+
+  let nome = '';
   for (const [re, marca, comVendedor] of BANK_MERCHANTS) {
-    const m = s.match(re);
-    if (!m) continue;
+    const bm = s.match(re);
+    if (!bm) continue;
     let vendedor = '';
-    if (comVendedor && m[1]) {
-      vendedor = m[1].replace(/(?:parc\.?\s*)?\d{1,2}\s*\/\s*\d{1,2}\s*$/i, '') // parcela sai do vendedor
-        .replace(/[*_#-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (comVendedor && bm[1]) {
+      vendedor = bm[1].replace(/[*_#-]+/g, ' ').replace(/\s+/g, ' ').trim();
       // descarta restos sem informação (códigos, "br", número do pedido)
       if (/^\d+$/.test(vendedor) || vendedor.length < 3 || /^brasil$|^br$/i.test(vendedor)) vendedor = '';
     }
-    let nome = vendedor ? `${marca} · ${titleCaseDesc(vendedor)}` : marca;
-    if (parcela) nome += ` ${parcela[1]}/${parcela[2]}`;
-    return nome;
+    nome = vendedor ? `${marca} · ${titleCaseDesc(vendedor)}` : marca;
+    break;
   }
 
-  // Sem marca conhecida: só arruma caixa alta gritada
-  if (s === s.toUpperCase() && s.length > 3) s = titleCaseDesc(s);
-  return s;
+  if (!nome) nome = (s === s.toUpperCase() && s.length > 3) ? titleCaseDesc(s) : s;
+
+  if (parcela) nome += ` ${+parcela[1]}/${+parcela[2]}`;
+  if (nota) nome += ` (${nota[1].trim()})`;
+  return nome;
 };
 
 const titleCaseDesc = (s) => String(s).toLowerCase().replace(/(^|\s|\.)([a-zà-ú])/g, (_, sep, ch) => sep + ch.toUpperCase());
@@ -1704,7 +1714,7 @@ const titleCaseDesc = (s) => String(s).toLowerCase().replace(/(^|\s|\.)([a-zà-�
 const BANK_CATEGORY_HINTS = [
   [/mercado|supermerc|atacad|carrefour|assai|assaí|extra\b|pao de acucar|hortifruti|sacolao|sacolão/i, 'Mercado'],
   [/posto|combust|ipiranga|shell|petrobras|br mania|gasolina|etanol/i, 'Combustível'],
-  [/farmac|farmác|drogaria|drogasil|pacheco|raia|panvel/i, 'Farmácia'],
+  [/farmac|farmác|drogaria|drogasil|pacheco|raia|panvel|remedio|remédio/i, 'Farmácia'],
   [/energia|\bluz\b|cemig|copel|enel|cpfl|light|celesc|coelba/i, 'Luz'],
   [/\bagua\b|\bágua\b|saneamento|sabesp|copasa|sanepar|embasa/i, 'Água'],
   [/internet|vivo\b|claro\b|tim\b|\boi\b|net\b.*virtua|fibra/i, 'Internet'],
@@ -1743,7 +1753,8 @@ const parseOFX = (text) => {
     const amount = parseSignedValue(tag('TRNAMT'));
     const desc = tag('MEMO') || tag('NAME') || tag('PAYEE');
     const fitid = tag('FITID');
-    if (date && amount !== 0 && desc) txs.push({ date, amount, desc, fitid });
+    const trntype = tag('TRNTYPE').toUpperCase();
+    if (date && amount !== 0 && desc) txs.push({ date, amount, desc, fitid, ...(trntype ? { trntype } : {}) });
   });
   return txs;
 };
@@ -1844,7 +1855,9 @@ const parseBankFile = async (file) => {
   if (ext === 'ofx' || /<OFX>|<STMTTRN>/i.test(text)) {
     // OFX de cartão de crédito usa <CCSTMTRS>/<CREDITCARDMSGSRSV1>
     const hint = /<CCSTMTRS>|<CREDITCARDMSGSRSV1>/i.test(text) ? 'cartao' : 'conta';
-    return { txs: parseOFX(text), formato: 'OFX', hint };
+    const dtend = (text.match(/<DTEND>(\d{6})/i) || [])[1];
+    const org = (text.match(/<ORG>([^<\r\n]+)/i) || [])[1] || '';
+    return { txs: parseOFX(text), formato: 'OFX', hint, fim: dtend ? `${dtend.slice(0, 4)}-${dtend.slice(4, 6)}` : null, org };
   }
   if (ext === 'qif' || /^!Type:/im.test(text)) {
     const hint = /^!Type:CCard/im.test(text) ? 'cartao' : 'conta';
@@ -1854,50 +1867,190 @@ const parseBankFile = async (file) => {
   return { txs, formato: 'CSV', hint };
 };
 
+// Fatura: de que lado está o gasto? OFX marca TRNTYPE (CREDIT = pagamento/estorno);
+// sem TRNTYPE (CSV/QIF), o gasto é o sinal majoritário do arquivo — no CSV de fatura
+// do Nubank o gasto é positivo, no OFX é negativo.
+const makeCardExpenseTest = (txs) => {
+  const negativas = txs.filter((t) => t.amount < 0).length;
+  const sinalGasto = negativas > txs.length - negativas ? -1 : 1;
+  return (t) => (t.trntype ? !/CREDIT/.test(t.trntype) : (t.amount < 0 ? -1 : 1) === sinalGasto);
+};
+
+const bankIssuerName = (org, fileName) => {
+  const fonte = `${org || ''} ${fileName || ''}`;
+  if (/nu\s*pagamentos|nubank/i.test(fonte)) return 'Nubank';
+  if (org) return titleCaseDesc(org.toLowerCase().replace(/\s+s\.?a\.?$/i, '').trim());
+  return 'Cartão';
+};
+
+// Fatura importada vira itens DENTRO do lançamento do cartão (o mesmo painel
+// com drag & drop), em vez de dezenas de despesas soltas no mês.
+const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }) => {
+  const ehGasto = makeCardExpenseTest(txs);
+  const gastos = txs.filter(ehGasto);
+  const pagamentos = txs.length - gastos.length;
+  if (!gastos.length) { notify.info('O arquivo só tinha pagamentos/estornos — nada a importar.'); return; }
+
+  const lista = [...(allData[mes] || [])];
+  let index = lista.findIndex((e) => isCreditCardEntry(e) && e.category === categoria);
+  let entry;
+  if (index === -1) {
+    entry = {
+      id: generateId(), description: nomeCartao, category: categoria, type: 'despesa',
+      person: personFromCardCategory(categoria) || '', value: 0, status: 'nao_pago',
+      due_day: dueDay || null, observation: '', card_items: []
+    };
+    lista.push(entry);
+    index = lista.length - 1;
+  } else {
+    entry = { ...lista[index], card_items: [...(lista[index].card_items ?? [])] };
+    lista[index] = entry;
+  }
+
+  let items = entry.card_items;
+  // O item-base "Cartão" sozinho é só um placeholder do total: sai quando entram itens reais
+  if (items.length === 1 && isDefaultCardItem(items[0])) items = [];
+
+  const fitids = new Set();
+  const chavesComData = new Set(); // itens de importações anteriores (guardam txdate)
+  const chavesManuais = new Set(); // itens digitados à mão (sem txdate)
+  items.forEach((i) => {
+    if (i.fitid) fitids.add(i.fitid);
+    const base = `${String(i.description).toLowerCase()}|${(Number(i.value) || 0).toFixed(2)}`;
+    if (i.txdate) chavesComData.add(`${i.txdate}|${base}`);
+    else chavesManuais.add(base);
+  });
+
+  let importados = 0;
+  let pulados = 0;
+  gastos.forEach((t) => {
+    const description = normalizeBankDesc(t.desc) || String(t.desc).trim();
+    const value = Math.abs(t.amount);
+    const base = `${description.toLowerCase()}|${value.toFixed(2)}`;
+    const comData = `${t.date}|${base}`;
+    if ((t.fitid && fitids.has(t.fitid)) || chavesComData.has(comData) || chavesManuais.has(base)) {
+      pulados++;
+      return;
+    }
+    chavesComData.add(comData);
+    if (t.fitid) fitids.add(t.fitid);
+    items.push({
+      id: generateId(), description, value, recurring: false, txdate: t.date,
+      ...(t.fitid ? { fitid: t.fitid } : {})
+    });
+    importados++;
+  });
+
+  if (!importados) {
+    notify.info(pulados ? 'Tudo já estava na fatura — nenhum item novo.' : 'Nenhum item válido.');
+    return;
+  }
+
+  entry.card_items = items;
+  entry.value = sumCardItems(items);
+  allData[mes] = lista.map(normalizeEntry);
+  expandedCardEntries.add(entry.id);
+  saveData();
+
+  if (mes !== getMonthKey(currentDate)) {
+    currentDate = dayjs(`${mes}-01`);
+    syncSelectors();
+  }
+  render();
+  const nomeMes = dayjs(`${mes}-01`).format('MMMM [de] YYYY');
+  notify.success(`${importados} item(ns) na fatura de ${nomeMes}`
+    + (pulados ? ` · ${pulados} já existia(m)` : '')
+    + (pagamentos ? ` · ${pagamentos} pagamento(s)/estorno(s) ignorado(s)` : ''));
+};
+
 const importBankStatement = async (file) => {
-  const { txs, formato, hint } = await parseBankFile(file);
+  const { txs, formato, hint, fim, org } = await parseBankFile(file);
   if (!txs.length) {
     notify.error('Nenhuma transação encontrada. Exporte o extrato em OFX, CSV ou QIF.');
     return;
   }
 
   // Modo sugerido: assinatura do arquivo (cabeçalho Nubank, OFX de cartão) tem
-  // prioridade; senão, fatura costuma ser quase toda positiva (gasto = positivo)
+  // prioridade; senão, fatura costuma ser quase toda de um sinal só
   const positivas = txs.filter((t) => t.amount >= 0).length;
-  const sugestao = hint ?? (positivas / txs.length >= 0.8 ? 'cartao' : 'conta');
+  const dominancia = Math.max(positivas, txs.length - positivas) / txs.length;
+  const sugestao = hint ?? (dominancia >= 0.8 ? 'cartao' : 'conta');
 
   const porMes = {};
   txs.forEach((t) => { const k = t.date.slice(0, 7); porMes[k] = (porMes[k] || 0) + 1; });
   const resumoMeses = Object.keys(porMes).sort().map((k) =>
     `<li>${dayjs(`${k}-01`).format('MMMM [de] YYYY')}: <strong>${porMes[k]}</strong> transação(ões)</li>`).join('');
 
-  const { value: modo, isConfirmed } = await Swal.fire({
+  // Nubank exporta como "Nubank_2026-09-10": a data no nome é o vencimento da fatura
+  const nomeData = file.name.match(/(\d{4})-(\d{2})-(\d{2})/);
+  const mesFaturaDefault = (nomeData ? `${nomeData[1]}-${nomeData[2]}` : null)
+    || fim || Object.keys(porMes).sort().pop();
+  const diaVencimento = nomeData ? +nomeData[3] : null;
+  const cardCats = CATEGORIAS.filter((c) => /^cart[aã]o de cr[ée]dito/i.test(c));
+  const nomeCartao = bankIssuerName(org, file.name);
+
+  const { value: escolha, isConfirmed } = await Swal.fire({
     title: `Importar ${formato}?`,
     html: `<div style="text-align:left;font-size:.92rem">
-      <p><strong>${txs.length}</strong> transação(ões) encontradas:</p>
-      <ul style="padding-left:1.2rem">${resumoMeses}</ul>
-      <p class="mb-1">Cada lançamento vai para o mês da própria data, já marcado como <strong>pago</strong>.</p>
-      <p class="mb-0" style="font-size:.85rem;color:#888">Duplicados (mesma data, descrição e valor) são pulados.</p>
+      <p class="mb-1"><strong>${txs.length}</strong> transação(ões) encontradas:</p>
+      <ul style="padding-left:1.2rem;margin-bottom:.7rem">${resumoMeses}</ul>
+      <label style="display:block;margin:.3rem 0;cursor:pointer">
+        <input type="radio" name="bankMode" value="cartao"${sugestao === 'cartao' ? ' checked' : ''}>
+        <strong>Fatura de cartão</strong> — vira itens dentro do lançamento do cartão
+      </label>
+      <div id="bankCardOpts" style="margin:.2rem 0 .55rem 1.45rem;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
+        <label style="margin:0">Mês da fatura <input type="month" id="bankCardMes" value="${mesFaturaDefault}" style="padding:.2rem .3rem"></label>
+        <label style="margin:0">Cartão <select id="bankCardCat" style="padding:.25rem .3rem;max-width:14rem">
+          ${cardCats.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')}
+        </select></label>
+      </div>
+      <label style="display:block;margin:.3rem 0;cursor:pointer">
+        <input type="radio" name="bankMode" value="conta"${sugestao === 'conta' ? ' checked' : ''}>
+        <strong>Extrato de conta</strong> — cada transação vira um lançamento no mês da própria data
+      </label>
+      <p class="mb-0" style="font-size:.85rem;color:#888">Duplicados são pulados — pode importar OFX e CSV do mesmo período.</p>
     </div>`,
-    input: 'radio',
-    inputOptions: {
-      conta: 'Extrato de conta — negativo é despesa, positivo é entrada',
-      cartao: 'Fatura de cartão — tudo é despesa'
-    },
-    inputValue: sugestao,
     showCancelButton: true,
     confirmButtonText: 'Importar',
-    cancelButtonText: 'Cancelar'
+    cancelButtonText: 'Cancelar',
+    didOpen: () => {
+      const popup = Swal.getPopup();
+      const opts = popup.querySelector('#bankCardOpts');
+      const sync = () => {
+        const modo = popup.querySelector('input[name="bankMode"]:checked')?.value;
+        opts.style.opacity = modo === 'cartao' ? '1' : '.45';
+      };
+      popup.querySelectorAll('input[name="bankMode"]').forEach((r) => r.addEventListener('change', sync));
+      sync();
+    },
+    preConfirm: () => {
+      const popup = Swal.getPopup();
+      const tipo = popup.querySelector('input[name="bankMode"]:checked')?.value;
+      if (!tipo) { Swal.showValidationMessage('Escolha o tipo do arquivo.'); return false; }
+      if (tipo === 'conta') return { tipo };
+      const mes = popup.querySelector('#bankCardMes').value;
+      const categoria = popup.querySelector('#bankCardCat').value;
+      if (!/^\d{4}-\d{2}$/.test(mes)) { Swal.showValidationMessage('Informe o mês da fatura.'); return false; }
+      return { tipo, mes, categoria };
+    }
   });
-  if (!isConfirmed || !modo) return;
+  if (!isConfirmed || !escolha) return;
 
-  // chaves dos lançamentos existentes, para pular duplicados
+  if (escolha.tipo === 'cartao') {
+    importFaturaAsCardItems(txs, escolha, { dueDay: diaVencimento, nomeCartao });
+    return;
+  }
+
+  // ---- Extrato de conta: cada transação vira um lançamento ----
   const fitids = new Set();
-  const chaves = new Set();
+  const chavesComDia = new Set(); // lançamentos com dia conhecido (importados antes)
+  const chavesSemDia = new Set(); // lançamentos manuais sem due_day
   Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
     (allData[k] || []).forEach((e) => {
       if (e.fitid) fitids.add(e.fitid);
-      chaves.add(`${k}|${String(e.description).toLowerCase()}|${(Number(e.value) || 0).toFixed(2)}|${e.type}`);
+      const base = `${k}|${String(e.description).toLowerCase()}|${(Number(e.value) || 0).toFixed(2)}|${e.type}`;
+      if (e.due_day) chavesComDia.add(`${e.due_day}|${base}`);
+      else chavesSemDia.add(base);
     });
   });
 
@@ -1906,28 +2059,24 @@ const importBankStatement = async (file) => {
   const mesesTocados = new Set();
 
   txs.forEach((t) => {
-    let type;
-    let value;
-    if (modo === 'cartao') {
-      if (t.amount < 0) { pulados++; return; } // pagamento/estorno na fatura
-      type = 'despesa';
-      value = t.amount;
-    } else {
-      value = Math.abs(t.amount);
-      type = t.amount < 0 ? 'despesa' : 'entrada';
-    }
+    const value = Math.abs(t.amount);
+    let type = t.amount < 0 ? 'despesa' : 'entrada';
 
     const description = normalizeBankDesc(t.desc);
     let category = guessBankCategory(`${t.desc} ${description}`);
     // Só vira investimento quando o dinheiro SAI (aplicação); resgate é entrada normal
-    if (category === 'Investimentos' && modo === 'conta' && t.amount < 0) type = 'investimento';
+    if (category === 'Investimentos' && t.amount < 0) type = 'investimento';
     if (type === 'investimento') category = 'Investimentos';
     else if (type === 'entrada') category = 'Outros';
 
     const mes = t.date.slice(0, 7);
-    const chave = `${mes}|${description.toLowerCase()}|${value.toFixed(2)}|${type}`;
-    if ((t.fitid && fitids.has(t.fitid)) || chaves.has(chave)) { pulados++; return; }
-    chaves.add(chave);
+    const dia = Number(t.date.slice(8, 10)) || null;
+    const base = `${mes}|${description.toLowerCase()}|${value.toFixed(2)}|${type}`;
+    if ((t.fitid && fitids.has(t.fitid)) || chavesComDia.has(`${dia}|${base}`) || chavesSemDia.has(base)) {
+      pulados++;
+      return;
+    }
+    chavesComDia.add(`${dia}|${base}`);
     if (t.fitid) fitids.add(t.fitid);
 
     const entry = normalizeEntry({
@@ -1938,7 +2087,7 @@ const importBankStatement = async (file) => {
       person: '',
       value,
       status: 'pago',
-      due_day: Number(t.date.slice(8, 10)) || null,
+      due_day: dia,
       observation: '',
       card_items: [],
       ...(t.fitid ? { fitid: t.fitid } : {})
