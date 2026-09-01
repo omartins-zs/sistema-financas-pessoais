@@ -280,10 +280,12 @@ const migrateLegacyCardItems = (entry) => {
   const desc = String(item.description ?? '').trim();
   const obs = String(entry.observation ?? '').trim();
 
+  // Item recorrente ou vindo de importação nunca é placeholder; e valor igual ao
+  // total NÃO basta (um único item real sempre soma o total — viraria "Cartão" errado)
+  if (item.recurring === true || item.txdate || item.fitid) return entry;
   const looksLikePlaceholder = isDefaultCardItem(item)
     || /^fatura/i.test(desc)
-    || desc === obs
-    || itemValue === entryValue;
+    || (desc !== '' && desc === obs && itemValue === entryValue);
 
   if (!looksLikePlaceholder) return entry;
 
@@ -1883,6 +1885,13 @@ const bankIssuerName = (org, fileName) => {
   return 'Cartão';
 };
 
+// Última importação fica registrada (junto dos dados, então sincroniza) para
+// o "Desfazer última importação" reverter com precisão.
+const registrarUndoImportacao = (log) => {
+  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+  allData.__app.ultimaImportacao = { quando: dayjs().toISOString(), ...log };
+};
+
 // Fatura importada vira itens DENTRO do lançamento do cartão (o mesmo painel
 // com drag & drop), em vez de dezenas de despesas soltas no mês.
 const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }) => {
@@ -1893,6 +1902,8 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
 
   const lista = [...(allData[mes] || [])];
   let index = lista.findIndex((e) => isCreditCardEntry(e) && e.category === categoria);
+  const entryCriada = index === -1;
+  const valorAnterior = entryCriada ? 0 : Number(lista[index].value) || 0;
   let entry;
   if (index === -1) {
     entry = {
@@ -1909,7 +1920,11 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
 
   let items = entry.card_items;
   // O item-base "Cartão" sozinho é só um placeholder do total: sai quando entram itens reais
-  if (items.length === 1 && isDefaultCardItem(items[0])) items = [];
+  let defaultRemovido = null;
+  if (items.length === 1 && isDefaultCardItem(items[0])) {
+    defaultRemovido = items[0];
+    items = [];
+  }
 
   const fitids = new Set();
   const chavesComData = new Set(); // itens de importações anteriores (guardam txdate)
@@ -1923,6 +1938,7 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
 
   let importados = 0;
   let pulados = 0;
+  const itemIdsNovos = [];
   gastos.forEach((t) => {
     const description = normalizeBankDesc(t.desc) || String(t.desc).trim();
     const value = Math.abs(t.amount);
@@ -1934,10 +1950,12 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
     }
     chavesComData.add(comData);
     if (t.fitid) fitids.add(t.fitid);
-    items.push({
+    const item = {
       id: generateId(), description, value, recurring: false, txdate: t.date,
       ...(t.fitid ? { fitid: t.fitid } : {})
-    });
+    };
+    items.push(item);
+    itemIdsNovos.push(item.id);
     importados++;
   });
 
@@ -1950,6 +1968,10 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
   entry.value = sumCardItems(items);
   allData[mes] = lista.map(normalizeEntry);
   expandedCardEntries.add(entry.id);
+  registrarUndoImportacao({
+    tipo: 'cartao', mes, entryId: entry.id, entryCriada,
+    itemIds: itemIdsNovos, valorAnterior, defaultRemovido
+  });
   saveData();
 
   if (mes !== getMonthKey(currentDate)) {
@@ -2057,6 +2079,7 @@ const importBankStatement = async (file) => {
   let importados = 0;
   let pulados = 0;
   const mesesTocados = new Set();
+  const entradasNovas = [];
 
   txs.forEach((t) => {
     const value = Math.abs(t.amount);
@@ -2095,6 +2118,7 @@ const importBankStatement = async (file) => {
 
     if (!allData[mes]) allData[mes] = [];
     allData[mes].push(entry);
+    entradasNovas.push({ mes, id: entry.id });
     mesesTocados.add(mes);
     importados++;
   });
@@ -2104,6 +2128,7 @@ const importBankStatement = async (file) => {
     return;
   }
 
+  registrarUndoImportacao({ tipo: 'conta', entradas: entradasNovas });
   saveData();
 
   // Mostra o mês mais recente entre os importados
@@ -2114,6 +2139,132 @@ const importBankStatement = async (file) => {
   }
   render();
   notify.success(`${importados} lançamento(s) importado(s)${pulados ? ` · ${pulados} duplicado(s)/pulado(s)` : ''}!`);
+};
+
+// Desfaz a última importação registrada; sem registro (importação feita numa
+// versão anterior), remove pelo rastro: lançamentos com fitid e itens com txdate.
+const desfazerUltimaImportacao = async () => {
+  const log = allData.__app?.ultimaImportacao;
+
+  if (log?.tipo === 'cartao') {
+    const lista = [...(allData[log.mes] || [])];
+    const idx = lista.findIndex((e) => e.id === log.entryId);
+    if (idx === -1) {
+      delete allData.__app.ultimaImportacao;
+      saveData();
+      notify.error('O lançamento daquela fatura não existe mais — nada a desfazer.');
+      return;
+    }
+    const alvo = lista[idx];
+    const nomeMes = dayjs(`${log.mes}-01`).format('MMMM [de] YYYY');
+    const ok = await confirmAction({
+      title: 'Desfazer importação?',
+      text: log.entryCriada
+        ? `O lançamento "${alvo.description}" (${nomeMes}) criado pela importação será excluído com seus itens.`
+        : `${log.itemIds.length} item(ns) importado(s) saem da fatura "${alvo.description}" (${nomeMes}); o que era manual fica.`,
+      icon: 'warning',
+      confirmText: 'Sim, desfazer'
+    });
+    if (!ok) return;
+
+    if (log.entryCriada) {
+      lista.splice(idx, 1);
+    } else {
+      const ids = new Set(log.itemIds);
+      let items = (alvo.card_items ?? []).filter((i) => !ids.has(i.id));
+      if (log.defaultRemovido) items = [log.defaultRemovido, ...items];
+      const value = (items.length === 1 && isDefaultCardItem(items[0]))
+        ? (Number(log.valorAnterior) || 0)
+        : sumCardItems(items);
+      lista[idx] = { ...alvo, card_items: items, value };
+    }
+    allData[log.mes] = lista.map(normalizeEntry);
+    delete allData.__app.ultimaImportacao;
+    saveData();
+    render();
+    notify.success('Importação desfeita.');
+    return;
+  }
+
+  if (log?.tipo === 'conta') {
+    const ok = await confirmAction({
+      title: 'Desfazer importação?',
+      text: `${log.entradas.length} lançamento(s) importado(s) do extrato serão excluídos.`,
+      icon: 'warning',
+      confirmText: 'Sim, desfazer'
+    });
+    if (!ok) return;
+    const porMes = {};
+    log.entradas.forEach(({ mes, id }) => { (porMes[mes] = porMes[mes] || new Set()).add(id); });
+    Object.entries(porMes).forEach(([mes, ids]) => {
+      allData[mes] = (allData[mes] || []).filter((e) => !ids.has(e.id)).map(normalizeEntry);
+    });
+    delete allData.__app.ultimaImportacao;
+    saveData();
+    render();
+    notify.success('Importação desfeita.');
+    return;
+  }
+
+  // ---- Sem registro: remove pelo rastro dos marcadores ----
+  const entradas = [];
+  const faturas = [];
+  Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+    (allData[k] || []).forEach((e) => {
+      if (e.fitid) { entradas.push({ mes: k, id: e.id }); return; }
+      const marcados = (e.card_items ?? []).filter((i) => i.txdate || i.fitid);
+      if (marcados.length) {
+        faturas.push({
+          mes: k, id: e.id, desc: e.description, qtd: marcados.length,
+          soImportados: marcados.length === (e.card_items ?? []).length
+        });
+      }
+    });
+  });
+
+  if (!entradas.length && !faturas.length) {
+    notify.info('Nenhuma importação de banco encontrada para desfazer.');
+    return;
+  }
+
+  const resumo = [
+    ...faturas.map((f) => `${f.soImportados ? 'excluir o lançamento' : `remover ${f.qtd} item(ns) importado(s) de`} "${f.desc}" (${dayjs(`${f.mes}-01`).format('MMM/YYYY')})`),
+    ...(entradas.length ? [`excluir ${entradas.length} lançamento(s) importado(s) de extrato`] : [])
+  ].join('; ');
+  const ok = await confirmAction({
+    title: 'Remover tudo que veio do banco?',
+    text: `Vai ${resumo}. Itens e lançamentos manuais ficam.`,
+    icon: 'warning',
+    confirmText: 'Sim, remover'
+  });
+  if (!ok) return;
+
+  const entradasPorMes = {};
+  entradas.forEach(({ mes, id }) => { (entradasPorMes[mes] = entradasPorMes[mes] || new Set()).add(id); });
+  const faturasPorMes = {};
+  faturas.forEach((f) => { (faturasPorMes[f.mes] = faturasPorMes[f.mes] || []).push(f); });
+
+  new Set([...Object.keys(entradasPorMes), ...Object.keys(faturasPorMes)]).forEach((mes) => {
+    let lista = allData[mes] || [];
+    const idsEntradas = entradasPorMes[mes];
+    if (idsEntradas) lista = lista.filter((e) => !idsEntradas.has(e.id));
+    (faturasPorMes[mes] || []).forEach((f) => {
+      if (f.soImportados) {
+        lista = lista.filter((e) => e.id !== f.id);
+        return;
+      }
+      lista = lista.map((e) => {
+        if (e.id !== f.id) return e;
+        const items = (e.card_items ?? []).filter((i) => !i.txdate && !i.fitid);
+        return { ...e, card_items: items, value: sumCardItems(items) };
+      });
+    });
+    allData[mes] = lista.map(normalizeEntry);
+  });
+
+  saveData();
+  render();
+  notify.success('Importações do banco removidas.');
 };
 
 const onImportBank = async (e) => {
@@ -2131,6 +2282,7 @@ const handleImportClick = (type) => {
   if (type === 'json') dom.inputImportJson.click();
   if (type === 'sheet') dom.inputImportSheet.click();
   if (type === 'bank') dom.inputImportBank.click();
+  if (type === 'undo-bank') desfazerUltimaImportacao();
 };
 
 const onImportJson = async (e) => {

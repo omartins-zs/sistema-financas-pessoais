@@ -8,13 +8,13 @@
 
   <!-- Versão do app. Trocar SÓ aqui a cada deploy: um replace deste valor no arquivo
        atualiza o selo na tela, o service worker e o ?v= de todos os arquivos. -->
-  <meta name="app-version" content="20260901-2">
+  <meta name="app-version" content="20260901-3">
 
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest?v=20260901-2">
+  <link rel="manifest" href="manifest.webmanifest?v=20260901-3">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,8 +24,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css" rel="stylesheet">
   <!-- ?v=AAAAMMDD-N — trocar a cada deploy: muda a URL e nenhum dispositivo reusa o cache antigo -->
-  <link rel="stylesheet" href="style.css?v=20260901-2">
-  <link rel="stylesheet" href="modules.css?v=20260901-2">
+  <link rel="stylesheet" href="style.css?v=20260901-3">
+  <link rel="stylesheet" href="modules.css?v=20260901-3">
 </head>
 <body>
 
@@ -112,6 +112,7 @@
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Extrato do banco</h6></li>
                 <li><button class="dropdown-item" type="button" data-import="bank"><i class="bi bi-bank"></i> Extrato ou fatura (OFX, CSV, QIF)</button></li>
+                <li><button class="dropdown-item" type="button" data-import="undo-bank"><i class="bi bi-arrow-counterclockwise"></i> Desfazer última importação</button></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Templates de exemplo</h6></li>
                 <li><a class="dropdown-item" href="template-importacao.csv" download><i class="bi bi-filetype-csv"></i> Baixar template CSV</a></li>
@@ -570,10 +571,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20260901-2"></script>
-  <script src="cloud-sync.js?v=20260901-2"></script>
+  <script src="firebase-config.js?v=20260901-3"></script>
+  <script src="cloud-sync.js?v=20260901-3"></script>
 
-  <script src="script.js?v=20260901-2"></script>
-  <script src="app-modules.js?v=20260901-2"></script>
+  <script src="script.js?v=20260901-3"></script>
+  <script src="app-modules.js?v=20260901-3"></script>
 </body>
 </html>
