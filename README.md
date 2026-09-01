@@ -123,6 +123,7 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 - 🔎 **Relatórios** — busca por texto, filtros que aplicam na hora, colunas ordenáveis, gráfico de despesas por categoria e exportação (CSV/Excel/PDF) com totais
 - 🔔 **Alertas inteligentes** — vencimentos, metas, faturas e contas fixas
 - 📥 **Importação** — CSV, Excel e backup JSON
+- 🏦 **Extrato bancário** — importa OFX, CSV e QIF exportados do banco (Nubank: extrato e fatura). Cada lançamento vai para o mês da própria data, duplicados são pulados (Identificador/FITID), nomes limpos (Shopee, Mercado Livre, Mercado Pago com vendedor, Pix com nome) e categoria sugerida pela descrição
 - 📤 **Exportação** — CSV, Excel, PDF e JSON
 - 📱 **PWA instalável** — instala como app no celular/tablet, funciona offline e atualiza sozinho no refresh (service worker *network-first*); versão visível no cabeçalho
 - 🌙 **Tema claro/escuro**
