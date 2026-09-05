@@ -1187,6 +1187,21 @@
 
   const passeioRankPrioridade = { alta: 0, media: 1, baixa: 2 };
 
+  // Ícone + cor de destaque por categoria — dá pra reconhecer o tipo de passeio de longe
+  const PASSEIO_CATEGORIA_META = {
+    'Praia': { icon: 'water', cor: '#0ea5e9' },
+    'Restaurante': { icon: 'cup-hot-fill', cor: '#f59e0b' },
+    'Parque': { icon: 'tree-fill', cor: '#22c55e' },
+    'Trilha / Natureza': { icon: 'signpost-split-fill', cor: '#16a34a' },
+    'Cultural (museu, show)': { icon: 'easel2-fill', cor: '#8b5cf6' },
+    'Bar / Balada': { icon: 'cup-straw', cor: '#ec4899' },
+    'Viagem / Cidade': { icon: 'buildings-fill', cor: '#6366f1' },
+    'Evento': { icon: 'mic-fill', cor: '#f43f5e' },
+    'Outro': { icon: 'geo-alt-fill', cor: '#94a3b8' }
+  };
+  const PASSEIO_PRIOR_ICON = { alta: 'fire', media: 'star-fill', baixa: 'hourglass-split' };
+
+
   // Listas que o usuário passou no chat — pré-carregadas no importador em lote como modelo
   const PASSEIOS_SEED_VISITADOS = ["MC Donald's", "Burger King", "Popeyes", "Kyoichi Sushi (Rodízio de Japa)", "Greggus Lanches (Lanche Grego)", "Parque Villa Lobos", "Cinema (Center Norte)", "Casa das Rosas", "Mequi 1000", "Av. Paulista", "Mirante Sesc", "Hamburgueria ZDelli", "Show Pagode (Dilsinho, Péricles - Juventus)", "Show Reggae (Armandinho - Áudio Club)", "Stand-up (Um Show Comedy)", "Corrida/caminhada de rua (Corrida do Café)", "Açaí (Eloá)", "Estância Caipira", "Bosque Maia", "Butequim do Espeto", "The Best Açaí", "Vivenda do camarão", "Berlim (pizzaria na Zona Norte)"];
   const PASSEIOS_SEED_DESEJO = ["CTN", "Show de sertanejo (J&M ou H&J ou Zé Neto e Cristiano)", "Bar dos Arcos", "Bar da Geladeira", "Rodízio de Lanches", "Rodízio de Pizza", "Kinoplex (Cinema Luxo)", "Hamburgueria São Carlos", "Hamburgueria Tradi (Ipiranga)", "Hamburgueria Johns Burguer (Casa Verde)", "Motel 5 Estrelas kkkkkkkk"];
@@ -1328,29 +1343,37 @@
 
     card(p) {
       const visitado = p.visitado === true;
-      const catBadge = `<span class="mod-badge mod-badge--gray">${escapeHtml(p.categoria || 'Outro')}</span>`;
+      const meta = PASSEIO_CATEGORIA_META[p.categoria] || PASSEIO_CATEGORIA_META.Outro;
       const [labelPrior, corPrior] = PRIORIDADE[p.prioridade || 'media'] || PRIORIDADE.media;
-      const statusBadge = visitado
-        ? '<span class="mod-badge mod-badge--green"><i class="bi bi-check-circle-fill"></i> Visitado</span>'
-        : `<span class="mod-badge mod-badge--${corPrior}"><i class="bi bi-bookmark-star"></i> Quero ir · ${escapeHtml(labelPrior)}</span>`;
+      const iconPrior = PASSEIO_PRIOR_ICON[p.prioridade || 'media'];
+      const linhaMeta = [p.cidade, visitado && p.dataVisita ? fmtDate(p.dataVisita) : null].filter(Boolean).join(' · ');
       const estrelas = p.avaliacao
-        ? `<div class="mb-1" style="color:#f59e0b;letter-spacing:1px" title="Nota ${p.avaliacao}/5">${'★'.repeat(p.avaliacao)}${'☆'.repeat(5 - p.avaliacao)}</div>` : '';
-      const meta = [p.cidade, visitado && p.dataVisita ? fmtDate(p.dataVisita) : null].filter(Boolean).join(' · ');
+        ? `<div class="passeio-card__stars" title="Nota ${p.avaliacao}/5">${'★'.repeat(p.avaliacao)}${'☆'.repeat(5 - p.avaliacao)}</div>` : '';
+      const statusChip = visitado
+        ? '<span class="passeio-chip passeio-chip--visitado"><i class="bi bi-check-circle-fill"></i> Visitado</span>'
+        : `<span class="passeio-chip mod-badge mod-badge--${corPrior}"><i class="bi bi-${iconPrior}"></i> Quero ir · ${escapeHtml(labelPrior)}</span>`;
       const toggleBtn = visitado
-        ? `<button class="mod-btn" data-mod="passeios" data-act="unvisit" data-id="${p.id}" title="Desmarcar como visitado"><i class="bi bi-arrow-counterclockwise"></i></button>`
-        : `<button class="mod-btn" data-mod="passeios" data-act="visit" data-id="${p.id}" title="Marcar como visitado"><i class="bi bi-check2-circle text-success"></i></button>`;
+        ? `<button type="button" class="passeio-btn passeio-btn--muted" data-mod="passeios" data-act="unvisit" data-id="${p.id}"><i class="bi bi-arrow-counterclockwise"></i> Desmarcar</button>`
+        : `<button type="button" class="passeio-btn passeio-btn--visit" data-mod="passeios" data-act="visit" data-id="${p.id}"><i class="bi bi-check2-circle"></i> Marcar visitado</button>`;
 
       return `
-        <div class="mod-card${visitado ? ' passeio-card--visitado' : ''}">
-          <div class="mod-card__top">
-            <div><h3 class="mod-card__title">${escapeHtml(p.nome)}</h3>
-            ${meta ? `<span class="mod-card__sub">${escapeHtml(meta)}</span>` : ''}</div>
-            ${catBadge}
+        <div class="passeio-card${visitado ? ' passeio-card--visitado' : ''}" style="--passeio-accent:${meta.cor}">
+          <div class="passeio-card__banner"><i class="bi bi-${meta.icon}"></i></div>
+          <div class="passeio-card__body">
+            <div class="passeio-card__head">
+              <h3 class="passeio-card__title">${escapeHtml(p.nome)}</h3>
+              <span class="passeio-card__cat">${escapeHtml(p.categoria || 'Outro')}</span>
+            </div>
+            ${linhaMeta ? `<p class="passeio-card__meta"><i class="bi bi-geo-alt"></i> ${escapeHtml(linhaMeta)}</p>` : ''}
+            ${statusChip}
+            ${estrelas}
+            ${p.observacao ? `<p class="passeio-card__obs">${escapeHtml(p.observacao)}</p>` : ''}
+            <div class="passeio-card__actions">
+              ${toggleBtn}
+              <button type="button" class="passeio-btn passeio-btn--icon" data-mod="passeios" data-act="edit" data-id="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button>
+              <button type="button" class="passeio-btn passeio-btn--icon passeio-btn--danger" data-mod="passeios" data-act="del" data-id="${p.id}" title="Excluir"><i class="bi bi-trash"></i></button>
+            </div>
           </div>
-          <div class="mod-card__row">${statusBadge}</div>
-          ${estrelas}
-          ${p.observacao ? `<p class="mod-card__sub mb-0">${escapeHtml(p.observacao)}</p>` : ''}
-          ${actionBtns('passeios', p.id, toggleBtn)}
         </div>`;
     },
 
@@ -1359,6 +1382,7 @@
       const visitadosList = list.filter((p) => p.visitado).sort((a, b) => String(b.dataVisita || '').localeCompare(String(a.dataVisita || '')));
       const pendentesList = list.filter((p) => !p.visitado).sort((a, b) =>
         (passeioRankPrioridade[a.prioridade || 'media'] - passeioRankPrioridade[b.prioridade || 'media']) || String(a.nome).localeCompare(String(b.nome)));
+      const pctVisitado = list.length ? Math.round((visitadosList.length / list.length) * 100) : 0;
 
       const filtroBtn = (valor, label, qtd) =>
         `<button type="button" class="btn btn-sm ${this.filtro === valor ? 'btn-primary' : 'btn-outline-secondary'}" data-passeio-filtro="${valor}">${label} <span class="badge text-bg-light border ms-1">${qtd}</span></button>`;
@@ -1377,18 +1401,24 @@
           <div class="mod-summary__item"><span>Já foram</span><strong style="color:var(--app-income)">${visitadosList.length}</strong></div>
           <div class="mod-summary__item"><span>Na lista de desejos</span><strong style="color:var(--app-reserved)">${pendentesList.length}</strong></div>
         </div>
-        <div class="btn-group mb-3" role="group" aria-label="Filtrar passeios">
+        <div class="mod-progress mb-1"><div class="mod-progress__bar" style="width:${pctVisitado}%;background:var(--app-income)"></div></div>
+        <div class="mod-progress__label mb-3"><span>${visitadosList.length} de ${list.length} lugares já visitados</span><span>${pctVisitado}%</span></div>
+        <div class="btn-group mb-4" role="group" aria-label="Filtrar passeios">
           ${filtroBtn('todos', 'Todos', list.length)}
           ${filtroBtn('pendentes', 'Não visitados', pendentesList.length)}
           ${filtroBtn('visitados', 'Visitados', visitadosList.length)}
         </div>` : ''}
         ${!list.length ? emptyBlock('geo-alt', 'Nenhum passeio cadastrado ainda. Adicione os lugares que já foram e os que ainda querem visitar.') : ''}
         ${list.length && this.filtro !== 'visitados' ? `
-          <h3 class="chart-box__title mb-2"><i class="bi bi-bookmark-star"></i> Ainda não fomos (${pendentesList.length})</h3>
-          ${pendentesList.length ? `<div class="mod-grid mb-4">${pendentesList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted mb-4">Nenhum lugar na lista de desejos — adicione um!</p>'}` : ''}
+          <div class="passeio-section">
+            <h3 class="passeio-section__title"><i class="bi bi-bookmark-star"></i> Ainda não fomos <span class="passeio-section__count">${pendentesList.length}</span></h3>
+            ${pendentesList.length ? `<div class="passeio-grid">${pendentesList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted mb-0">Nenhum lugar na lista de desejos — adicione um!</p>'}
+          </div>` : ''}
         ${list.length && this.filtro !== 'pendentes' ? `
-          <h3 class="chart-box__title mb-2"><i class="bi bi-check-circle"></i> Já fomos (${visitadosList.length})</h3>
-          ${visitadosList.length ? `<div class="mod-grid">${visitadosList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted">Nenhum lugar marcado como visitado ainda.</p>'}` : ''}`;
+          <div class="passeio-section">
+            <h3 class="passeio-section__title"><i class="bi bi-check-circle"></i> Já fomos <span class="passeio-section__count">${visitadosList.length}</span></h3>
+            ${visitadosList.length ? `<div class="passeio-grid">${visitadosList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted mb-0">Nenhum lugar marcado como visitado ainda.</p>'}
+          </div>` : ''}`;
     }
   };
 
