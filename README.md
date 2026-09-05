@@ -124,6 +124,7 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 - 📈 **Investimentos mês a mês** — lançamentos do tipo Investimento se vinculam a um item da carteira (pode nascer zerado); aplicado = inicial + soma dos meses, valor atual informado, gráfico dos últimos 12 meses e total no Dashboard
 - 🗂️ **Lançamentos mensais na aba Investimentos** — tudo que foi lançado como Investimento em qualquer mês aparece agrupado pelo nome, com total, detalhe mês a mês e vínculo em lote à carteira (ou criação de um investimento do zero com o mesmo nome)
 - 🕰️ **Histórico de alterações** — botão de relógio na barra lista as últimas mudanças (lançamentos, itens de cartão, importações, módulos, categorias) com Desfazer por linha; guarda só o antes/depois do que mudou, com teto de 150 registros
+- 🌍 **Passeios do casal** — aba com a lista de lugares já visitados e a lista de desejos (com prioridade), marcar/desmarcar visitado com data e nota (★), filtro Todos/Visitados/Não visitados
 - 🔎 **Relatórios** — busca por texto, filtros que aplicam na hora, colunas ordenáveis, gráfico de despesas por categoria e exportação (CSV/Excel/PDF) com totais
 - 🔔 **Alertas inteligentes** — vencimentos, metas, faturas e contas fixas
 - 📥 **Importação** — CSV, Excel e backup JSON

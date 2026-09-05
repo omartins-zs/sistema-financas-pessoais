@@ -1178,6 +1178,144 @@
   };
 
   // ==========================================================
+  // MÓDULO: PASSEIOS (do casal)
+  // ==========================================================
+  const TIPOS_PASSEIO = [
+    'Praia', 'Restaurante', 'Parque', 'Trilha / Natureza', 'Cultural (museu, show)',
+    'Bar / Balada', 'Viagem / Cidade', 'Evento', 'Outro'
+  ];
+
+  const passeioRankPrioridade = { alta: 0, media: 1, baixa: 2 };
+
+  const Passeios = {
+    filtro: 'todos', // 'todos' | 'visitados' | 'pendentes'
+
+    fields(p = {}) {
+      const campos = [
+        { name: 'nome', label: 'Nome do lugar', type: 'text', required: true, value: p.nome, placeholder: 'Ex: Praia do Rosa, Restaurante do Zé', wide: true },
+        { name: 'categoria', label: 'Tipo', type: 'select', value: p.categoria || 'Outro', options: TIPOS_PASSEIO.map((t) => ({ value: t, label: t })) },
+        { name: 'cidade', label: 'Cidade / local (opcional)', type: 'text', value: p.cidade }
+      ];
+      if (p.visitado) {
+        campos.push(
+          { name: 'dataVisita', label: 'Data da visita', type: 'date', value: p.dataVisita || today().format('YYYY-MM-DD') },
+          { name: 'avaliacao', label: 'Nota (opcional)', type: 'select', value: p.avaliacao ? String(p.avaliacao) : '',
+            options: [{ value: '', label: 'Sem nota' }, ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: '★'.repeat(n) + '☆'.repeat(5 - n) }))] }
+        );
+      } else {
+        campos.push({ name: 'prioridade', label: 'Prioridade', type: 'select', value: p.prioridade || 'media', options: Object.entries(PRIORIDADE).map(([v, [l]]) => ({ value: v, label: l })) });
+      }
+      campos.push({ name: 'observacao', label: 'Observação (opcional)', type: 'text', value: p.observacao, wide: true });
+      return campos;
+    },
+
+    async add() {
+      const v = await formModal({ title: 'Novo passeio', icon: 'geo-alt', fields: this.fields() });
+      if (!v) return;
+      upsert('passeios', { id: generateId(), visitado: false, dataVisita: null, avaliacao: null, ...v });
+      notify.success('Passeio adicionado à lista!');
+    },
+
+    async edit(id) {
+      const p = coll('passeios').find((x) => x.id === id);
+      if (!p) return;
+      const v = await formModal({ title: 'Editar passeio', icon: 'geo-alt', fields: this.fields(p) });
+      if (!v) return;
+      upsert('passeios', { ...p, ...v });
+      notify.success('Passeio atualizado!');
+    },
+
+    async marcarVisitado(id) {
+      const p = coll('passeios').find((x) => x.id === id);
+      if (!p) return;
+      const v = await formModal({
+        title: `Marcar "${p.nome}" como visitado`,
+        icon: 'check2-circle',
+        confirmText: 'Marcar visitado',
+        fields: [
+          { name: 'dataVisita', label: 'Data da visita', type: 'date', value: today().format('YYYY-MM-DD') },
+          { name: 'avaliacao', label: 'Nota (opcional)', type: 'select', value: '',
+            options: [{ value: '', label: 'Sem nota' }, ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: '★'.repeat(n) + '☆'.repeat(5 - n) }))] }
+        ]
+      });
+      if (!v) return;
+      upsert('passeios', { ...p, visitado: true, dataVisita: v.dataVisita, avaliacao: v.avaliacao ? Number(v.avaliacao) : null });
+      notify.success(`"${p.nome}" marcado como visitado!`);
+    },
+
+    async desmarcarVisitado(id) {
+      const p = coll('passeios').find((x) => x.id === id);
+      if (!p) return;
+      const ok = await confirmAction({ title: 'Desmarcar visita?', text: `"${p.nome}" volta para a lista de lugares para ir.`, icon: 'question', confirmText: 'Sim, desmarcar' });
+      if (!ok) return;
+      upsert('passeios', { ...p, visitado: false, dataVisita: null, avaliacao: null });
+      notify.info(`"${p.nome}" voltou para a lista de desejos.`);
+    },
+
+    card(p) {
+      const visitado = p.visitado === true;
+      const catBadge = `<span class="mod-badge mod-badge--gray">${escapeHtml(p.categoria || 'Outro')}</span>`;
+      const [labelPrior, corPrior] = PRIORIDADE[p.prioridade || 'media'] || PRIORIDADE.media;
+      const statusBadge = visitado
+        ? '<span class="mod-badge mod-badge--green"><i class="bi bi-check-circle-fill"></i> Visitado</span>'
+        : `<span class="mod-badge mod-badge--${corPrior}"><i class="bi bi-bookmark-star"></i> Quero ir · ${escapeHtml(labelPrior)}</span>`;
+      const estrelas = p.avaliacao
+        ? `<div class="mb-1" style="color:#f59e0b;letter-spacing:1px" title="Nota ${p.avaliacao}/5">${'★'.repeat(p.avaliacao)}${'☆'.repeat(5 - p.avaliacao)}</div>` : '';
+      const meta = [p.cidade, visitado && p.dataVisita ? fmtDate(p.dataVisita) : null].filter(Boolean).join(' · ');
+      const toggleBtn = visitado
+        ? `<button class="mod-btn" data-mod="passeios" data-act="unvisit" data-id="${p.id}" title="Desmarcar como visitado"><i class="bi bi-arrow-counterclockwise"></i></button>`
+        : `<button class="mod-btn" data-mod="passeios" data-act="visit" data-id="${p.id}" title="Marcar como visitado"><i class="bi bi-check2-circle text-success"></i></button>`;
+
+      return `
+        <div class="mod-card${visitado ? ' passeio-card--visitado' : ''}">
+          <div class="mod-card__top">
+            <div><h3 class="mod-card__title">${escapeHtml(p.nome)}</h3>
+            ${meta ? `<span class="mod-card__sub">${escapeHtml(meta)}</span>` : ''}</div>
+            ${catBadge}
+          </div>
+          <div class="mod-card__row">${statusBadge}</div>
+          ${estrelas}
+          ${p.observacao ? `<p class="mod-card__sub mb-0">${escapeHtml(p.observacao)}</p>` : ''}
+          ${actionBtns('passeios', p.id, toggleBtn)}
+        </div>`;
+    },
+
+    render(c) {
+      const list = coll('passeios');
+      const visitadosList = list.filter((p) => p.visitado).sort((a, b) => String(b.dataVisita || '').localeCompare(String(a.dataVisita || '')));
+      const pendentesList = list.filter((p) => !p.visitado).sort((a, b) =>
+        (passeioRankPrioridade[a.prioridade || 'media'] - passeioRankPrioridade[b.prioridade || 'media']) || String(a.nome).localeCompare(String(b.nome)));
+
+      const filtroBtn = (valor, label, qtd) =>
+        `<button type="button" class="btn btn-sm ${this.filtro === valor ? 'btn-primary' : 'btn-outline-secondary'}" data-passeio-filtro="${valor}">${label} <span class="badge text-bg-light border ms-1">${qtd}</span></button>`;
+
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-geo-alt app-icon"></i> Passeios do casal</h2>
+          <p class="view-header__hint">Lugares que já foram e a lista de desejos de onde ainda querem ir</p></div>
+          <button class="btn btn-primary" data-mod="passeios" data-act="add"><i class="bi bi-plus-lg"></i> Novo passeio</button>
+        </div>
+        ${list.length ? `<div class="mod-summary">
+          <div class="mod-summary__item"><span>Total de lugares</span><strong>${list.length}</strong></div>
+          <div class="mod-summary__item"><span>Já foram</span><strong style="color:var(--app-income)">${visitadosList.length}</strong></div>
+          <div class="mod-summary__item"><span>Na lista de desejos</span><strong style="color:var(--app-reserved)">${pendentesList.length}</strong></div>
+        </div>
+        <div class="btn-group mb-3" role="group" aria-label="Filtrar passeios">
+          ${filtroBtn('todos', 'Todos', list.length)}
+          ${filtroBtn('pendentes', 'Não visitados', pendentesList.length)}
+          ${filtroBtn('visitados', 'Visitados', visitadosList.length)}
+        </div>` : ''}
+        ${!list.length ? emptyBlock('geo-alt', 'Nenhum passeio cadastrado ainda. Adicione os lugares que já foram e os que ainda querem visitar.') : ''}
+        ${list.length && this.filtro !== 'visitados' ? `
+          <h3 class="chart-box__title mb-2"><i class="bi bi-bookmark-star"></i> Ainda não fomos (${pendentesList.length})</h3>
+          ${pendentesList.length ? `<div class="mod-grid mb-4">${pendentesList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted mb-4">Nenhum lugar na lista de desejos — adicione um!</p>'}` : ''}
+        ${list.length && this.filtro !== 'pendentes' ? `
+          <h3 class="chart-box__title mb-2"><i class="bi bi-check-circle"></i> Já fomos (${visitadosList.length})</h3>
+          ${visitadosList.length ? `<div class="mod-grid">${visitadosList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted">Nenhum lugar marcado como visitado ainda.</p>'}` : ''}`;
+    }
+  };
+
+  // ==========================================================
   // MÓDULO: RELATÓRIOS
   // ==========================================================
   const REL_FILTROS_VAZIOS = { de: '', ate: '', tipo: '', categoria: '', tag: '', status: '', busca: '' };
@@ -1504,7 +1642,7 @@
   const MODULES = {
     metas: Metas, reservas: Reservas, cartoes: Cartoes,
     investimentos: Investimentos, patrimonio: Patrimonio,
-    assinaturas: Assinaturas, dashboard: Dashboard, anual: Anual, relatorios: Relatorios
+    assinaturas: Assinaturas, dashboard: Dashboard, anual: Anual, relatorios: Relatorios, passeios: Passeios
   };
 
   let activeTab = 'mes';
@@ -1541,6 +1679,8 @@
       else if (act === 'compra') await M.compra(id);
       else if (act === 'dep') await M.mov(id, 'deposito');
       else if (act === 'saq') await M.mov(id, 'saque');
+      else if (act === 'visit') await M.marcarVisitado(id);
+      else if (act === 'unvisit') await M.desmarcarVisitado(id);
       else if (act === 'del') {
         const ok = await confirmAction({ title: 'Excluir?', text: 'Esta ação não pode ser desfeita.', icon: 'warning', confirmText: 'Sim, excluir' });
         if (ok) { removeItem(mod, id); notify.info('Item excluído.'); }
@@ -1550,6 +1690,9 @@
 
     const ordenar = e.target.closest('[data-rep-sort]');
     if (ordenar) { Relatorios.toggleSort(ordenar.dataset.repSort); return; }
+
+    const filtroPasseio = e.target.closest('[data-passeio-filtro]');
+    if (filtroPasseio) { Passeios.filtro = filtroPasseio.dataset.passeioFiltro; refreshActiveView(); return; }
 
     const rep = e.target.closest('[data-rep]');
     if (rep) {
@@ -1593,6 +1736,7 @@
     ['investimentos', 'graph-up-arrow', 'Investimentos'],
     ['patrimonio', 'houses', 'Patrimônio'],
     ['assinaturas', 'arrow-repeat', 'Contas fixas'],
+    ['passeios', 'geo-alt', 'Passeios'],
     ['relatorios', 'funnel', 'Relatórios']
   ];
 

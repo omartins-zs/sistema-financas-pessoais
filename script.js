@@ -525,7 +525,7 @@ const HISTORICO_MAX_CHARS = 150000;
 
 const NOMES_COLECAO = {
   metas: 'Metas', reservas: 'Reservas', cartoes: 'Cartões', investimentos: 'Investimentos',
-  patrimonio: 'Patrimônio', assinaturas: 'Contas fixas'
+  patrimonio: 'Patrimônio', assinaturas: 'Contas fixas', passeios: 'Passeios'
 };
 
 // Instantâneo do último estado salvo de cada mês: várias ações alteram os objetos
