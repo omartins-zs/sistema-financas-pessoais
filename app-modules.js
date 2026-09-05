@@ -1187,8 +1187,82 @@
 
   const passeioRankPrioridade = { alta: 0, media: 1, baixa: 2 };
 
+  // Listas que o usuário passou no chat — pré-carregadas no importador em lote como modelo
+  const PASSEIOS_SEED_VISITADOS = ["MC Donald's", "Burger King", "Popeyes", "Kyoichi Sushi (Rodízio de Japa)", "Greggus Lanches (Lanche Grego)", "Parque Villa Lobos", "Cinema (Center Norte)", "Casa das Rosas", "Mequi 1000", "Av. Paulista", "Mirante Sesc", "Hamburgueria ZDelli", "Show Pagode (Dilsinho, Péricles - Juventus)", "Show Reggae (Armandinho - Áudio Club)", "Stand-up (Um Show Comedy)", "Corrida/caminhada de rua (Corrida do Café)", "Açaí (Eloá)", "Estância Caipira", "Bosque Maia", "Butequim do Espeto", "The Best Açaí", "Vivenda do camarão", "Berlim (pizzaria na Zona Norte)"];
+  const PASSEIOS_SEED_DESEJO = ["CTN", "Show de sertanejo (J&M ou H&J ou Zé Neto e Cristiano)", "Bar dos Arcos", "Bar da Geladeira", "Rodízio de Lanches", "Rodízio de Pizza", "Kinoplex (Cinema Luxo)", "Hamburgueria São Carlos", "Hamburgueria Tradi (Ipiranga)", "Hamburgueria Johns Burguer (Casa Verde)", "Motel 5 Estrelas kkkkkkkk"];
+
+  // Chute de categoria a partir do nome, no mesmo espírito de guessBankCategory
+  const PASSEIO_CATEGORIA_HINTS = [
+    [/hamburgueria|rodízio|rodizio|lanches|pizza|açaí|acai|espeto|camar[aã]o|sushi|mc\s*donald|burger king|popeyes|mequi|estancia|estância|churrasc/i, 'Restaurante'],
+    [/\bbar\b|balada|geladeira|arcos|butequim/i, 'Bar / Balada'],
+    [/show|stand-?up|comedy|pagode|reggae|sertanejo/i, 'Evento'],
+    [/corrida|caminhada/i, 'Evento'],
+    [/cinema|kinoplex|teatro|museu|casa das rosas/i, 'Cultural (museu, show)'],
+    [/parque|bosque|mirante/i, 'Parque'],
+    [/\bav\.|avenida|paulista/i, 'Viagem / Cidade'],
+    [/motel/i, 'Outro']
+  ];
+  const guessPasseioCategoria = (nome) => {
+    for (const [re, cat] of PASSEIO_CATEGORIA_HINTS) if (re.test(nome)) return cat;
+    return 'Outro';
+  };
+
+
   const Passeios = {
     filtro: 'todos', // 'todos' | 'visitados' | 'pendentes'
+
+    async importarLista() {
+      const { value, isConfirmed } = await Swal.fire({
+        title: 'Importar lista de passeios',
+        html: `<div style="text-align:left;font-size:.92rem">
+          <p class="mb-2" style="font-size:.82rem;color:#888">Um lugar por linha. Já preenchido com a lista que você mandou — edite à vontade antes de importar. Nomes repetidos (já cadastrados) são pulados.</p>
+          <label style="font-weight:700;font-size:.85rem;display:block;margin-bottom:.25rem">🎉 Já fomos</label>
+          <textarea id="passImportVisitados" class="fm-input" rows="9" style="width:100%;margin-bottom:.7rem;font-family:inherit">${escapeHtml(PASSEIOS_SEED_VISITADOS.join('\n'))}</textarea>
+          <label style="font-weight:700;font-size:.85rem;display:block;margin-bottom:.25rem">✅ Para ir</label>
+          <textarea id="passImportDesejo" class="fm-input" rows="6" style="width:100%;font-family:inherit">${escapeHtml(PASSEIOS_SEED_DESEJO.join('\n'))}</textarea>
+        </div>`,
+        width: 600,
+        showCancelButton: true,
+        confirmButtonText: '<i class="bi bi-check-lg"></i> Importar',
+        cancelButtonText: 'Cancelar',
+        focusConfirm: false,
+        preConfirm: () => ({
+          visitados: Swal.getPopup().querySelector('#passImportVisitados').value.split('\n').map((l) => l.trim()).filter(Boolean),
+          desejo: Swal.getPopup().querySelector('#passImportDesejo').value.split('\n').map((l) => l.trim()).filter(Boolean)
+        })
+      });
+      if (!isConfirmed || !value) return;
+
+      const s = getStore();
+      if (!Array.isArray(s.passeios)) s.passeios = [];
+      const existentes = new Set(s.passeios.map((p) => String(p.nome).trim().toLowerCase()));
+      const criar = (nome, visitado) => ({
+        id: generateId(), nome, categoria: guessPasseioCategoria(nome), cidade: '',
+        visitado, dataVisita: null, avaliacao: null, prioridade: 'media', observacao: ''
+      });
+
+      let novos = 0;
+      value.visitados.forEach((nome) => {
+        const chave = nome.toLowerCase();
+        if (existentes.has(chave)) return;
+        existentes.add(chave);
+        s.passeios.push(criar(nome, true));
+        novos++;
+      });
+      value.desejo.forEach((nome) => {
+        const chave = nome.toLowerCase();
+        if (existentes.has(chave)) return;
+        existentes.add(chave);
+        s.passeios.push(criar(nome, false));
+        novos++;
+      });
+
+      if (!novos) { notify.info('Nada novo — todos esses lugares já estavam na lista.'); return; }
+      if (typeof registrarHistoricoInfo === 'function') registrarHistoricoInfo(`Passeios: importou ${novos} lugar(es) em lote`);
+      persist();
+      notify.success(`${novos} passeio(s) importado(s)!`);
+    },
+
 
     fields(p = {}) {
       const campos = [
@@ -1293,7 +1367,10 @@
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-geo-alt app-icon"></i> Passeios do casal</h2>
           <p class="view-header__hint">Lugares que já foram e a lista de desejos de onde ainda querem ir</p></div>
-          <button class="btn btn-primary" data-mod="passeios" data-act="add"><i class="bi bi-plus-lg"></i> Novo passeio</button>
+          <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-secondary" data-mod="passeios" data-act="importar"><i class="bi bi-list-check"></i> Importar lista</button>
+            <button class="btn btn-primary" data-mod="passeios" data-act="add"><i class="bi bi-plus-lg"></i> Novo passeio</button>
+          </div>
         </div>
         ${list.length ? `<div class="mod-summary">
           <div class="mod-summary__item"><span>Total de lugares</span><strong>${list.length}</strong></div>
@@ -1681,6 +1758,7 @@
       else if (act === 'saq') await M.mov(id, 'saque');
       else if (act === 'visit') await M.marcarVisitado(id);
       else if (act === 'unvisit') await M.desmarcarVisitado(id);
+      else if (act === 'importar') await M.importarLista();
       else if (act === 'del') {
         const ok = await confirmAction({ title: 'Excluir?', text: 'Esta ação não pode ser desfeita.', icon: 'warning', confirmText: 'Sim, excluir' });
         if (ok) { removeItem(mod, id); notify.info('Item excluído.'); }
