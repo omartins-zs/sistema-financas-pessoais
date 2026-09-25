@@ -1309,11 +1309,21 @@ const populateInvestimentoSelects = () => {
   });
 };
 
-const toggleInvestimentoField = (typeSel, wrap) => {
+const toggleInvestimentoField = (typeSel, wrap, autoFoco = false) => {
   if (!typeSel || !wrap) return;
   const mostrar = typeSel.value === 'investimento';
+  const jaEstavaEscondido = wrap.hidden;
   wrap.hidden = !mostrar;
-  if (mostrar) populateInvestimentoSelects();
+  const sel = wrap.querySelector('select');
+
+  if (mostrar) {
+    populateInvestimentoSelects();
+    // Só foca ao ligar o campo agora (mudou o Tipo), não em toda renderização/edição
+    if (autoFoco && jaEstavaEscondido) sel?.focus();
+  } else if (sel) {
+    // Trocou o Tipo para outro: a categoria de investimento escolhida não vale mais
+    sel.value = '';
+  }
 };
 
 // "+ Nova categoria" direto do formulário do mês: nasce zerada e os lançamentos somam nela
@@ -3485,14 +3495,14 @@ const onTypeChange = () => {
   if (dom.inputType.value === 'investimento') {
     dom.inputCategory.value = catPapel('investimentos');
   }
-  toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap);
+  toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap, true);
 };
 
 const onEditTypeChange = () => {
   if (dom.editType.value === 'investimento') {
     dom.editCategory.value = catPapel('investimentos');
   }
-  toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap);
+  toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap, true);
 };
 
 // ============================================

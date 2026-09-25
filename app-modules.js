@@ -469,6 +469,35 @@
     return { total, qtd };
   };
 
+  // Apaga TODOS os lançamentos "investimento" sem vínculo (ou apontando para item já
+  // apagado) — a faxina rápida depois de organizar a carteira em categorias.
+  const excluirLancamentosSemVinculo = async () => {
+    const { qtd, total } = aportesSemVinculo();
+    if (!qtd) { notify.info('Não há lançamentos sem vínculo — nada para excluir.'); return; }
+
+    const ok = await confirmAction({
+      title: 'Excluir lançamentos sem categoria?',
+      text: `${qtd} lançamento(s) de investimento, somando ${formatCurrency(total)}, não estão vinculados a nenhuma categoria da carteira atual. Serão excluídos de todos os meses. Isso fica no histórico — dá pra desfazer.`,
+      icon: 'warning',
+      confirmText: 'Sim, excluir'
+    });
+    if (!ok) return;
+
+    const ids = new Set(coll('investimentos').map((i) => i.id));
+    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+      const antes = allData[k] || [];
+      const depois = antes.filter((e) => !(e.type === 'investimento' && !ids.has(e.investimento_id)));
+      if (depois.length === antes.length) return;
+      allData[k] = depois;
+      if (typeof registrarHistoricoMes === 'function') {
+        registrarHistoricoMes(k, antes, depois, 'excluiu lançamentos de investimento sem categoria');
+      }
+    });
+    saveData();
+    notify.success(`${qtd} lançamento(s) excluído(s).`);
+    render();
+  };
+
   // Quanto foi investido em cada um dos últimos N meses (todos os lançamentos "investimento")
   const aportesPorMes = (meses = 12) => {
     const out = [];
@@ -686,6 +715,9 @@
           <div class="mod-summary__item"><span>Rentabilidade</span><strong style="color:${moneyColor(rentTotal)}">${rentTotal >= 0 ? '+' : ''}${rentTotal.toFixed(2)}%</strong></div>
           ${t.semVinculo.qtd ? `<div class="mod-summary__item"><span>Sem vínculo (${t.semVinculo.qtd} lanç.)</span><strong>${formatCurrency(t.semVinculo.total)}</strong></div>` : ''}
         </div>
+        ${t.semVinculo.qtd ? `<button type="button" class="btn btn-sm btn-outline-danger mb-3" data-mod="investimentos" data-act="limpar-sem-vinculo">
+          <i class="bi bi-trash3"></i> Excluir ${t.semVinculo.qtd} lançamento(s) sem categoria (${formatCurrency(t.semVinculo.total)})
+        </button>` : ''}
         <div class="row g-3 mb-3">
           ${list.length ? '<div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Alocação por tipo</h3><canvas id="chartInvestAloc" height="200"></canvas></div></div>' : ''}
           <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Investido por mês (12 meses)</h3><canvas id="chartInvestMensal" height="200"></canvas></div></div>
@@ -1816,6 +1848,7 @@
       else if (act === 'saq') await M.mov(id, 'saque');
       else if (act === 'visit') await M.marcarVisitado(id);
       else if (act === 'unvisit') await M.desmarcarVisitado(id);
+      else if (act === 'limpar-sem-vinculo') await excluirLancamentosSemVinculo();
       else if (act === 'importar') await M.importarLista();
       else if (act === 'del') {
         const ok = await confirmAction({ title: 'Excluir?', text: 'Esta ação não pode ser desfeita.', icon: 'warning', confirmText: 'Sim, excluir' });
