@@ -566,7 +566,9 @@
     return [...grupos.values()].sort((a, b) => b.total - a.total);
   };
 
-  const rotuloInvestimento = (i) => [i.tipo, i.instituicao].filter(Boolean).join(' · ') || 'Investimento';
+  // Só o nome — o Tipo (CDB, Ações…) é uma classificação interna, já visível na
+  // coluna própria da tabela da carteira; aqui só polui.
+  const rotuloInvestimento = (i) => String(i.instituicao || i.tipo || '').trim() || 'Categoria sem nome';
 
   // Renomeia TODOS os lançamentos de um grupo para o nome exato de outro grupo —
   // como o agrupamento é por descrição, isso funde os dois na mesma categoria na
@@ -671,24 +673,24 @@
       </details>`;
     },
     fields: (i = {}) => [
-      { name: 'tipo', label: 'Tipo', type: 'select', value: i.tipo || 'CDB', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
-      { name: 'instituicao', label: 'Nome / instituição', type: 'text', value: i.instituicao, placeholder: 'Ex: CDB Nubank, Tesouro Selic', wide: true },
+      { name: 'instituicao', label: 'Nome da categoria', type: 'text', required: true, value: i.instituicao, placeholder: 'Ex: Caixinha Turbo, Reserva de emergência', wide: true },
+      { name: 'tipo', label: 'Classificação (opcional)', type: 'select', value: i.tipo || 'Outros', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
       { name: 'valorAplicado', label: 'Aporte inicial (R$) — deixe 0 para começar do zero', type: 'money', value: i.valorAplicado ? formatValuePlain(i.valorAplicado) : '' },
       { name: 'valorAtual', label: 'Valor atual informado (R$) — opcional', type: 'money', value: i.valorAtual ? formatValuePlain(i.valorAtual) : '' },
       { name: 'data', label: 'Data de início', type: 'date', value: i.data || today().format('YYYY-MM-DD') }
     ],
     async add() {
-      const v = await formModal({ title: 'Novo investimento', icon: 'graph-up-arrow', fields: this.fields() });
+      const v = await formModal({ title: 'Nova categoria de investimento', icon: 'graph-up-arrow', fields: this.fields() });
       if (!v) return;
       const item = { id: generateId(), ...v };
       if (item.valorAtual > 0) item.valorAtualEm = today().format('YYYY-MM-DD');
       upsert('investimentos', item);
-      notify.success('Investimento adicionado! Vincule os lançamentos do mês a ele no formulário.');
+      notify.success('Categoria criada! Escolha-a no lançamento do mês (Tipo = Investimento) para ir somando.');
     },
     async edit(id) {
       const i = coll('investimentos').find((x) => x.id === id);
       if (!i) return;
-      const v = await formModal({ title: 'Editar investimento', icon: 'graph-up-arrow', fields: this.fields(i) });
+      const v = await formModal({ title: 'Editar categoria de investimento', icon: 'graph-up-arrow', fields: this.fields(i) });
       if (!v) return;
       const item = { ...i, ...v };
       if (v.valorAtual > 0) {
@@ -697,7 +699,7 @@
         delete item.valorAtualEm;
       }
       upsert('investimentos', item);
-      notify.success('Investimento atualizado!');
+      notify.success('Categoria atualizada!');
     },
     // aplicado = aporte inicial + tudo que entrou pelos lançamentos mensais
     aplicado(i) { return (Number(i.valorAplicado) || 0) + aportesMensaisDe(i.id).total; },
@@ -745,10 +747,10 @@
       c.innerHTML = `
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-graph-up-arrow app-icon"></i> Investimentos</h2>
-          <p class="view-header__hint">Carteira + o que entra mês a mês pelos lançamentos do tipo Investimento</p></div>
+          <p class="view-header__hint">Crie categorias aqui (ex: Caixinha Turbo, Reserva de emergência) e escolha-as todo mês no lançamento — Tipo = Investimento</p></div>
           <div class="d-flex gap-2 flex-wrap">
             ${(list.length || temMensal) ? `<button class="btn btn-outline-danger" data-mod="investimentos" data-act="limpar-tudo"><i class="bi bi-trash3-fill"></i> Excluir tudo</button>` : ''}
-            <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Novo investimento</button>
+            <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Nova categoria</button>
           </div>
         </div>
         ${(list.length || temMensal) ? `<div class="mod-summary">
@@ -768,7 +770,7 @@
         ${list.length ? `<div class="mod-table-wrap"><table class="mod-table">
           <thead><tr><th>Tipo</th><th>Nome</th><th class="num">Aplicado</th><th class="num">Atual</th><th class="num">Rent.</th><th>Início</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
-        </table></div>` : emptyBlock('graph-up-arrow', 'Nenhum investimento na carteira. Crie um (pode começar do zero) e vincule os lançamentos do tipo Investimento a ele.')}
+        </table></div>` : emptyBlock('graph-up-arrow', 'Nenhuma categoria de investimento criada ainda. Clique em "Nova categoria" (pode começar do zero) — ela aparece no lançamento do mês assim que Tipo = Investimento.')}
         ${grupos.length ? `<h3 class="chart-box__title mt-4 mb-1"><i class="bi bi-calendar-check"></i> Lançamentos mensais de investimento — todos os meses</h3>
         <p class="mod-hint mb-2"><i class="bi bi-info-circle"></i> Tudo que você lançou como Investimento, mês a mês, agrupado pelo nome. Abra um grupo para ver cada mês e vincule à carteira (ou crie um investimento do zero com o mesmo nome) para somar lá em cima.</p>
         <div class="inv-groups">${grupos.map((g) => this.grupoHtml(g, list, grupos)).join('')}</div>` : ''}`;

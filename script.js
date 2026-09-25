@@ -1284,8 +1284,11 @@ const updateCharts = (entries) => {
 const getInvestimentosCarteira = () =>
   (Array.isArray(allData.__app?.investimentos) ? allData.__app.investimentos : []);
 
+// Só o nome — o Tipo (CDB, Ações…) é só uma classificação interna, mostrada na
+// tabela da carteira; aqui só polui ("Outros · Caixinha Turbo" pra quem nem
+// escolheu um tipo específico).
 const investimentoLabel = (inv) =>
-  [inv.tipo, inv.instituicao].filter(Boolean).join(' · ') || 'Investimento';
+  String(inv.instituicao || inv.tipo || '').trim() || 'Categoria sem nome';
 
 const getInvestimentoLabelById = (id) => {
   if (!id) return '';
@@ -1337,7 +1340,7 @@ const toggleInvestimentoField = (typeSel, categorySel, investSel, manageBtn, aut
 const onInvestimentoSelectChange = (sel, descInput) => {
   if (!sel || !sel.value) return;
   if (descInput && !descInput.value.trim()) {
-    descInput.value = getInvestimentoLabelById(sel.value).replace(/^[^·]+·\s*/, '');
+    descInput.value = getInvestimentoLabelById(sel.value);
   }
 };
 
