@@ -1284,6 +1284,22 @@ const updateCharts = (entries) => {
 const getInvestimentosCarteira = () =>
   (Array.isArray(allData.__app?.investimentos) ? allData.__app.investimentos : []);
 
+// O que uma categoria "trouxe" quando foi cadastrada: o aporte inicial, ou — se ele
+// ficou em branco/zero — o valor atual informado (é o que sobra quando a pessoa cria
+// a categoria já preenchendo "quanto tem hoje" em vez de "aporte inicial").
+const investimentoContribuicaoInicial = (inv) => {
+  const aporte = Number(inv.valorAplicado) || 0;
+  return aporte > 0 ? aporte : (Number(inv.valorAtual) || 0);
+};
+
+// Soma, por mês (YYYY-MM), o que as categorias da carteira com essa "Data de início"
+// contribuem — assim o valor batido direto na aba Investimentos entra nas contas do
+// Mês/Dashboard/Anual no mês certo, mesmo sem passar pelo lançamento manual.
+const investimentoAtribuidoAoMes = (mes) =>
+  getInvestimentosCarteira()
+    .filter((i) => String(i.data || '').slice(0, 7) === mes)
+    .reduce((acc, i) => acc + investimentoContribuicaoInicial(i), 0);
+
 // Só o nome — o Tipo (CDB, Ações…) é só uma classificação interna, mostrada na
 // tabela da carteira; aqui só polui ("Outros · Caixinha Turbo" pra quem nem
 // escolheu um tipo específico).
@@ -2984,21 +3000,23 @@ const renderSection = ({ entries, bodyEl, cardsEl, tableWrapper, emptyEl, valueC
 
 const updateSummary = (entries) => {
   const summary = calculateSummary(entries);
-  const { afterExpenses, surplus } = getMonthBalances(summary);
   const { income: incomeList, expense: expenseList, investment: investmentList } = splitEntries(entries);
+
+  // Investimentos do mês = lançamentos manuais + o que foi cadastrado direto na aba
+  // Investimentos com "Data de início" neste mês (aporte inicial ou valor atual
+  // informado). A Sobra usa esse total; o subtotal da seção de lançamentos abaixo
+  // continua batendo só com as linhas mostradas ali (summary.investment puro).
+  const investAtribuido = investimentoAtribuidoAoMes(getMonthKey(currentDate));
+  const investimentoTotal = summary.investment + investAtribuido;
+  const surplus = summary.income - summary.expense - investimentoTotal;
 
   dom.totalIncome.textContent = formatCurrency(summary.income);
   dom.totalExpense.textContent = formatCurrency(summary.expense);
-  dom.totalInvestment.textContent = formatCurrency(summary.investment);
+  dom.totalInvestment.textContent = formatCurrency(investimentoTotal);
   dom.totalPaid.textContent = formatCurrency(summary.paid);
   dom.totalReserved.textContent = formatCurrency(summary.reserved);
   dom.totalUnpaid.textContent = formatCurrency(summary.unpaid);
 
-  // Restou (entradas − despesas) — desativado na UI; descomente index.html + bloco abaixo
-  // if (dom.calcAfterExpenses) {
-  //   dom.calcAfterExpenses.textContent = formatCurrency(afterExpenses);
-  //   dom.calcAfterExpenses.style.color = afterExpenses >= 0 ? 'var(--app-balance)' : 'var(--app-expense)';
-  // }
   if (dom.calcSurplus) {
     dom.calcSurplus.textContent = formatCurrency(surplus);
     dom.calcSurplus.style.color = surplus >= 0 ? 'var(--app-investment)' : 'var(--app-expense)';

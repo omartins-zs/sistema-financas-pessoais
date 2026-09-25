@@ -42,6 +42,10 @@
     saveData();
     refreshActiveView();
     refreshAlerts();
+    // Investimentos (e outros módulos) alimentam as tiles/Sobra da própria aba Mês
+    // (ex.: categoria criada com Data de início no mês atual) — mantém em dia mesmo
+    // sem o usuário sair da aba do módulo.
+    if (typeof render === 'function') render();
   };
 
   // Toda mudança de módulo vai para o histórico (antes/depois do item), reversível
@@ -107,6 +111,10 @@
 
   const formModal = async ({ title, icon = 'pencil-square', fields, confirmText = 'Salvar' }) => {
     const html = `<div class="fm-grid">${fields.map(fieldHtml).join('')}</div>`;
+    // Campos de dinheiro ganham a mesma máscara do lançamento do mês (separador de
+    // milhar, vírgula decimal, só números) — os inputs nascem como texto puro porque
+    // o IMask só é aplicado depois que o SweetAlert2 desenha o popup (didOpen).
+    const moneyMasks = {};
     const { value } = await Swal.fire({
       title: `<span class="fm-title"><i class="bi bi-${icon}"></i> ${escapeHtml(title)}</span>`,
       html,
@@ -118,12 +126,18 @@
       cancelButtonColor: '#94a3b8',
       reverseButtons: true,
       focusConfirm: false,
+      didOpen: () => {
+        fields.filter((f) => f.type === 'money').forEach((f) => {
+          const el = document.getElementById(`fm_${f.name}`);
+          if (el) moneyMasks[f.name] = IMask(el, moneyMaskOptions);
+        });
+      },
       preConfirm: () => {
         const out = {};
         for (const f of fields) {
           const elx = document.getElementById(`fm_${f.name}`);
           let v = elx ? elx.value : '';
-          if (f.type === 'money') v = parseValue(v);
+          if (f.type === 'money') v = getMaskValue(moneyMasks[f.name]);
           else if (f.type === 'number') v = v === '' ? null : Number(v);
           else v = String(v).trim();
           if (f.required && (v === '' || v === null || (f.type === 'money' && v <= 0))) {
@@ -1140,6 +1154,9 @@
     render(c) {
       const entries = allData[getMonthKey(currentDate)] || [];
       const s = calculateSummary(entries);
+      // Soma o que foi cadastrado direto na aba Investimentos com Data de início
+      // neste mês — mesma regra do Mês tab, pra Saldo/tile/gráfico baterem entre si
+      s.investment += investimentoAtribuidoAoMes(getMonthKey(currentDate));
       const saldo = s.income - s.expense - s.investment;
       const patrimonioTotal = sum(coll('patrimonio'), (b) => b.valorAtual || 0);
       const investTotal = Investimentos.totais().total; // carteira + lançamentos mensais
@@ -1217,6 +1234,8 @@
         const d = currentDate.subtract(i, 'month');
         const es = allData[getMonthKey(d)] || [];
         const sm = calculateSummary(es);
+        const chave = getMonthKey(d);
+        sm.investment += investimentoAtribuidoAoMes(chave);
         labels.push(MESES[d.month()].slice(0, 3));
         data.push(sm.income - sm.expense - sm.investment);
       }
@@ -1239,6 +1258,9 @@
       const rows = MESES.map((mes, i) => {
         const key = dayjs(`${ano}-${String(i + 1).padStart(2, '0')}-01`).format('YYYY-MM');
         const s = calculateSummary(allData[key] || []);
+        // Mesma regra do Mês/Dashboard: soma o que foi cadastrado direto na aba
+        // Investimentos com Data de início neste mês.
+        s.investment += investimentoAtribuidoAoMes(key);
         const saldo = s.income - s.expense - s.investment;
         tot.rec += s.income; tot.desp += s.expense; tot.inv += s.investment;
         serie.rec.push(s.income); serie.desp.push(s.expense); serie.inv.push(s.investment);
