@@ -499,8 +499,34 @@
 
   const rotuloInvestimento = (i) => [i.tipo, i.instituicao].filter(Boolean).join(' · ') || 'Investimento';
 
+  // Renomeia TODOS os lançamentos de um grupo para o nome exato de outro grupo —
+  // como o agrupamento é por descrição, isso funde os dois na mesma categoria na
+  // próxima renderização (corrige "emergência" x "Emergência" digitados em meses
+  // diferentes, por exemplo).
+  const mesclarGrupoInvestimento = (chaveOrigem, chaveDestino) => {
+    const grupos = gruposLancamentosInvestimento();
+    const origem = grupos.find((x) => x.chave === chaveOrigem);
+    const destino = grupos.find((x) => x.chave === chaveDestino);
+    if (!origem || !destino || origem === destino) return;
+
+    const porMes = {};
+    origem.meses.forEach((x) => { (porMes[x.mes] = porMes[x.mes] || []).push(x.id); });
+    Object.entries(porMes).forEach(([mes, ids]) => {
+      const antes = JSON.parse(JSON.stringify(allData[mes] || []));
+      allData[mes] = (allData[mes] || []).map((e) => (ids.includes(e.id) ? { ...e, description: destino.nome } : e));
+      if (typeof registrarHistoricoMes === 'function') {
+        registrarHistoricoMes(mes, antes, allData[mes], `mesclou “${origem.nome}” em “${destino.nome}”`);
+      }
+    });
+    saveData();
+    notify.success(`“${origem.nome}” mesclado em “${destino.nome}” (${Object.keys(porMes).length} mês(es)).`);
+    render();
+  };
+
   // Vincula (ou desvincula) TODOS os lançamentos de um grupo, em todos os meses
   const vincularGrupoInvestimento = (chave, valor) => {
+    if (valor.startsWith('merge:')) { mesclarGrupoInvestimento(chave, valor.slice(6)); return; }
+
     const g = gruposLancamentosInvestimento().find((x) => x.chave === chave);
     if (!g) return;
     let invId = valor;
@@ -538,17 +564,19 @@
   };
 
   const Investimentos = {
-    grupoHtml(g, list) {
+    grupoHtml(g, list, todosGrupos) {
       const vinc = [...g.vinculos];
       const inv = vinc.length === 1 ? list.find((i) => i.id === vinc[0]) : null;
       const estado = !vinc.length ? 'sem vínculo'
         : inv ? `→ ${escapeHtml(rotuloInvestimento(inv))}`
         : (vinc.length > 1 ? 'vínculos mistos' : 'vínculo com item apagado');
+      const outros = todosGrupos.filter((x) => x.chave !== g.chave);
       const opcoes = [
         `<option value="">${vinc.length ? 'Trocar vínculo…' : 'Vincular a…'}</option>`,
         ...list.map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(rotuloInvestimento(i))}</option>`),
-        '<option value="__novo__">＋ Criar investimento com este nome (do zero)</option>',
-        ...(vinc.length ? ['<option value="__none__">Desvincular</option>'] : [])
+        '<option value="__novo__">＋ Criar categoria com este nome (do zero)</option>',
+        ...(vinc.length ? ['<option value="__none__">Desvincular</option>'] : []),
+        ...(outros.length ? [`<optgroup label="Mesclar em outro nome (é o mesmo lugar, só digitou diferente)">${outros.map((o) => `<option value="merge:${escapeAttr(o.chave)}">${escapeHtml(o.nome)}</option>`).join('')}</optgroup>`] : [])
       ].join('');
       const linhas = g.meses.map((x) => `<tr>
           <td>${dayjs(`${x.mes}-01`).format('MMM/YYYY')}</td>
@@ -668,7 +696,7 @@
         </table></div>` : emptyBlock('graph-up-arrow', 'Nenhum investimento na carteira. Crie um (pode começar do zero) e vincule os lançamentos do tipo Investimento a ele.')}
         ${grupos.length ? `<h3 class="chart-box__title mt-4 mb-1"><i class="bi bi-calendar-check"></i> Lançamentos mensais de investimento — todos os meses</h3>
         <p class="mod-hint mb-2"><i class="bi bi-info-circle"></i> Tudo que você lançou como Investimento, mês a mês, agrupado pelo nome. Abra um grupo para ver cada mês e vincule à carteira (ou crie um investimento do zero com o mesmo nome) para somar lá em cima.</p>
-        <div class="inv-groups">${grupos.map((g) => this.grupoHtml(g, list)).join('')}</div>` : ''}`;
+        <div class="inv-groups">${grupos.map((g) => this.grupoHtml(g, list, grupos)).join('')}</div>` : ''}`;
 
       const { grid, text } = getChartTheme();
       if (list.length) {

@@ -1297,9 +1297,9 @@ const getInvestimentoLabelById = (id) => {
 
 const populateInvestimentoSelects = () => {
   const opts = [
-    '<option value="">Sem vínculo (só conta neste mês)</option>',
+    '<option value="">Sem categoria (só conta neste mês)</option>',
     ...getInvestimentosCarteira().map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(investimentoLabel(i))}</option>`),
-    '<option value="__novo__">＋ Novo investimento (começa do zero)</option>'
+    '<option value="__novo__">＋ Nova categoria de investimento…</option>'
   ].join('');
   [dom.inputInvestimento, dom.editInvestimento].forEach((sel) => {
     if (!sel) return;
@@ -1316,15 +1316,15 @@ const toggleInvestimentoField = (typeSel, wrap) => {
   if (mostrar) populateInvestimentoSelects();
 };
 
-// "+ Novo investimento" direto do formulário do mês: nasce zerado e os lançamentos somam nele
+// "+ Nova categoria" direto do formulário do mês: nasce zerada e os lançamentos somam nela
 const criarInvestimentoRapido = async (nomeSugerido) => {
   const { value, isConfirmed } = await Swal.fire({
-    title: 'Novo investimento',
-    text: 'Começa do zero: os lançamentos mensais vinculados vão somando nele. Tipo e valor atual você ajusta na aba Investimentos.',
+    title: 'Nova categoria de investimento',
+    text: 'Ex: Caixinha Turbo, Enxoval do Bebê, Reserva de emergência. Começa do zero — os lançamentos que você vincular a ela vão somando aqui, mês a mês. Tipo e valor atual você ajusta depois na aba Investimentos.',
     input: 'text',
     inputValue: nomeSugerido || '',
-    inputPlaceholder: 'Ex: CDB Nubank, Tesouro Selic',
-    inputValidator: (v) => (String(v).trim() ? undefined : 'Dê um nome ao investimento'),
+    inputPlaceholder: 'Nome da categoria',
+    inputValidator: (v) => (String(v).trim() ? undefined : 'Dê um nome à categoria'),
     showCancelButton: true,
     confirmButtonText: 'Criar',
     cancelButtonText: 'Cancelar'
@@ -1344,10 +1344,25 @@ const criarInvestimentoRapido = async (nomeSugerido) => {
 };
 
 const onInvestimentoSelectChange = async (sel, descInput) => {
-  if (!sel || sel.value !== '__novo__') return;
-  const novoId = await criarInvestimentoRapido(descInput?.value?.trim());
-  populateInvestimentoSelects();
-  sel.value = novoId || '';
+  if (!sel) return;
+
+  if (sel.value === '__novo__') {
+    const novoId = await criarInvestimentoRapido(descInput?.value?.trim());
+    populateInvestimentoSelects();
+    sel.value = novoId || '';
+    if (novoId && descInput && !descInput.value.trim()) {
+      descInput.value = getInvestimentoLabelById(novoId).replace(/^[^·]+·\s*/, '');
+    }
+    return;
+  }
+
+  // Escolheu uma categoria já existente: preenche a descrição com o MESMO nome sempre
+  // que ela estiver vazia — é o que faz os lançamentos de meses diferentes ficarem
+  // agrupados (nomes digitados diferentes cada mês, tipo "emergência"/"Emergência",
+  // criavam categorias separadas em vez de somar).
+  if (sel.value && descInput && !descInput.value.trim()) {
+    descInput.value = getInvestimentoLabelById(sel.value).replace(/^[^·]+·\s*/, '');
+  }
 };
 
 const buildEntryFromForm = (formData) => normalizeEntry({
