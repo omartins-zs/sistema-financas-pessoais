@@ -498,6 +498,46 @@
     render();
   };
 
+  // Apaga TUDO de investimento: a carteira inteira (categorias) e todos os lançamentos
+  // do tipo Investimento, em todos os meses — um reset completo para recomeçar do zero.
+  const excluirTudoInvestimento = async () => {
+    const carteira = coll('investimentos');
+    let qtdLancamentos = 0;
+    let totalLancamentos = 0;
+    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+      (allData[k] || []).forEach((e) => {
+        if (e.type === 'investimento') { qtdLancamentos++; totalLancamentos += Number(e.value) || 0; }
+      });
+    });
+
+    if (!carteira.length && !qtdLancamentos) { notify.info('Não há nada de investimento para excluir.'); return; }
+
+    const ok = await confirmAction({
+      title: 'Excluir TODOS os investimentos?',
+      text: `Isso apaga as ${carteira.length} categoria(s) da carteira e os ${qtdLancamentos} lançamento(s) de investimento de todos os meses (${formatCurrency(totalLancamentos)} no total). Fica no histórico — dá pra desfazer.`,
+      icon: 'warning',
+      confirmText: 'Sim, excluir tudo'
+    });
+    if (!ok) return;
+
+    carteira.slice().forEach((inv) => { if (typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo('investimentos', inv, null); });
+    const s = getStore();
+    s.investimentos = [];
+
+    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+      const antes = allData[k] || [];
+      const depois = antes.filter((e) => e.type !== 'investimento');
+      if (depois.length === antes.length) return;
+      allData[k] = depois;
+      if (typeof registrarHistoricoMes === 'function') {
+        registrarHistoricoMes(k, antes, depois, 'excluiu todos os investimentos (reset)');
+      }
+    });
+    saveData();
+    notify.success('Todos os investimentos foram excluídos.');
+    render();
+  };
+
   // Quanto foi investido em cada um dos últimos N meses (todos os lançamentos "investimento")
   const aportesPorMes = (meses = 12) => {
     const out = [];
@@ -706,7 +746,10 @@
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-graph-up-arrow app-icon"></i> Investimentos</h2>
           <p class="view-header__hint">Carteira + o que entra mês a mês pelos lançamentos do tipo Investimento</p></div>
-          <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Novo investimento</button>
+          <div class="d-flex gap-2 flex-wrap">
+            ${(list.length || temMensal) ? `<button class="btn btn-outline-danger" data-mod="investimentos" data-act="limpar-tudo"><i class="bi bi-trash3-fill"></i> Excluir tudo</button>` : ''}
+            <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Novo investimento</button>
+          </div>
         </div>
         ${(list.length || temMensal) ? `<div class="mod-summary">
           <div class="mod-summary__item"><span>Total investido hoje</span><strong style="color:var(--app-investment)">${formatCurrency(t.total)}</strong></div>
@@ -1849,6 +1892,7 @@
       else if (act === 'visit') await M.marcarVisitado(id);
       else if (act === 'unvisit') await M.desmarcarVisitado(id);
       else if (act === 'limpar-sem-vinculo') await excluirLancamentosSemVinculo();
+      else if (act === 'limpar-tudo') await excluirTudoInvestimento();
       else if (act === 'importar') await M.importarLista();
       else if (act === 'del') {
         const ok = await confirmAction({ title: 'Excluir?', text: 'Esta ação não pode ser desfeita.', icon: 'warning', confirmText: 'Sim, excluir' });

@@ -243,9 +243,7 @@ const dom = {
   investmentTable: $('#investmentTable'),
   appVersion: $('#appVersion'),
   inputInvestimento: $('#inputInvestimento'),
-  inputInvestimentoWrap: $('#inputInvestimentoWrap'),
-  editInvestimento: $('#editInvestimento'),
-  editInvestimentoWrap: $('#editInvestimentoWrap')
+  editInvestimento: $('#editInvestimento')
 };
 
 // ============================================
@@ -1296,10 +1294,12 @@ const getInvestimentoLabelById = (id) => {
 };
 
 const populateInvestimentoSelects = () => {
+  const lista = getInvestimentosCarteira();
   const opts = [
-    '<option value="">Sem categoria (só conta neste mês)</option>',
-    ...getInvestimentosCarteira().map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(investimentoLabel(i))}</option>`),
-    '<option value="__novo__">＋ Nova categoria de investimento…</option>'
+    lista.length
+      ? '<option value="">Sem categoria (só conta neste mês)</option>'
+      : '<option value="">Nenhuma categoria criada ainda — crie na aba Investimentos</option>',
+    ...lista.map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(investimentoLabel(i))}</option>`)
   ].join('');
   [dom.inputInvestimento, dom.editInvestimento].forEach((sel) => {
     if (!sel) return;
@@ -1309,68 +1309,34 @@ const populateInvestimentoSelects = () => {
   });
 };
 
-const toggleInvestimentoField = (typeSel, wrap, autoFoco = false) => {
-  if (!typeSel || !wrap) return;
+// A categoria ocupa o MESMO lugar na tela: normal (Mercado, Luz…) ou, quando o Tipo é
+// Investimento, a lista de categorias da carteira — nunca os dois ao mesmo tempo.
+const toggleInvestimentoField = (typeSel, categorySel, investSel, manageBtn, autoFoco = false) => {
+  if (!typeSel || !categorySel || !investSel) return;
   const mostrar = typeSel.value === 'investimento';
-  const jaEstavaEscondido = wrap.hidden;
-  wrap.hidden = !mostrar;
-  const sel = wrap.querySelector('select');
+  const jaEstavaEscondido = investSel.hidden;
+  categorySel.hidden = mostrar;
+  investSel.hidden = !mostrar;
+  if (manageBtn) manageBtn.hidden = mostrar;
 
   if (mostrar) {
     populateInvestimentoSelects();
     // Só foca ao ligar o campo agora (mudou o Tipo), não em toda renderização/edição
-    if (autoFoco && jaEstavaEscondido) sel?.focus();
-  } else if (sel) {
+    if (autoFoco && jaEstavaEscondido) investSel.focus();
+  } else {
     // Trocou o Tipo para outro: a categoria de investimento escolhida não vale mais
-    sel.value = '';
+    investSel.value = '';
   }
 };
 
-// "+ Nova categoria" direto do formulário do mês: nasce zerada e os lançamentos somam nela
-const criarInvestimentoRapido = async (nomeSugerido) => {
-  const { value, isConfirmed } = await Swal.fire({
-    title: 'Nova categoria de investimento',
-    text: 'Ex: Caixinha Turbo, Enxoval do Bebê, Reserva de emergência. Começa do zero — os lançamentos que você vincular a ela vão somando aqui, mês a mês. Tipo e valor atual você ajusta depois na aba Investimentos.',
-    input: 'text',
-    inputValue: nomeSugerido || '',
-    inputPlaceholder: 'Nome da categoria',
-    inputValidator: (v) => (String(v).trim() ? undefined : 'Dê um nome à categoria'),
-    showCancelButton: true,
-    confirmButtonText: 'Criar',
-    cancelButtonText: 'Cancelar'
-  });
-  if (!isConfirmed) return null;
-  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
-  if (!Array.isArray(allData.__app.investimentos)) allData.__app.investimentos = [];
-  const inv = {
-    id: generateId(), tipo: 'Outros', instituicao: String(value).trim(),
-    valorAplicado: 0, valorAtual: 0, data: dayjs().format('YYYY-MM-DD')
-  };
-  allData.__app.investimentos.push(inv);
-  registrarHistoricoModulo('investimentos', null, inv);
-  saveData();
-  notify.success(`Investimento "${inv.instituicao}" criado. Veja na aba Investimentos.`);
-  return inv.id;
-};
-
-const onInvestimentoSelectChange = async (sel, descInput) => {
-  if (!sel) return;
-
-  if (sel.value === '__novo__') {
-    const novoId = await criarInvestimentoRapido(descInput?.value?.trim());
-    populateInvestimentoSelects();
-    sel.value = novoId || '';
-    if (novoId && descInput && !descInput.value.trim()) {
-      descInput.value = getInvestimentoLabelById(novoId).replace(/^[^·]+·\s*/, '');
-    }
-    return;
-  }
-
-  // Escolheu uma categoria já existente: preenche a descrição com o MESMO nome sempre
-  // que ela estiver vazia — é o que faz os lançamentos de meses diferentes ficarem
-  // agrupados (nomes digitados diferentes cada mês, tipo "emergência"/"Emergência",
-  // criavam categorias separadas em vez de somar).
-  if (sel.value && descInput && !descInput.value.trim()) {
+// Categorias de investimento só se criam na aba Investimentos — aqui é só escolher.
+// Ao escolher uma já existente, a descrição preenche sozinha com o MESMO nome sempre
+// que estiver vazia — é o que faz os lançamentos de meses diferentes ficarem agrupados
+// (nomes digitados diferentes cada mês, tipo "emergência"/"Emergência", criavam
+// categorias separadas em vez de somar).
+const onInvestimentoSelectChange = (sel, descInput) => {
+  if (!sel || !sel.value) return;
+  if (descInput && !descInput.value.trim()) {
     descInput.value = getInvestimentoLabelById(sel.value).replace(/^[^·]+·\s*/, '');
   }
 };
@@ -1386,7 +1352,7 @@ const buildEntryFromForm = (formData) => normalizeEntry({
   due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
   observation: formData.observation.trim(),
   card_items: formData.card_items ?? [],
-  ...(formData.type === 'investimento' && formData.investimento_id && formData.investimento_id !== '__novo__'
+  ...(formData.type === 'investimento' && formData.investimento_id
     ? { investimento_id: formData.investimento_id } : {})
 });
 
@@ -1433,7 +1399,7 @@ const openEditModal = (id) => {
   dom.editObservation.value = entry.observation ?? '';
   dom.editPerson.value = entry.person ?? '';
   setMaskValue(maskEdit, entry.value);
-  toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap);
+  toggleInvestimentoField(dom.editType, dom.editCategory, dom.editInvestimento, null);
   if (dom.editInvestimento) dom.editInvestimento.value = entry.investimento_id || '';
 
   editModal.show();
@@ -3495,14 +3461,14 @@ const onTypeChange = () => {
   if (dom.inputType.value === 'investimento') {
     dom.inputCategory.value = catPapel('investimentos');
   }
-  toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap, true);
+  toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'), true);
 };
 
 const onEditTypeChange = () => {
   if (dom.editType.value === 'investimento') {
     dom.editCategory.value = catPapel('investimentos');
   }
-  toggleInvestimentoField(dom.editType, dom.editInvestimentoWrap, true);
+  toggleInvestimentoField(dom.editType, dom.editCategory, dom.editInvestimento, null, true);
 };
 
 // ============================================
@@ -3516,7 +3482,7 @@ const startApp = async () => {
   aplicarCategoriasSalvas();
   populateCategories();
   populateInvestimentoSelects();
-  toggleInvestimentoField(dom.inputType, dom.inputInvestimentoWrap);
+  toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'));
   render();
 };
 
