@@ -1300,6 +1300,25 @@ const investimentoAtribuidoAoMes = (mes) =>
     .filter((i) => String(i.data || '').slice(0, 7) === mes)
     .reduce((acc, i) => acc + investimentoContribuicaoInicial(i), 0);
 
+// Uma linha "de mentira" pra cada categoria da carteira com Data de início nesse mês —
+// só pra EXIBIR na lista de Investimentos do mês (não é gravada em allData; editar ou
+// excluir de verdade continua sendo feito na aba Investimentos).
+const investimentosDoMesSintetico = (mes) =>
+  getInvestimentosCarteira()
+    .filter((i) => String(i.data || '').slice(0, 7) === mes && investimentoContribuicaoInicial(i) > 0)
+    .map((i) => ({
+      id: `carteira:${i.id}`,
+      __carteiraId: i.id,
+      description: i.instituicao || i.tipo || 'Categoria sem nome',
+      category: i.tipo || 'Investimentos',
+      type: 'investimento',
+      person: '',
+      value: investimentoContribuicaoInicial(i),
+      status: 'pago',
+      due_day: null,
+      observation: (Number(i.valorAplicado) || 0) > 0 ? 'Aporte inicial (cadastrado na carteira)' : 'Valor atual informado (cadastrado na carteira)'
+    }));
+
 // Só o nome — o Tipo (CDB, Ações…) é só uma classificação interna, mostrada na
 // tabela da carteira; aqui só polui ("Outros · Caixinha Turbo" pra quem nem
 // escolheu um tipo específico).
@@ -2914,8 +2933,33 @@ const investLinkTag = (entry) => {
   return label ? ` <span class="invest-link-tag" title="Soma na carteira (aba Investimentos)"><i class="bi bi-graph-up-arrow"></i> ${escapeHtml(label)}</span>` : '';
 };
 
+const carteiraStatusBadge = () =>
+  '<span class="badge text-bg-light border carteira-badge" title="Cadastrado direto na aba Investimentos — edite ou exclua por lá">' +
+  '<i class="bi bi-piggy-bank me-1"></i>Carteira</span>';
+
+const carteiraActionButton = (carteiraId) => `
+  <div class="row-actions">
+    <button type="button" class="row-action row-action--edit" data-action="edit-carteira" data-carteira-id="${carteiraId}" title="Editar na aba Investimentos" aria-label="Editar na aba Investimentos">
+      <i class="bi bi-box-arrow-up-right"></i>
+    </button>
+  </div>`;
+
 const renderEntryRow = (entry, valueClass) => {
   if (isCreditCardEntry(entry)) return renderCreditCardRows(entry, valueClass);
+
+  if (entry.__carteiraId) {
+    return `
+    <tr class="entry-row--carteira" data-id="${entry.id}">
+      <td class="cell-description">${escapeHtml(entry.description)}</td>
+      <td><span class="text-muted">—</span></td>
+      <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
+      <td class="${valueClass}">${formatCurrency(entry.value)}</td>
+      <td>${carteiraStatusBadge()}</td>
+      <td>${renderDueDay(entry.due_day)}</td>
+      <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
+      <td class="text-end">${carteiraActionButton(entry.__carteiraId)}</td>
+    </tr>`;
+  }
 
   return `
   <tr data-id="${entry.id}">
@@ -2935,6 +2979,24 @@ const renderEntryCard = (entry, valueClass) => {
     ? `<p class="entry-card__obs">${escapeHtml(entry.observation)}</p>` : '';
   const due = entry.due_day
     ? `<span class="badge text-bg-light border ms-1" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>vence dia ${entry.due_day}</span>` : '';
+
+  if (entry.__carteiraId) {
+    return `
+    <div class="entry-card entry-card--carteira" data-id="${entry.id}">
+      <div class="entry-card__header">
+        <span class="entry-card__title">${escapeHtml(entry.description)}</span>
+        <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
+      </div>
+      <div class="entry-card__meta">
+        <span class="category-tag">${escapeHtml(entry.category)}</span>
+      </div>
+      ${obs}
+      <div class="entry-card__footer">
+        ${carteiraStatusBadge()}
+        ${carteiraActionButton(entry.__carteiraId)}
+      </div>
+    </div>`;
+  }
 
   if (isCreditCardEntry(entry)) {
     const expanded = expandedCardEntries.has(entry.id);
@@ -3002,13 +3064,14 @@ const updateSummary = (entries) => {
   const summary = calculateSummary(entries);
   const { income: incomeList, expense: expenseList, investment: investmentList } = splitEntries(entries);
 
-  // Investimentos do mês = lançamentos manuais + o que foi cadastrado direto na aba
-  // Investimentos com "Data de início" neste mês (aporte inicial ou valor atual
-  // informado). A Sobra usa esse total; o subtotal da seção de lançamentos abaixo
-  // continua batendo só com as linhas mostradas ali (summary.investment puro).
+  // Investimentos do mês (tile/lista) = lançamentos manuais + o que foi cadastrado
+  // direto na aba Investimentos com "Data de início" neste mês. A Sobra NÃO entra
+  // nessa soma: o valor batido direto na carteira é dinheiro que já existia (só
+  // está sendo catalogado agora), não saiu do caixa neste mês — por isso a Sobra
+  // usa só summary.investment (lançamentos reais), como sempre foi.
   const investAtribuido = investimentoAtribuidoAoMes(getMonthKey(currentDate));
   const investimentoTotal = summary.investment + investAtribuido;
-  const surplus = summary.income - summary.expense - investimentoTotal;
+  const surplus = summary.income - summary.expense - summary.investment;
 
   dom.totalIncome.textContent = formatCurrency(summary.income);
   dom.totalExpense.textContent = formatCurrency(summary.expense);
@@ -3025,16 +3088,17 @@ const updateSummary = (entries) => {
   dom.entryCount.textContent = entries.length;
   dom.incomeCount.textContent = incomeList.length;
   dom.expenseCount.textContent = expenseList.length;
-  dom.investmentCount.textContent = investmentList.length;
+  dom.investmentCount.textContent = investmentList.length + investimentosDoMesSintetico(getMonthKey(currentDate)).length;
   dom.incomeSubtotal.textContent = formatCurrency(summary.income);
   dom.expenseSubtotal.textContent = formatCurrency(summary.expense);
-  dom.investmentSubtotal.textContent = formatCurrency(summary.investment);
+  dom.investmentSubtotal.textContent = formatCurrency(investimentoTotal);
 };
 
 const render = () => {
   const entries = getCurrentEntries();
   const { income, expense, investment } = splitEntries(entries);
-  const hasEntries = entries.length > 0;
+  const investmentComCarteira = [...investment, ...investimentosDoMesSintetico(getMonthKey(currentDate))];
+  const hasEntries = entries.length > 0 || investmentComCarteira.length > 0;
 
   dom.emptyState.hidden = hasEntries;
   dom.incomeSection.hidden = !hasEntries;
@@ -3060,7 +3124,7 @@ const render = () => {
   });
 
   renderSection({
-    entries: investment,
+    entries: investmentComCarteira,
     bodyEl: dom.investmentBody,
     cardsEl: dom.investmentCards,
     tableWrapper: dom.investmentTableWrapper,
@@ -3360,6 +3424,10 @@ const handleListClick = (e) => {
 
   if (action === 'edit') openEditModal(id);
   if (action === 'delete') deleteEntry(id);
+  if (action === 'edit-carteira') {
+    window.AppModules?.activate('investimentos');
+    notify.info('Editando na aba Investimentos — encontre a categoria e clique no lápis.');
+  }
 };
 
 const bindListEvents = (tableEl, cardsEl) => {

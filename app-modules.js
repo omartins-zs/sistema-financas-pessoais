@@ -1154,10 +1154,11 @@
     render(c) {
       const entries = allData[getMonthKey(currentDate)] || [];
       const s = calculateSummary(entries);
-      // Soma o que foi cadastrado direto na aba Investimentos com Data de início
-      // neste mês — mesma regra do Mês tab, pra Saldo/tile/gráfico baterem entre si
-      s.investment += investimentoAtribuidoAoMes(getMonthKey(currentDate));
       const saldo = s.income - s.expense - s.investment;
+      // Tile/gráfico "Investimentos" também somam o que foi cadastrado direto na aba
+      // Investimentos com Data de início neste mês — mas o Saldo NÃO usa esse extra:
+      // é dinheiro que já existia, só catalogado agora, não saiu do caixa este mês.
+      s.investmentExibido = s.investment + investimentoAtribuidoAoMes(getMonthKey(currentDate));
       const patrimonioTotal = sum(coll('patrimonio'), (b) => b.valorAtual || 0);
       const investTotal = Investimentos.totais().total; // carteira + lançamentos mensais
       const reservasTotal = sum(coll('reservas'), reservaSaldo);
@@ -1225,17 +1226,16 @@
       const { grid, text } = getChartTheme();
       drawChart('dashChartIE', {
         type: 'bar',
-        data: { labels: ['Entradas', 'Despesas', 'Investimentos'], datasets: [{ data: [s.income, s.expense, s.investment], backgroundColor: ['#10b981', '#ef4444', '#8b5cf6'], borderRadius: 8 }] },
+        data: { labels: ['Entradas', 'Despesas', 'Investimentos'], datasets: [{ data: [s.income, s.expense, s.investmentExibido ?? s.investment], backgroundColor: ['#10b981', '#ef4444', '#8b5cf6'], borderRadius: 8 }] },
         options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { beginAtZero: true, ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
       });
-      // evolução do saldo dos últimos 12 meses
+      // evolução do saldo dos últimos 12 meses — só com lançamentos reais (mesma regra
+      // do Mês tab: o que foi catalogado direto na carteira não sai do caixa)
       const labels = [], data = [];
       for (let i = 11; i >= 0; i--) {
         const d = currentDate.subtract(i, 'month');
         const es = allData[getMonthKey(d)] || [];
         const sm = calculateSummary(es);
-        const chave = getMonthKey(d);
-        sm.investment += investimentoAtribuidoAoMes(chave);
         labels.push(MESES[d.month()].slice(0, 3));
         data.push(sm.income - sm.expense - sm.investment);
       }
@@ -1253,26 +1253,27 @@
   const Anual = {
     render(c) {
       const ano = currentDate.year();
-      let tot = { rec: 0, desp: 0, inv: 0 };
+      // tot.inv (exibido na tabela/gráfico) inclui o que foi catalogado direto na
+      // carteira; tot.invReal (só para o Saldo) fica só com lançamentos reais — esse
+      // valor não saiu do caixa no mês, é dinheiro que já existia sendo catalogado.
+      let tot = { rec: 0, desp: 0, inv: 0, invReal: 0 };
       const serie = { rec: [], desp: [], inv: [] };
       const rows = MESES.map((mes, i) => {
         const key = dayjs(`${ano}-${String(i + 1).padStart(2, '0')}-01`).format('YYYY-MM');
         const s = calculateSummary(allData[key] || []);
-        // Mesma regra do Mês/Dashboard: soma o que foi cadastrado direto na aba
-        // Investimentos com Data de início neste mês.
-        s.investment += investimentoAtribuidoAoMes(key);
+        const investimentoMes = s.investment + investimentoAtribuidoAoMes(key);
         const saldo = s.income - s.expense - s.investment;
-        tot.rec += s.income; tot.desp += s.expense; tot.inv += s.investment;
-        serie.rec.push(s.income); serie.desp.push(s.expense); serie.inv.push(s.investment);
+        tot.rec += s.income; tot.desp += s.expense; tot.inv += investimentoMes; tot.invReal += s.investment;
+        serie.rec.push(s.income); serie.desp.push(s.expense); serie.inv.push(investimentoMes);
         return `<tr>
           <td>${mes}</td>
           <td class="num" style="color:var(--app-income)">${formatCurrency(s.income)}</td>
           <td class="num" style="color:var(--app-expense)">${formatCurrency(s.expense)}</td>
-          <td class="num" style="color:var(--app-investment)">${formatCurrency(s.investment)}</td>
+          <td class="num" style="color:var(--app-investment)">${formatCurrency(investimentoMes)}</td>
           <td class="num" style="color:${moneyColor(saldo)};font-weight:700">${formatCurrency(saldo)}</td>
         </tr>`;
       }).join('');
-      const saldoAno = tot.rec - tot.desp - tot.inv;
+      const saldoAno = tot.rec - tot.desp - tot.invReal;
       c.innerHTML = `
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-calendar3 app-icon"></i> Planejamento anual</h2>

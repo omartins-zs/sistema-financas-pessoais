@@ -2203,3 +2203,13 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   font-size: 0.74rem;
   color: var(--app-text-faint);
 }
+
+/* ---- Linha "virtual" de investimento cadastrado direto na aba Investimentos ---- */
+.entry-row--carteira,
+.entry-card--carteira {
+  background: color-mix(in srgb, var(--app-investment) 6%, transparent);
+}
+.carteira-badge {
+  color: var(--app-investment) !important;
+  border-color: color-mix(in srgb, var(--app-investment) 40%, var(--app-border)) !important;
+}
