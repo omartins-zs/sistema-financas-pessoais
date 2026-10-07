@@ -1898,13 +1898,13 @@
     ['mes', 'house-door', 'Mês'],
     ['dashboard', 'speedometer2', 'Dashboard'],
     ['anual', 'calendar3', 'Anual'],
+    ['investimentos', 'graph-up-arrow', 'Investimentos'],
+    ['passeios', 'geo-alt', 'Passeios'],
     ['metas', 'bullseye', 'Metas'],
     ['reservas', 'safe2', 'Reservas'],
     ['cartoes', 'credit-card-2-front', 'Cartões'],
-    ['investimentos', 'graph-up-arrow', 'Investimentos'],
     ['patrimonio', 'houses', 'Patrimônio'],
     ['assinaturas', 'arrow-repeat', 'Contas fixas'],
-    ['passeios', 'geo-alt', 'Passeios'],
     ['relatorios', 'funnel', 'Relatórios']
   ];
 
