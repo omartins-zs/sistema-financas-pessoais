@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR" data-theme="light" data-bs-theme="light">
 <head>
   <meta charset="UTF-8">
@@ -235,6 +235,71 @@
             <span class="summary-card__label">Sobra</span>
             <span class="summary-card__formula">Entradas − Despesas − Investimentos</span>
             <strong class="summary-card__value" id="calcSurplus">R$ 0,00</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Resumo por Pessoa -->
+      <section class="row g-3 mb-4" aria-label="Resumo por Pessoa">
+        <!-- Gabriel -->
+        <div class="col-12 col-md-6">
+          <div class="card app-card shadow-sm border-0 h-100">
+            <div class="card-body p-4">
+              <h3 class="fw-bold mb-3 text-primary d-flex align-items-center gap-2">
+                <i class="bi bi-person-circle"></i> Gabriel
+              </h3>
+              <div class="row g-3 mb-3">
+                <div class="col-6">
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Entrada</span>
+                  <strong class="fs-5 text-success" id="gabrielIncome">R$ 0,00</strong>
+                </div>
+                <div class="col-6">
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Saída</span>
+                  <strong class="fs-5 text-danger" id="gabrielExpense">R$ 0,00</strong>
+                </div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                <div>
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Sobra</span>
+                  <strong class="fs-5" id="gabrielSurplus">R$ 0,00</strong>
+                </div>
+                <div class="text-end">
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">% Comprometido</span>
+                  <strong class="fs-5 text-secondary" id="gabrielPercent">0,0%</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bárbara -->
+        <div class="col-12 col-md-6">
+          <div class="card app-card shadow-sm border-0 h-100">
+            <div class="card-body p-4">
+              <h3 class="fw-bold mb-3 text-danger d-flex align-items-center gap-2" style="color: #d63384 !important;">
+                <i class="bi bi-person-circle"></i> Bárbara
+              </h3>
+              <div class="row g-3 mb-3">
+                <div class="col-6">
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Entrada</span>
+                  <strong class="fs-5 text-success" id="barbaraIncome">R$ 0,00</strong>
+                </div>
+                <div class="col-6">
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Saída</span>
+                  <strong class="fs-5 text-danger" id="barbaraExpense">R$ 0,00</strong>
+                </div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                <div>
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Sobra</span>
+                  <strong class="fs-5" id="barbaraSurplus">R$ 0,00</strong>
+                </div>
+                <div class="text-end">
+                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">% Comprometido</span>
+                  <strong class="fs-5 text-secondary" id="barbaraPercent">0,0%</strong>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

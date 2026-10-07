@@ -243,7 +243,15 @@ const dom = {
   investmentTable: $('#investmentTable'),
   appVersion: $('#appVersion'),
   inputInvestimento: $('#inputInvestimento'),
-  editInvestimento: $('#editInvestimento')
+  editInvestimento: $('#editInvestimento'),
+  gabrielIncome: $('#gabrielIncome'),
+  gabrielExpense: $('#gabrielExpense'),
+  gabrielSurplus: $('#gabrielSurplus'),
+  gabrielPercent: $('#gabrielPercent'),
+  barbaraIncome: $('#barbaraIncome'),
+  barbaraExpense: $('#barbaraExpense'),
+  barbaraSurplus: $('#barbaraSurplus'),
+  barbaraPercent: $('#barbaraPercent')
 };
 
 // ============================================
@@ -1146,7 +1154,7 @@ const onMonthChange = () => {
 
 const calculateSummary = (entries) =>
   entries.reduce(
-    (acc, { type, value, status }) => {
+    (acc, { type, value, status, person }) => {
       if (type === 'entrada') acc.income += value;
       else if (type === 'investimento') acc.investment += value;
       else acc.expense += value;
@@ -1156,9 +1164,23 @@ const calculateSummary = (entries) =>
         else if (status === 'reservado') acc.reserved += value;
         else acc.unpaid += value;
       }
+
+      if (status === 'pago') {
+        if (person === 'gabriel') {
+          if (type === 'entrada') acc.gabrielIncome += value;
+          else acc.gabrielExpense += value;
+        } else if (person === 'barbara') {
+          if (type === 'entrada') acc.barbaraIncome += value;
+          else acc.barbaraExpense += value;
+        }
+      }
+
       return acc;
     },
-    { income: 0, expense: 0, investment: 0, paid: 0, reserved: 0, unpaid: 0 }
+    { 
+      income: 0, expense: 0, investment: 0, paid: 0, reserved: 0, unpaid: 0,
+      gabrielIncome: 0, gabrielExpense: 0, barbaraIncome: 0, barbaraExpense: 0
+    }
   );
 
 const getMonthBalances = (summary) => {
@@ -3083,6 +3105,29 @@ const updateSummary = (entries) => {
   if (dom.calcSurplus) {
     dom.calcSurplus.textContent = formatCurrency(surplus);
     dom.calcSurplus.style.color = surplus >= 0 ? 'var(--app-investment)' : 'var(--app-expense)';
+  }
+
+  // Gabriel & Bárbara
+  const gabrielSurplus = summary.gabrielIncome - summary.gabrielExpense;
+  const gabrielPercent = summary.gabrielIncome > 0 ? (summary.gabrielExpense / summary.gabrielIncome) * 100 : 0;
+  
+  if (dom.gabrielIncome) {
+    dom.gabrielIncome.textContent = formatCurrency(summary.gabrielIncome);
+    dom.gabrielExpense.textContent = formatCurrency(summary.gabrielExpense);
+    dom.gabrielSurplus.textContent = formatCurrency(gabrielSurplus);
+    dom.gabrielSurplus.className = `fs-5 ${gabrielSurplus >= 0 ? 'text-success' : 'text-danger'}`;
+    dom.gabrielPercent.textContent = `${gabrielPercent.toFixed(1).replace('.', ',')}%`;
+  }
+
+  const barbaraSurplus = summary.barbaraIncome - summary.barbaraExpense;
+  const barbaraPercent = summary.barbaraIncome > 0 ? (summary.barbaraExpense / summary.barbaraIncome) * 100 : 0;
+
+  if (dom.barbaraIncome) {
+    dom.barbaraIncome.textContent = formatCurrency(summary.barbaraIncome);
+    dom.barbaraExpense.textContent = formatCurrency(summary.barbaraExpense);
+    dom.barbaraSurplus.textContent = formatCurrency(barbaraSurplus);
+    dom.barbaraSurplus.className = `fs-5 ${barbaraSurplus >= 0 ? 'text-success' : 'text-danger'}`;
+    dom.barbaraPercent.textContent = `${barbaraPercent.toFixed(1).replace('.', ',')}%`;
   }
 
   dom.entryCount.textContent = entries.length;
