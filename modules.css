@@ -85,7 +85,7 @@
 
 .mod-card {
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius);
   padding: 1.1rem;
   box-shadow: 0 2px 10px var(--app-shadow);
@@ -155,7 +155,7 @@
 
 /* Botões pequenos de ação reaproveitando o estilo das linhas */
 .mod-btn {
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   background: var(--app-surface-2);
   color: var(--app-text-muted);
   border-radius: 9px;
@@ -206,7 +206,7 @@
   justify-content: space-between;
   gap: 0.65rem;
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: 10px;
   padding: 0.65rem 0.8rem;
 }
@@ -256,7 +256,7 @@
   gap: 0.65rem;
   padding: 0.55rem 0.75rem;
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: 10px;
 }
 
@@ -296,7 +296,7 @@
 }
 .dash-tile {
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius);
   padding: 0.95rem 1rem;
   box-shadow: 0 2px 10px var(--app-shadow);
@@ -312,7 +312,7 @@
 /* ---- Tabelas genéricas dos módulos / relatórios ---- */
 .mod-table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius);
   background: var(--app-surface);
 }
@@ -362,7 +362,7 @@
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 0.6rem;
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius);
   padding: 1rem;
   margin-bottom: 1rem;
@@ -405,7 +405,7 @@
 .mod-summary {
   display: flex; flex-wrap: wrap; gap: 1.25rem;
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius);
   padding: 1rem 1.25rem;
   margin-bottom: 1.1rem;
@@ -428,7 +428,7 @@
 .fm-input {
   width: 100%;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius-sm);
   background: var(--app-surface);
   color: var(--app-text);
@@ -522,7 +522,7 @@
 .inv-groups { display: flex; flex-direction: column; gap: 0.5rem; }
 .inv-group {
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: var(--app-radius-sm);
 }
 .inv-group[open] { border-color: color-mix(in srgb, var(--app-investment) 45%, var(--app-border)); }
@@ -547,7 +547,7 @@
 /* ---- Passeios Redesign ---- */
 .passeio-grid { 
   display: grid; 
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); 
   gap: 1.25rem; 
 }
 
@@ -564,7 +564,7 @@
   padding: 0.05rem 0.55rem;
   border-radius: 999px;
   background: var(--app-surface-2);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--app-text-muted);
@@ -574,7 +574,7 @@
   display: flex;
   gap: 1rem;
   background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--app-surface-2); border: none;
   border-radius: calc(var(--app-radius) + 4px);
   padding: 1.25rem;
   box-shadow: 0 4px 15px rgba(0,0,0,0.03);
@@ -719,11 +719,11 @@
   transform: translateY(-1px);
 }
 
-.btn-pass--outline {
-  border: 1px solid var(--app-border);
+.btn-pass--muted {
+  background: var(--app-surface-2); border: none;
   color: var(--app-text-muted);
 }
-.btn-pass--outline:hover {
+.btn-pass--muted:hover {
   background: var(--app-surface-2);
   color: var(--app-text);
 }
@@ -753,7 +753,7 @@
 .inv-card__saldo strong { font-size: 1.45rem; color: var(--app-investment); font-variant-numeric: tabular-nums; }
 .inv-card__saldo small, .inv-card__grid small { font-size: 0.74rem; color: var(--app-text-muted); }
 .inv-card__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-.inv-card__grid > div { display: flex; flex-direction: column; padding: 0.55rem 0.7rem; border: 1px solid var(--app-border); border-radius: var(--app-radius-sm); }
+.inv-card__grid > div { display: flex; flex-direction: column; padding: 0.55rem 0.7rem; background: var(--app-surface-2); border: none; border-radius: var(--app-radius-sm); }
 .inv-card__grid strong { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
 .inv-card__det summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--app-primary); margin: 0.2rem 0 0.4rem; }
 .inv-table .inv-zero { color: var(--app-text-faint); }
@@ -762,7 +762,7 @@
 .inv-table tfoot tr + tr td { border-top: 1px solid var(--app-border); }
 
 /* Lista de aportes do card (linha do tempo) */
-.inv-det { margin-top: 0.3rem; border: 1px solid var(--app-border); border-radius: var(--app-radius-sm); overflow: hidden; }
+.inv-det { margin-top: 0.3rem; background: var(--app-surface-2); border: none; border-radius: var(--app-radius-sm); overflow: hidden; }
 .inv-det__sum {
   list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
   padding: 0.6rem 0.8rem; font-size: 0.86rem; font-weight: 600; color: var(--app-text);
@@ -793,4 +793,5 @@
 .inv-tl__acc { font-size: 0.72rem; color: var(--app-text-muted); }
 .inv-tl__val { flex: 0 0 auto; font-size: 0.92rem; color: var(--app-income); font-variant-numeric: tabular-nums; }
 @keyframes invFade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
 

@@ -1284,206 +1284,7 @@
   const Passeios = {
     filtro: 'todos', // 'todos' | 'visitados' | 'pendentes'
 
-    async importarLista() {
-      const { value, isConfirmed } = await Swal.fire({
-        title: 'Importar lista de passeios',
-        html: `<div style="text-align:left;font-size:.92rem">
-          <p class="mb-2" style="font-size:.82rem;color:#888">Um lugar por linha. Já preenchido com a lista que você mandou — edite à vontade antes de importar. Nomes repetidos (já cadastrados) são pulados.</p>
-          <label style="font-weight:700;font-size:.85rem;display:block;margin-bottom:.25rem">🎉 Já fomos</label>
-          <textarea id="passImportVisitados" class="fm-input" rows="9" style="width:100%;margin-bottom:.7rem;font-family:inherit">${escapeHtml(PASSEIOS_SEED_VISITADOS.join('\n'))}</textarea>
-          <label style="font-weight:700;font-size:.85rem;display:block;margin-bottom:.25rem">✅ Para ir</label>
-          <textarea id="passImportDesejo" class="fm-input" rows="6" style="width:100%;font-family:inherit">${escapeHtml(PASSEIOS_SEED_DESEJO.join('\n'))}</textarea>
-        </div>`,
-        width: 600,
-        showCancelButton: true,
-        confirmButtonText: '<i class="bi bi-check-lg"></i> Importar',
-        cancelButtonText: 'Cancelar',
-        focusConfirm: false,
-        preConfirm: () => ({
-          visitados: Swal.getPopup().querySelector('#passImportVisitados').value.split('\n').map((l) => l.trim()).filter(Boolean),
-          desejo: Swal.getPopup().querySelector('#passImportDesejo').value.split('\n').map((l) => l.trim()).filter(Boolean)
-        })
-      });
-      if (!isConfirmed || !value) return;
-
-      const s = getStore();
-      if (!Array.isArray(s.passeios)) s.passeios = [];
-      const existentes = new Set(s.passeios.map((p) => String(p.nome).trim().toLowerCase()));
-      const criar = (nome, visitado) => ({
-        id: generateId(), nome, categoria: guessPasseioCategoria(nome), cidade: '',
-        visitado, dataVisita: null, avaliacao: null, prioridade: 'media', observacao: ''
-      });
-
-      let novos = 0;
-      value.visitados.forEach((nome) => {
-        const chave = nome.toLowerCase();
-        if (existentes.has(chave)) return;
-        existentes.add(chave);
-        s.passeios.push(criar(nome, true));
-        novos++;
-      });
-      value.desejo.forEach((nome) => {
-        const chave = nome.toLowerCase();
-        if (existentes.has(chave)) return;
-        existentes.add(chave);
-        s.passeios.push(criar(nome, false));
-        novos++;
-      });
-
-      if (!novos) { notify.info('Nada novo — todos esses lugares já estavam na lista.'); return; }
-      if (typeof registrarHistoricoInfo === 'function') registrarHistoricoInfo(`Passeios: importou ${novos} lugar(es) em lote`);
-      persist();
-      notify.success(`${novos} passeio(s) importado(s)!`);
-    },
-
-
-    fields(p = {}) {
-      const campos = [
-        { name: 'nome', label: 'Nome do lugar', type: 'text', required: true, value: p.nome, placeholder: 'Ex: Praia do Rosa, Restaurante do Zé', wide: true },
-        { name: 'categoria', label: 'Tipo', type: 'select', value: p.categoria || 'Outro', options: TIPOS_PASSEIO.map((t) => ({ value: t, label: t })) },
-        { name: 'cidade', label: 'Cidade / local (opcional)', type: 'text', value: p.cidade }
-      ];
-      if (p.visitado) {
-        campos.push(
-          { name: 'dataVisita', label: 'Data da visita', type: 'date', value: p.dataVisita || today().format('YYYY-MM-DD') },
-          { name: 'avaliacao', label: 'Nota (opcional)', type: 'select', value: p.avaliacao ? String(p.avaliacao) : '',
-            options: [{ value: '', label: 'Sem nota' }, ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: '★'.repeat(n) + '☆'.repeat(5 - n) }))] }
-        );
-      } else {
-        campos.push({ name: 'prioridade', label: 'Prioridade', type: 'select', value: p.prioridade || 'media', options: Object.entries(PRIORIDADE).map(([v, [l]]) => ({ value: v, label: l })) });
-      }
-      campos.push({ name: 'observacao', label: 'Observação (opcional)', type: 'text', value: p.observacao, wide: true });
-      return campos;
-    },
-
-    async add() {
-      const v = await formModal({ title: 'Novo passeio', icon: 'geo-alt', fields: this.fields() });
-      if (!v) return;
-      upsert('passeios', { id: generateId(), visitado: false, dataVisita: null, avaliacao: null, ...v });
-      notify.success('Passeio adicionado à lista!');
-    },
-
-    async edit(id) {
-      const p = coll('passeios').find((x) => x.id === id);
-      if (!p) return;
-      const v = await formModal({ title: 'Editar passeio', icon: 'geo-alt', fields: this.fields(p) });
-      if (!v) return;
-      upsert('passeios', { ...p, ...v });
-      notify.success('Passeio atualizado!');
-    },
-
-    async marcarVisitado(id) {
-      const p = coll('passeios').find((x) => x.id === id);
-      if (!p) return;
-      const v = await formModal({
-        title: `Marcar "${p.nome}" como visitado`,
-        icon: 'check2-circle',
-        confirmText: 'Marcar visitado',
-        fields: [
-          { name: 'dataVisita', label: 'Data da visita', type: 'date', value: today().format('YYYY-MM-DD') },
-          { name: 'avaliacao', label: 'Nota (opcional)', type: 'select', value: '',
-            options: [{ value: '', label: 'Sem nota' }, ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: '★'.repeat(n) + '☆'.repeat(5 - n) }))] }
-        ]
-      });
-      if (!v) return;
-      upsert('passeios', { ...p, visitado: true, dataVisita: v.dataVisita, avaliacao: v.avaliacao ? Number(v.avaliacao) : null });
-      notify.success(`"${p.nome}" marcado como visitado!`);
-    },
-
-    async desmarcarVisitado(id) {
-      const p = coll('passeios').find((x) => x.id === id);
-      if (!p) return;
-      const ok = await confirmAction({ title: 'Desmarcar visita?', text: `"${p.nome}" volta para a lista de lugares para ir.`, icon: 'question', confirmText: 'Sim, desmarcar' });
-      if (!ok) return;
-      upsert('passeios', { ...p, visitado: false, dataVisita: null, avaliacao: null });
-      notify.info(`"${p.nome}" voltou para a lista de desejos.`);
-    },
-
-    card(p) {
-      const visitado = p.visitado === true;
-      const meta = PASSEIO_CATEGORIA_META[p.categoria] || PASSEIO_CATEGORIA_META.Outro;
-      const [labelPrior, corPrior] = PRIORIDADE[p.prioridade || 'media'] || PRIORIDADE.media;
-      const iconPrior = PASSEIO_PRIOR_ICON[p.prioridade || 'media'];
-      const linhaMeta = [p.cidade, visitado && p.dataVisita ? fmtDate(p.dataVisita) : null].filter(Boolean).join(' · ');
-      const estrelas = p.avaliacao
-        ? `<div class="passeio-card__stars" title="Nota ${p.avaliacao}/5">${'★'.repeat(p.avaliacao)}${'☆'.repeat(5 - p.avaliacao)}</div>` : '';
-
-      return `
-        <div class="passeio-card${visitado ? ' is-visitado' : ''}" style="--pass-cor: ${meta.cor};">
-          <div class="passeio-card__icon-box">
-            <i class="bi bi-${meta.icon}"></i>
-          </div>
-          <div class="passeio-card__content">
-            <div class="passeio-card__header">
-              <span class="passeio-card__category">${escapeHtml(p.categoria || 'Outro')}</span>
-              ${visitado 
-                ? '<span class="passeio-card__badge visitado"><i class="bi bi-check-circle-fill"></i> Visitado</span>'
-                : `<span class="passeio-card__badge prior-${p.prioridade || 'media'}"><i class="bi bi-${iconPrior}"></i> ${escapeHtml(labelPrior)}</span>`
-              }
-            </div>
-            <h3 class="passeio-card__title">${escapeHtml(p.nome)}</h3>
-            ${linhaMeta ? `<p class="passeio-card__location"><i class="bi bi-geo-alt"></i> ${escapeHtml(linhaMeta)}</p>` : ''}
-            ${p.observacao ? `<p class="passeio-card__obs">${escapeHtml(p.observacao)}</p>` : ''}
-            ${estrelas}
-            
-            <div class="passeio-card__actions">
-              ${visitado
-                ? `<button type="button" class="btn-pass btn-pass--outline" data-mod="passeios" data-act="unvisit" data-id="${p.id}"><i class="bi bi-arrow-counterclockwise"></i> Desmarcar</button>`
-                : `<button type="button" class="btn-pass btn-pass--primary" data-mod="passeios" data-act="visit" data-id="${p.id}"><i class="bi bi-check2-circle"></i> Fomos!</button>`
-              }
-              <button type="button" class="btn-pass btn-pass--icon" data-mod="passeios" data-act="edit" data-id="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button>
-              <button type="button" class="btn-pass btn-pass--icon btn-pass--danger" data-mod="passeios" data-act="del" data-id="${p.id}" title="Excluir"><i class="bi bi-trash"></i></button>
-            </div>
-          </div>
-        </div>`;
-    },
-
-    render(c) {
-      const list = coll('passeios');
-      const visitadosList = list.filter((p) => p.visitado).sort((a, b) => String(b.dataVisita || '').localeCompare(String(a.dataVisita || '')));
-      const pendentesList = list.filter((p) => !p.visitado).sort((a, b) =>
-        (passeioRankPrioridade[a.prioridade || 'media'] - passeioRankPrioridade[b.prioridade || 'media']) || String(a.nome).localeCompare(String(b.nome)));
-      const pctVisitado = list.length ? Math.round((visitadosList.length / list.length) * 100) : 0;
-
-      const filtroBtn = (valor, label, qtd) =>
-        `<button type="button" class="btn btn-sm ${this.filtro === valor ? 'btn-primary' : 'btn-outline-secondary'}" data-passeio-filtro="${valor}">${label} <span class="badge text-bg-light border ms-1">${qtd}</span></button>`;
-
-      c.innerHTML = `
-        <div class="view-header">
-          <div><h2 class="h4"><i class="bi bi-geo-alt app-icon"></i> Passeios do casal</h2>
-          <p class="view-header__hint">Lugares que já foram e a lista de desejos de onde ainda querem ir</p></div>
-          <div class="d-flex gap-2 flex-wrap">
-            <button class="btn btn-outline-secondary" data-mod="passeios" data-act="importar"><i class="bi bi-list-check"></i> Importar lista</button>
-            <button class="btn btn-primary" data-mod="passeios" data-act="add"><i class="bi bi-plus-lg"></i> Novo passeio</button>
-          </div>
-        </div>
-        ${list.length ? `<div class="mod-summary">
-          <div class="mod-summary__item"><span>Total de lugares</span><strong>${list.length}</strong></div>
-          <div class="mod-summary__item"><span>Já foram</span><strong style="color:var(--app-income)">${visitadosList.length}</strong></div>
-          <div class="mod-summary__item"><span>Na lista de desejos</span><strong style="color:var(--app-reserved)">${pendentesList.length}</strong></div>
-        </div>
-        <div class="mod-progress mb-1"><div class="mod-progress__bar" style="width:${pctVisitado}%;background:var(--app-income)"></div></div>
-        <div class="mod-progress__label mb-3"><span>${visitadosList.length} de ${list.length} lugares já visitados</span><span>${pctVisitado}%</span></div>
-        <div class="btn-group mb-4" role="group" aria-label="Filtrar passeios">
-          ${filtroBtn('todos', 'Todos', list.length)}
-          ${filtroBtn('pendentes', 'Não visitados', pendentesList.length)}
-          ${filtroBtn('visitados', 'Visitados', visitadosList.length)}
-        </div>` : ''}
-        ${!list.length ? emptyBlock('geo-alt', 'Nenhum passeio cadastrado ainda. Adicione os lugares que já foram e os que ainda querem visitar.') : ''}
-        ${list.length && this.filtro !== 'visitados' ? `
-          <div class="passeio-section">
-            <h3 class="passeio-section__title"><i class="bi bi-bookmark-star"></i> Ainda não fomos <span class="passeio-section__count">${pendentesList.length}</span></h3>
-            ${pendentesList.length ? `<div class="passeio-grid">${pendentesList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted mb-0">Nenhum lugar na lista de desejos — adicione um!</p>'}
-          </div>` : ''}
-        ${list.length && this.filtro !== 'pendentes' ? `
-          <div class="passeio-section">
-            <h3 class="passeio-section__title"><i class="bi bi-check-circle"></i> Já fomos <span class="passeio-section__count">${visitadosList.length}</span></h3>
-            ${visitadosList.length ? `<div class="passeio-grid">${visitadosList.map((p) => this.card(p)).join('')}</div>` : '<p class="text-muted mb-0">Nenhum lugar marcado como visitado ainda.</p>'}
-          </div>` : ''}`;
-    }
-  };
-
-  // ==========================================================
+    // ==========================================================
   // MÓDULO: RELATÓRIOS
   // ==========================================================
   const REL_FILTROS_VAZIOS = { de: '', ate: '', tipo: '', categoria: '', tag: '', status: '', busca: '' };
@@ -1599,7 +1400,7 @@
         </div>
         <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
           <span class="rep-hint"><i class="bi bi-lightning-charge-fill"></i> Os filtros aplicam sozinhos</span>
-          <button class="btn btn-outline-secondary btn-sm" data-rep="clear"><i class="bi bi-x-circle"></i> Limpar filtros</button>
+          <button class="btn btn-light text-muted fw-semibold shadow-sm btn-sm" data-rep="clear"><i class="bi bi-x-circle"></i> Limpar filtros</button>
           <span class="flex-grow-1"></span>
           <button class="btn btn-outline-success btn-sm" data-rep="csv"><i class="bi bi-filetype-csv"></i> CSV</button>
           <button class="btn btn-outline-success btn-sm" data-rep="excel"><i class="bi bi-file-earmark-excel"></i> Excel</button>
@@ -1851,7 +1652,7 @@
       else if (act === 'unvisit') await M.desmarcarVisitado(id);
       else if (act === 'saldo') await M.saldo(id);
       else if (act === 'excluir') await M.excluir(id);
-      else if (act === 'importar') await M.importarLista();
+      
       else if (act === 'del') {
         const ok = await confirmAction({ title: 'Excluir?', text: 'Esta ação não pode ser desfeita.', icon: 'warning', confirmText: 'Sim, excluir' });
         if (ok) { removeItem(mod, id); notify.info('Item excluído.'); }
@@ -1942,3 +1743,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 })();
+
+
