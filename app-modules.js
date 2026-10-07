@@ -1065,6 +1065,14 @@
           <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Receitas x Despesas x Investimentos</h3><canvas id="dashChartIE" height="200"></canvas></div></div>
           <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Evolução do saldo (12 meses)</h3><canvas id="dashChartSaldo" height="200"></canvas></div></div>
         </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Despesas por categoria (mês)</h3><canvas id="dashChartCat" height="220"></canvas></div></div>
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Despesas por pessoa (mês)</h3><canvas id="dashChartPessoa" height="220"></canvas></div></div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-md-8"><div class="chart-box"><h3 class="chart-box__title">Entradas x Despesas (12 meses)</h3><canvas id="dashChartRecDesp" height="160"></canvas></div></div>
+          <div class="col-md-4"><div class="chart-box"><h3 class="chart-box__title">Investimentos por categoria</h3><canvas id="dashChartInv" height="220"></canvas></div></div>
+        </div>
         <div class="row g-3">
           <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Progresso das metas</h3>
             ${metasAtivas.length ? metasAtivas.slice(0, 5).map((m) => `<div class="mb-2"><div class="mod-card__row"><span>${escapeHtml(m.nome)}</span><span>${pct(metaAtual(m), m.valorObjetivo)}%</span></div>${progressBar(metaAtual(m), m.valorObjetivo)}</div>`).join('') : '<p class="text-muted mb-0">Nenhuma meta ativa.</p>'}
@@ -1117,6 +1125,61 @@
         data: { labels, datasets: [{ data, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,.15)', fill: true, tension: 0.35, pointRadius: 3 }] },
         options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
       });
+
+      // Rosca reutilizável: mostra valor e % no tooltip; sem dados = aviso no lugar do gráfico
+      const rosca = (id, labels, valores, cores = CHART_COLORS) => {
+        const cv = document.getElementById(id);
+        if (!cv) return;
+        const total = sum(valores);
+        if (!total) {
+          if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+          cv.replaceWith(Object.assign(document.createElement('p'), { className: 'text-muted mb-0', textContent: 'Sem dados neste período.' }));
+          return;
+        }
+        drawChart(id, {
+          type: 'doughnut',
+          data: { labels, datasets: [{ data: valores, backgroundColor: cores, borderWidth: 0, hoverOffset: 8 }] },
+          options: { responsive: true, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { color: text, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } }, tooltip: { callbacks: { label: (x) => `${x.label}: ${formatCurrency(x.raw)} (${((x.raw / total) * 100).toFixed(1)}%)` } } } }
+        });
+      };
+
+      const despesas = entries.filter((e) => e.type === 'despesa');
+
+      // Despesas por categoria — top 7 + "Outras"
+      const porCat = {};
+      despesas.forEach((e) => { const k = e.category || 'Sem categoria'; porCat[k] = (porCat[k] || 0) + (Number(e.value) || 0); });
+      const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]);
+      const topCats = cats.slice(0, 7);
+      if (cats.length > 7) topCats.push(['Outras', sum(cats.slice(7), (c) => c[1])]);
+      rosca('dashChartCat', topCats.map((c) => c[0]), topCats.map((c) => c[1]));
+
+      // Despesas por pessoa
+      const porPessoa = {};
+      despesas.forEach((e) => { const k = e.person || 'casa'; porPessoa[k] = (porPessoa[k] || 0) + (Number(e.value) || 0); });
+      const pessoas = Object.keys(porPessoa);
+      const corPessoa = { gabriel: '#3b82f6', barbara: '#ec4899', casa: '#f59e0b' };
+      rosca('dashChartPessoa', pessoas.map((p) => (typeof PERSON_LABELS !== 'undefined' && PERSON_LABELS[p]) || p), pessoas.map((p) => porPessoa[p]), pessoas.map((p, i) => corPessoa[p] || CHART_COLORS[i % CHART_COLORS.length]));
+
+      // Entradas x Despesas — 12 meses
+      const rec = [], desp = [];
+      for (let i = 11; i >= 0; i--) {
+        const sm = calculateSummary(allData[getMonthKey(currentDate.subtract(i, 'month'))] || []);
+        rec.push(sm.income); desp.push(sm.expense);
+      }
+      drawChart('dashChartRecDesp', {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'Entradas', data: rec, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.12)', fill: true, tension: 0.35, pointRadius: 3 },
+          { label: 'Despesas', data: desp, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.10)', fill: true, tension: 0.35, pointRadius: 3 }
+        ] },
+        options: { responsive: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { labels: { color: text, usePointStyle: true, pointStyle: 'circle' } }, tooltip: { callbacks: { label: (x) => `${x.dataset.label}: ${formatCurrency(x.raw)}` } } }, scales: { x: { ticks: { color: text }, grid: { color: grid } }, y: { beginAtZero: true, ticks: { color: text, callback: (v) => formatCurrency(v) }, grid: { color: grid } } } }
+      });
+
+      // Investimentos por categoria (saldo atualizado de cada uma)
+      const t = Investimentos.totais();
+      const invCats = t.cats.map((c) => [c.instituicao, Investimentos.resumo(c, t.aportes).saldo]);
+      if (t.semCat.length) invCats.push(['Sem categoria', sum(t.semCat, (a) => a.valor)]);
+      rosca('dashChartInv', invCats.map((c) => c[0]), invCats.map((c) => c[1]));
     }
   };
 
