@@ -1407,29 +1407,32 @@
       const linhaMeta = [p.cidade, visitado && p.dataVisita ? fmtDate(p.dataVisita) : null].filter(Boolean).join(' · ');
       const estrelas = p.avaliacao
         ? `<div class="passeio-card__stars" title="Nota ${p.avaliacao}/5">${'★'.repeat(p.avaliacao)}${'☆'.repeat(5 - p.avaliacao)}</div>` : '';
-      const statusChip = visitado
-        ? '<span class="passeio-chip passeio-chip--visitado"><i class="bi bi-check-circle-fill"></i> Visitado</span>'
-        : `<span class="passeio-chip mod-badge mod-badge--${corPrior}"><i class="bi bi-${iconPrior}"></i> Quero ir · ${escapeHtml(labelPrior)}</span>`;
-      const toggleBtn = visitado
-        ? `<button type="button" class="passeio-btn passeio-btn--muted" data-mod="passeios" data-act="unvisit" data-id="${p.id}"><i class="bi bi-arrow-counterclockwise"></i> Desmarcar</button>`
-        : `<button type="button" class="passeio-btn passeio-btn--visit" data-mod="passeios" data-act="visit" data-id="${p.id}"><i class="bi bi-check2-circle"></i> Marcar visitado</button>`;
 
       return `
-        <div class="passeio-card${visitado ? ' passeio-card--visitado' : ''}" style="--passeio-accent:${meta.cor}">
-          <div class="passeio-card__banner"><i class="bi bi-${meta.icon}"></i></div>
-          <div class="passeio-card__body">
-            <div class="passeio-card__head">
-              <h3 class="passeio-card__title">${escapeHtml(p.nome)}</h3>
-              <span class="passeio-card__cat">${escapeHtml(p.categoria || 'Outro')}</span>
+        <div class="passeio-card${visitado ? ' is-visitado' : ''}" style="--pass-cor: ${meta.cor};">
+          <div class="passeio-card__icon-box">
+            <i class="bi bi-${meta.icon}"></i>
+          </div>
+          <div class="passeio-card__content">
+            <div class="passeio-card__header">
+              <span class="passeio-card__category">${escapeHtml(p.categoria || 'Outro')}</span>
+              ${visitado 
+                ? '<span class="passeio-card__badge visitado"><i class="bi bi-check-circle-fill"></i> Visitado</span>'
+                : `<span class="passeio-card__badge prior-${p.prioridade || 'media'}"><i class="bi bi-${iconPrior}"></i> ${escapeHtml(labelPrior)}</span>`
+              }
             </div>
-            ${linhaMeta ? `<p class="passeio-card__meta"><i class="bi bi-geo-alt"></i> ${escapeHtml(linhaMeta)}</p>` : ''}
-            ${statusChip}
-            ${estrelas}
+            <h3 class="passeio-card__title">${escapeHtml(p.nome)}</h3>
+            ${linhaMeta ? `<p class="passeio-card__location"><i class="bi bi-geo-alt"></i> ${escapeHtml(linhaMeta)}</p>` : ''}
             ${p.observacao ? `<p class="passeio-card__obs">${escapeHtml(p.observacao)}</p>` : ''}
+            ${estrelas}
+            
             <div class="passeio-card__actions">
-              ${toggleBtn}
-              <button type="button" class="passeio-btn passeio-btn--icon" data-mod="passeios" data-act="edit" data-id="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button>
-              <button type="button" class="passeio-btn passeio-btn--icon passeio-btn--danger" data-mod="passeios" data-act="del" data-id="${p.id}" title="Excluir"><i class="bi bi-trash"></i></button>
+              ${visitado
+                ? `<button type="button" class="btn-pass btn-pass--outline" data-mod="passeios" data-act="unvisit" data-id="${p.id}"><i class="bi bi-arrow-counterclockwise"></i> Desmarcar</button>`
+                : `<button type="button" class="btn-pass btn-pass--primary" data-mod="passeios" data-act="visit" data-id="${p.id}"><i class="bi bi-check2-circle"></i> Fomos!</button>`
+              }
+              <button type="button" class="btn-pass btn-pass--icon" data-mod="passeios" data-act="edit" data-id="${p.id}" title="Editar"><i class="bi bi-pencil"></i></button>
+              <button type="button" class="btn-pass btn-pass--icon btn-pass--danger" data-mod="passeios" data-act="del" data-id="${p.id}" title="Excluir"><i class="bi bi-trash"></i></button>
             </div>
           </div>
         </div>`;

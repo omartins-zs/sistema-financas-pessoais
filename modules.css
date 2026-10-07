@@ -544,8 +544,12 @@
 .inv-group__link { display: flex; align-items: center; gap: 0.5rem; margin: 0.65rem 0; font-size: 0.82rem; font-weight: 600; color: var(--app-text-muted); }
 .inv-group__link .fm-input { max-width: 22rem; }
 
-/* ---- Passeios: cards com ícone e cor por categoria ---- */
-.passeio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+/* ---- Passeios Redesign ---- */
+.passeio-grid { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
+  gap: 1.25rem; 
+}
 
 .passeio-section { margin-bottom: 1.75rem; }
 .passeio-section:last-child { margin-bottom: 0; }
@@ -568,91 +572,176 @@
 
 .passeio-card {
   display: flex;
-  flex-direction: column;
+  gap: 1rem;
   background: var(--app-surface);
   border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
-  overflow: hidden;
-  box-shadow: 0 2px 10px var(--app-shadow);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.passeio-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px var(--app-shadow); }
-
-.passeio-card__banner {
+  border-radius: calc(var(--app-radius) + 4px);
+  padding: 1.25rem;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   position: relative;
-  height: 60px;
-  display: grid;
-  place-items: center;
+  overflow: hidden;
+}
+.passeio-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+  border-color: color-mix(in srgb, var(--pass-cor) 30%, var(--app-border));
+}
+
+.passeio-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 4px;
+  background: var(--pass-cor);
+  opacity: 0.8;
+}
+
+.passeio-card.is-visitado {
+  background: color-mix(in srgb, var(--app-surface) 50%, var(--app-bg));
+  opacity: 0.95;
+}
+.passeio-card.is-visitado::before {
+  background: var(--app-income);
+}
+
+.passeio-card__icon-box {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--pass-cor) 15%, transparent);
+  color: var(--pass-cor);
+  display: flex; align-items: center; justify-content: center;
   font-size: 1.5rem;
-  color: #fff;
-  background: linear-gradient(135deg, var(--passeio-accent), color-mix(in srgb, var(--passeio-accent) 55%, black));
-}
-.passeio-card--visitado .passeio-card__banner::after {
-  content: '\2713';
-  position: absolute; top: 7px; right: 8px;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: #fff;
-  color: var(--app-income);
-  display: grid; place-items: center;
-  font-weight: 900; font-size: 0.78rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
-}
-
-.passeio-card__body { padding: 0.85rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
-.passeio-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; }
-.passeio-card__title { margin: 0; font-size: 0.98rem; font-weight: 700; line-height: 1.3; color: var(--app-text); }
-.passeio-card__cat {
   flex-shrink: 0;
-  font-size: 0.64rem; font-weight: 800;
-  text-transform: uppercase; letter-spacing: 0.03em;
-  color: var(--passeio-accent);
-  white-space: nowrap;
-  padding-top: 0.15rem;
 }
-.passeio-card__meta { margin: 0; font-size: 0.78rem; color: var(--app-text-muted); }
-.passeio-card__meta i { margin-right: 0.15rem; }
-.passeio-card__obs { margin: 0; font-size: 0.8rem; color: var(--app-text-muted); font-style: italic; }
-.passeio-card__stars { color: #f59e0b; letter-spacing: 2px; font-size: 0.92rem; }
+.passeio-card.is-visitado .passeio-card__icon-box {
+  background: color-mix(in srgb, var(--app-income) 15%, transparent);
+  color: var(--app-income);
+}
 
-.passeio-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; }
-.passeio-chip--visitado {
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  background: var(--status-pago-bg);
-  color: var(--status-pago-text);
-  border: 1px solid var(--status-pago-border);
+.passeio-card__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.passeio-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.passeio-card__category {
+  font-size: 0.75rem;
   font-weight: 700;
+  color: var(--app-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.passeio-card__badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+}
+.passeio-card__badge.visitado { background: var(--app-income); color: #fff; }
+.passeio-card__badge.prior-alta { background: color-mix(in srgb, var(--app-expense) 15%, transparent); color: var(--app-expense); }
+.passeio-card__badge.prior-media { background: color-mix(in srgb, var(--app-primary) 15%, transparent); color: var(--app-primary); }
+.passeio-card__badge.prior-baixa { background: color-mix(in srgb, var(--app-text-muted) 15%, transparent); color: var(--app-text-muted); }
+
+.passeio-card__title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin: 0 0 0.3rem 0;
+  color: var(--app-text);
+  line-height: 1.2;
+}
+
+.passeio-card__location {
+  font-size: 0.82rem;
+  color: var(--app-text-muted);
+  margin: 0 0 0.4rem 0;
+  display: flex; align-items: center; gap: 0.3rem;
+}
+
+.passeio-card__obs {
+  font-size: 0.85rem;
+  color: var(--app-text-muted);
+  font-style: italic;
+  margin: 0 0 0.5rem 0;
+  background: var(--app-surface-2);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border-left: 2px solid var(--app-border);
+}
+
+.passeio-card__stars {
+  color: #f59e0b;
+  font-size: 1rem;
+  letter-spacing: 2px;
+  margin-bottom: 0.5rem;
 }
 
 .passeio-card__actions {
-  display: flex; align-items: center; gap: 0.4rem;
-  margin-top: auto; padding-top: 0.6rem;
-  border-top: 1px solid var(--app-border);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--app-border);
 }
-.passeio-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem;
-  padding: 0.4rem 0.7rem;
-  border: 1px solid var(--app-border);
-  border-radius: 999px;
-  background: var(--app-surface-2);
-  color: var(--app-text-muted);
-  font-size: 0.76rem; font-weight: 600;
+
+.btn-pass {
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-.passeio-btn:hover { color: var(--app-text); border-color: var(--app-primary); }
-.passeio-btn--visit {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  transition: all 0.2s ease;
   flex: 1;
-  background: color-mix(in srgb, var(--app-income) 14%, var(--app-surface-2));
-  color: var(--app-income);
-  border-color: color-mix(in srgb, var(--app-income) 35%, var(--app-border));
 }
-.passeio-btn--visit:hover { border-color: var(--app-income); }
-.passeio-btn--muted { flex: 1; }
-.passeio-btn--icon { padding: 0.4rem 0.6rem; }
-.passeio-btn--danger:hover { color: var(--app-expense); border-color: var(--app-expense); }
+
+.btn-pass--primary {
+  background: var(--app-income);
+  color: #fff;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--app-income) 40%, transparent);
+}
+.btn-pass--primary:hover {
+  background: color-mix(in srgb, var(--app-income) 85%, black);
+  transform: translateY(-1px);
+}
+
+.btn-pass--outline {
+  border: 1px solid var(--app-border);
+  color: var(--app-text-muted);
+}
+.btn-pass--outline:hover {
+  background: var(--app-surface-2);
+  color: var(--app-text);
+}
+
+.btn-pass--icon {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.6rem;
+  color: var(--app-text-muted);
+  background: var(--app-surface-2);
+}
+.btn-pass--icon:hover {
+  background: var(--app-border);
+  color: var(--app-text);
+}
+.btn-pass--danger:hover {
+  background: color-mix(in srgb, var(--app-expense) 15%, transparent);
+  color: var(--app-expense);
+}
 
 /* ---------- Investimentos (categorias + aportes mês a mês) ---------- */
 .inv-card { gap: 0.6rem; border-top: 3px solid var(--app-investment); }
@@ -704,3 +793,4 @@
 .inv-tl__acc { font-size: 0.72rem; color: var(--app-text-muted); }
 .inv-tl__val { flex: 0 0 auto; font-size: 0.92rem; color: var(--app-income); font-variant-numeric: tabular-nums; }
 @keyframes invFade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
