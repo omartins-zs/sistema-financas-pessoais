@@ -456,103 +456,42 @@
   // ==========================================================
   const TIPOS_INVEST = ['Poupança', 'CDB', 'Tesouro Direto', 'Fundos', 'Ações', 'FIIs', 'Criptomoedas', 'Outros'];
 
-  // Lançamentos do mês do tipo "investimento" vinculados a um item da carteira
+  // Busca aportes pelo ID do investimento
   const aportesMensaisDe = (id) => {
     let total = 0;
-    let qtd = 0;
+    let entries = [];
     Object.keys(allData).forEach((k) => {
       if (!/^\d{4}-\d{2}$/.test(k)) return;
       (allData[k] || []).forEach((e) => {
-        if (e.type === 'investimento' && e.investimento_id === id) { total += Number(e.value) || 0; qtd++; }
+        if (e.type === 'investimento' && e.investimento_id === id) {
+          total += Number(e.value) || 0;
+          entries.push({ mes: k, ...e });
+        }
       });
     });
-    return { total, qtd };
+    // Ordena do mais recente para o mais antigo
+    entries.sort((a, b) => b.mes.localeCompare(a.mes) || dayjs(b.data || b.mes + '-01').diff(dayjs(a.data || a.mes + '-01')));
+    return { total, entries };
   };
 
-  // Lançamentos "investimento" sem vínculo (ou apontando para item já apagado)
+  // Busca aportes sem vínculo (ou com ID inexistente)
   const aportesSemVinculo = () => {
     const ids = new Set(coll('investimentos').map((i) => i.id));
     let total = 0;
-    let qtd = 0;
+    let entries = [];
     Object.keys(allData).forEach((k) => {
       if (!/^\d{4}-\d{2}$/.test(k)) return;
       (allData[k] || []).forEach((e) => {
-        if (e.type === 'investimento' && !ids.has(e.investimento_id)) { total += Number(e.value) || 0; qtd++; }
+        if (e.type === 'investimento' && !ids.has(e.investimento_id)) {
+          total += Number(e.value) || 0;
+          entries.push({ mes: k, ...e });
+        }
       });
     });
-    return { total, qtd };
+    return { total, entries };
   };
 
-  // Apaga TODOS os lançamentos "investimento" sem vínculo (ou apontando para item já
-  // apagado) — a faxina rápida depois de organizar a carteira em categorias.
-  const excluirLancamentosSemVinculo = async () => {
-    const { qtd, total } = aportesSemVinculo();
-    if (!qtd) { notify.info('Não há lançamentos sem vínculo — nada para excluir.'); return; }
-
-    const ok = await confirmAction({
-      title: 'Excluir lançamentos sem categoria?',
-      text: `${qtd} lançamento(s) de investimento, somando ${formatCurrency(total)}, não estão vinculados a nenhuma categoria da carteira atual. Serão excluídos de todos os meses. Isso fica no histórico — dá pra desfazer.`,
-      icon: 'warning',
-      confirmText: 'Sim, excluir'
-    });
-    if (!ok) return;
-
-    const ids = new Set(coll('investimentos').map((i) => i.id));
-    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
-      const antes = allData[k] || [];
-      const depois = antes.filter((e) => !(e.type === 'investimento' && !ids.has(e.investimento_id)));
-      if (depois.length === antes.length) return;
-      allData[k] = depois;
-      if (typeof registrarHistoricoMes === 'function') {
-        registrarHistoricoMes(k, antes, depois, 'excluiu lançamentos de investimento sem categoria');
-      }
-    });
-    saveData();
-    notify.success(`${qtd} lançamento(s) excluído(s).`);
-    render();
-  };
-
-  // Apaga TUDO de investimento: a carteira inteira (categorias) e todos os lançamentos
-  // do tipo Investimento, em todos os meses — um reset completo para recomeçar do zero.
-  const excluirTudoInvestimento = async () => {
-    const carteira = coll('investimentos');
-    let qtdLancamentos = 0;
-    let totalLancamentos = 0;
-    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
-      (allData[k] || []).forEach((e) => {
-        if (e.type === 'investimento') { qtdLancamentos++; totalLancamentos += Number(e.value) || 0; }
-      });
-    });
-
-    if (!carteira.length && !qtdLancamentos) { notify.info('Não há nada de investimento para excluir.'); return; }
-
-    const ok = await confirmAction({
-      title: 'Excluir TODOS os investimentos?',
-      text: `Isso apaga as ${carteira.length} categoria(s) da carteira e os ${qtdLancamentos} lançamento(s) de investimento de todos os meses (${formatCurrency(totalLancamentos)} no total). Fica no histórico — dá pra desfazer.`,
-      icon: 'warning',
-      confirmText: 'Sim, excluir tudo'
-    });
-    if (!ok) return;
-
-    carteira.slice().forEach((inv) => { if (typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo('investimentos', inv, null); });
-    const s = getStore();
-    s.investimentos = [];
-
-    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
-      const antes = allData[k] || [];
-      const depois = antes.filter((e) => e.type !== 'investimento');
-      if (depois.length === antes.length) return;
-      allData[k] = depois;
-      if (typeof registrarHistoricoMes === 'function') {
-        registrarHistoricoMes(k, antes, depois, 'excluiu todos os investimentos (reset)');
-      }
-    });
-    saveData();
-    notify.success('Todos os investimentos foram excluídos.');
-    render();
-  };
-
-  // Quanto foi investido em cada um dos últimos N meses (todos os lançamentos "investimento")
+  // Quanto foi investido em cada um dos últimos N meses
   const aportesPorMes = (meses = 12) => {
     const out = [];
     for (let i = meses - 1; i >= 0; i--) {
@@ -563,161 +502,50 @@
     return out;
   };
 
-  // Todos os lançamentos do tipo Investimento, de todos os meses, agrupados pelo nome
-  const gruposLancamentosInvestimento = () => {
-    const grupos = new Map();
-    Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).sort().forEach((k) => {
-      (allData[k] || []).forEach((e) => {
-        if (e.type !== 'investimento') return;
-        const chave = String(e.description || '').trim().toLowerCase().replace(/\s+/g, ' ');
-        if (!grupos.has(chave)) grupos.set(chave, { chave, nome: String(e.description || '').trim(), total: 0, meses: [], vinculos: new Set() });
-        const g = grupos.get(chave);
-        g.total += Number(e.value) || 0;
-        g.meses.push({ mes: k, id: e.id, valor: Number(e.value) || 0, status: e.status, person: e.person });
-        if (e.investimento_id) g.vinculos.add(e.investimento_id);
-      });
-    });
-    return [...grupos.values()].sort((a, b) => b.total - a.total);
-  };
-
-  // Só o nome — o Tipo (CDB, Ações…) é uma classificação interna, já visível na
-  // coluna própria da tabela da carteira; aqui só polui.
-  const rotuloInvestimento = (i) => String(i.instituicao || i.tipo || '').trim() || 'Categoria sem nome';
-
-  // Renomeia TODOS os lançamentos de um grupo para o nome exato de outro grupo —
-  // como o agrupamento é por descrição, isso funde os dois na mesma categoria na
-  // próxima renderização (corrige "emergência" x "Emergência" digitados em meses
-  // diferentes, por exemplo).
-  const mesclarGrupoInvestimento = (chaveOrigem, chaveDestino) => {
-    const grupos = gruposLancamentosInvestimento();
-    const origem = grupos.find((x) => x.chave === chaveOrigem);
-    const destino = grupos.find((x) => x.chave === chaveDestino);
-    if (!origem || !destino || origem === destino) return;
-
-    const porMes = {};
-    origem.meses.forEach((x) => { (porMes[x.mes] = porMes[x.mes] || []).push(x.id); });
-    Object.entries(porMes).forEach(([mes, ids]) => {
-      const antes = JSON.parse(JSON.stringify(allData[mes] || []));
-      allData[mes] = (allData[mes] || []).map((e) => (ids.includes(e.id) ? { ...e, description: destino.nome } : e));
-      if (typeof registrarHistoricoMes === 'function') {
-        registrarHistoricoMes(mes, antes, allData[mes], `mesclou “${origem.nome}” em “${destino.nome}”`);
-      }
-    });
-    saveData();
-    notify.success(`“${origem.nome}” mesclado em “${destino.nome}” (${Object.keys(porMes).length} mês(es)).`);
-    render();
-  };
-
-  // Vincula (ou desvincula) TODOS os lançamentos de um grupo, em todos os meses
-  const vincularGrupoInvestimento = (chave, valor) => {
-    if (valor.startsWith('merge:')) { mesclarGrupoInvestimento(chave, valor.slice(6)); return; }
-
-    const g = gruposLancamentosInvestimento().find((x) => x.chave === chave);
-    if (!g) return;
-    let invId = valor;
-    if (valor === '__novo__') {
-      const item = { id: generateId(), tipo: 'Outros', instituicao: g.nome, valorAplicado: 0, valorAtual: 0, data: `${g.meses[0].mes}-01` };
-      upsert('investimentos', item);
-      invId = item.id;
-    }
-    const desvincular = !invId || invId === '__none__';
-    const inv = desvincular ? null : coll('investimentos').find((i) => i.id === invId);
-    if (!desvincular && !inv) return;
-
-    const porMes = {};
-    g.meses.forEach((x) => { (porMes[x.mes] = porMes[x.mes] || []).push(x.id); });
-    Object.entries(porMes).forEach(([mes, ids]) => {
-      const antes = JSON.parse(JSON.stringify(allData[mes] || []));
-      allData[mes] = (allData[mes] || []).map((e) => {
-        if (!ids.includes(e.id)) return e;
-        const { investimento_id, ...resto } = e;
-        return desvincular ? resto : { ...resto, investimento_id: invId };
-      });
-      if (typeof registrarHistoricoMes === 'function') {
-        registrarHistoricoMes(mes, antes, allData[mes], desvincular ? `desvinculou “${g.nome}” da carteira` : `vinculou “${g.nome}” a ${rotuloInvestimento(inv)}`);
-      }
-    });
-    saveData();
-    notify.success(desvincular ? `“${g.nome}” desvinculado.` : `“${g.nome}” vinculado a ${rotuloInvestimento(inv)} em ${Object.keys(porMes).length} mês(es).`);
-    render();
-  };
-
-  const handleInvestGroupChange = (e) => {
-    const sel = e.target.closest?.('[data-inv-group]');
-    if (!sel || !sel.value) return;
-    vincularGrupoInvestimento(sel.dataset.invGroup, sel.value);
-  };
-
   const Investimentos = {
-    grupoHtml(g, list, todosGrupos) {
-      const vinc = [...g.vinculos];
-      const inv = vinc.length === 1 ? list.find((i) => i.id === vinc[0]) : null;
-      const estado = !vinc.length ? 'sem vínculo'
-        : inv ? `→ ${escapeHtml(rotuloInvestimento(inv))}`
-        : (vinc.length > 1 ? 'vínculos mistos' : 'vínculo com item apagado');
-      const outros = todosGrupos.filter((x) => x.chave !== g.chave);
-      const opcoes = [
-        `<option value="">${vinc.length ? 'Trocar vínculo…' : 'Vincular a…'}</option>`,
-        ...list.map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(rotuloInvestimento(i))}</option>`),
-        '<option value="__novo__">＋ Criar categoria com este nome (do zero)</option>',
-        ...(vinc.length ? ['<option value="__none__">Desvincular</option>'] : []),
-        ...(outros.length ? [`<optgroup label="Mesclar em outro nome (é o mesmo lugar, só digitou diferente)">${outros.map((o) => `<option value="merge:${escapeAttr(o.chave)}">${escapeHtml(o.nome)}</option>`).join('')}</optgroup>`] : [])
-      ].join('');
-      const linhas = g.meses.map((x) => `<tr>
-          <td>${dayjs(`${x.mes}-01`).format('MMM/YYYY')}</td>
-          <td>${escapeHtml(PERSON_LABELS[x.person] || '—')}</td>
-          <td>${escapeHtml(STATUS_LABELS[x.status] || x.status || '')}</td>
-          <td class="num">${formatCurrency(x.valor)}</td>
-        </tr>`).join('');
-      const nMeses = new Set(g.meses.map((x) => x.mes)).size;
-      return `<details class="inv-group">
-        <summary class="inv-group__sum">
-          <span class="inv-group__name">${escapeHtml(g.nome)}</span>
-          <span class="inv-group__meta">${g.meses.length} lanç. · ${nMeses} mês(es) · <span class="inv-group__state${vinc.length ? ' is-linked' : ''}">${estado}</span></span>
-          <strong class="inv-group__total">${formatCurrency(g.total)}</strong>
-        </summary>
-        <div class="inv-group__body">
-          <label class="inv-group__link">Carteira <select class="fm-input" data-inv-group="${escapeAttr(g.chave)}">${opcoes}</select></label>
-          <div class="mod-table-wrap"><table class="mod-table">
-            <thead><tr><th>Mês</th><th>Tag</th><th>Status</th><th class="num">Valor</th></tr></thead>
-            <tbody>${linhas}</tbody>
-            <tfoot><tr><td colspan="3">Total em todos os meses</td><td class="num">${formatCurrency(g.total)}</td></tr></tfoot>
-          </table></div>
-        </div>
-      </details>`;
-    },
     fields: (i = {}) => [
-      { name: 'instituicao', label: 'Nome da categoria', type: 'text', required: true, value: i.instituicao, placeholder: 'Ex: Caixinha Turbo, Reserva de emergência', wide: true },
-      { name: 'tipo', label: 'Classificação (opcional)', type: 'select', value: i.tipo || 'Outros', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
-      { name: 'valorAplicado', label: 'Aporte inicial (R$) — deixe 0 para começar do zero', type: 'money', value: i.valorAplicado ? formatValuePlain(i.valorAplicado) : '' },
-      { name: 'valorAtual', label: 'Valor atual informado (R$) — opcional', type: 'money', value: i.valorAtual ? formatValuePlain(i.valorAtual) : '' },
+      { name: 'instituicao', label: 'Nome da carteira / instituição', type: 'text', required: true, value: i.instituicao, placeholder: 'Ex: Caixinha Turbo, Reserva de emergência', wide: true },
+      { name: 'tipo', label: 'Classificação', type: 'select', value: i.tipo || 'Outros', options: TIPOS_INVEST.map((t) => ({ value: t, label: t })) },
+      { name: 'valorAplicado', label: 'Aporte inicial (R$) antes de usar o app', type: 'money', value: i.valorAplicado ? formatValuePlain(i.valorAplicado) : '' },
+      { name: 'valorAtual', label: 'Valor atual (R$) — deixe em branco para ser = Aplicado', type: 'money', value: i.valorAtual ? formatValuePlain(i.valorAtual) : '' },
       { name: 'data', label: 'Data de início', type: 'date', value: i.data || today().format('YYYY-MM-DD') }
     ],
     async add() {
-      const v = await formModal({ title: 'Nova categoria de investimento', icon: 'graph-up-arrow', fields: this.fields() });
+      const v = await formModal({ title: 'Novo Investimento na Carteira', icon: 'graph-up-arrow', fields: this.fields() });
       if (!v) return;
       const item = { id: generateId(), ...v };
       if (item.valorAtual > 0) item.valorAtualEm = today().format('YYYY-MM-DD');
       upsert('investimentos', item);
-      notify.success('Categoria criada! Escolha-a no lançamento do mês (Tipo = Investimento) para ir somando.');
+      notify.success('Investimento criado! Agora você pode escolhê-lo ao fazer lançamentos no mês.');
     },
     async edit(id) {
       const i = coll('investimentos').find((x) => x.id === id);
       if (!i) return;
-      const v = await formModal({ title: 'Editar categoria de investimento', icon: 'graph-up-arrow', fields: this.fields(i) });
+      const v = await formModal({ title: 'Editar Investimento', icon: 'graph-up-arrow', fields: this.fields(i) });
       if (!v) return;
       const item = { ...i, ...v };
       if (v.valorAtual > 0) {
         if (v.valorAtual !== (Number(i.valorAtual) || 0)) item.valorAtualEm = today().format('YYYY-MM-DD');
       } else {
         delete item.valorAtualEm;
+        item.valorAtual = 0;
       }
       upsert('investimentos', item);
-      notify.success('Categoria atualizada!');
+      notify.success('Investimento atualizado!');
     },
-    // aplicado = aporte inicial + tudo que entrou pelos lançamentos mensais
+    async del(id) {
+      const ok = await confirmAction({
+        title: 'Excluir da carteira?',
+        text: 'Os lançamentos mensais não serão apagados, mas ficarão "sem vínculo" até serem associados a outro investimento.',
+        icon: 'warning',
+        confirmText: 'Sim, excluir'
+      });
+      if (!ok) return;
+      removeItem('investimentos', id);
+      notify.success('Excluído da carteira.');
+    },
+    // aplicado = aporte inicial + aportes mensais
     aplicado(i) { return (Number(i.valorAplicado) || 0) + aportesMensaisDe(i.id).total; },
-    // atual = o que você informou; sem informar, vale o aplicado
     atual(i) { const v = Number(i.valorAtual) || 0; return v > 0 ? v : this.aplicado(i); },
     rent(i) {
       const ap = this.aplicado(i);
@@ -737,69 +565,146 @@
       const t = this.totais();
       const rentTotal = t.aplicado ? ((t.atual - t.aplicado) / t.aplicado) * 100 : 0;
       const porMes = aportesPorMes(12);
-      const grupos = gruposLancamentosInvestimento();
-      const totalMensal = sum(grupos, (g) => g.total);
-      const temMensal = grupos.length > 0;
+
+      // Ordena por maior valor atual
+      list.sort((a, b) => this.atual(b) - this.atual(a));
 
       const rows = list.map((i) => {
-        const men = aportesMensaisDe(i.id);
         const ap = this.aplicado(i);
         const at = this.atual(i);
         const r = this.rent(i);
         const informado = (Number(i.valorAtual) || 0) > 0;
-        return `<tr>
-          <td><span class="mod-badge mod-badge--violet">${escapeHtml(i.tipo)}</span></td>
-          <td>${escapeHtml(i.instituicao || '—')}</td>
-          <td class="num">${formatCurrency(ap)}<div class="mod-sub">inicial ${formatCurrency(i.valorAplicado || 0)}${men.qtd ? ` · ${men.qtd} lanç. ${formatCurrency(men.total)}` : ''}</div></td>
-          <td class="num">${formatCurrency(at)}<div class="mod-sub">${informado ? `informado${i.valorAtualEm ? ` em ${fmtDate(i.valorAtualEm)}` : ''}` : '= aplicado'}</div></td>
-          <td class="num" style="color:${moneyColor(r)}">${informado ? `${r >= 0 ? '+' : ''}${r.toFixed(2)}%` : '—'}</td>
-          <td>${fmtDate(i.data)}</td>
-          <td class="num">${actionBtns('investimentos', i.id).replace('mod-card__actions', 'mod-card__actions justify-content-end')}</td>
-        </tr>`;
+        const mensais = aportesMensaisDe(i.id);
+        
+        const detalhesMensais = mensais.entries.length ? `
+          <details class="mod-inv-details mt-3">
+            <summary class="mod-inv-summary">Ver aportes mensais (${mensais.entries.length})</summary>
+            <ul class="mod-history mt-2">
+              ${mensais.entries.map(e => `
+                <li>
+                  <span>${dayjs(`${e.mes}-01`).format('MMM/YYYY')} · ${escapeHtml(e.description || 'Sem descrição')}</span>
+                  <strong style="color:var(--app-income)">+ ${formatCurrency(e.value)}</strong>
+                </li>
+              `).join('')}
+            </ul>
+          </details>
+        ` : '<div class="mod-card__sub mt-3"><i class="bi bi-info-circle"></i> Nenhum aporte mensal vinculado.</div>';
+
+        return `
+          <div class="mod-card">
+            <div class="mod-card__top align-items-start">
+              <div>
+                <h3 class="mod-card__title mb-1">${escapeHtml(i.instituicao)}</h3>
+                <span class="mod-badge mod-badge--violet">${escapeHtml(i.tipo)}</span>
+              </div>
+              <div class="text-end">
+                <strong style="font-size:1.1rem">${formatCurrency(at)}</strong>
+                <div class="mod-card__sub">${informado ? `Atualizado ${i.valorAtualEm ? fmtDate(i.valorAtualEm) : ''}` : '= Aplicado'}</div>
+              </div>
+            </div>
+            
+            <div class="d-flex justify-content-between mt-3 mb-2 px-1">
+              <div>
+                <span class="mod-card__sub d-block">Aplicado</span>
+                <strong style="color:var(--app-text)">${formatCurrency(ap)}</strong>
+                <div class="mod-card__sub" style="font-size:0.7rem">
+                  ${i.valorAplicado ? `Inicial: ${formatCurrency(i.valorAplicado)}<br>` : ''}
+                  Aportes: ${formatCurrency(mensais.total)}
+                </div>
+              </div>
+              <div class="text-end">
+                <span class="mod-card__sub d-block">Rentabilidade</span>
+                <strong style="color:${moneyColor(r)}">${r >= 0 ? '+' : ''}${r.toFixed(2)}%</strong>
+                <div class="mod-card__sub" style="font-size:0.7rem">Rendimento: ${formatCurrency(at - ap)}</div>
+              </div>
+            </div>
+            
+            ${detalhesMensais}
+            
+            <div class="mod-card__actions mt-3 pt-3 border-top justify-content-end">
+              <button class="mod-btn" data-mod="investimentos" data-act="edit" data-id="${i.id}" title="Editar e classificar"><i class="bi bi-pencil-fill"></i> Editar</button>
+              <button class="mod-btn mod-btn--danger" data-mod="investimentos" data-act="del" data-id="${i.id}" title="Excluir da carteira"><i class="bi bi-trash-fill"></i></button>
+            </div>
+          </div>
+        `;
       }).join('');
+
+      let warningSemVinculo = '';
+      if (t.semVinculo.entries.length > 0) {
+        warningSemVinculo = `
+          <div class="alert alert-warning d-flex align-items-start shadow-sm border-0 mb-4 rounded-3">
+            <i class="bi bi-exclamation-triangle-fill fs-4 me-3 mt-1"></i>
+            <div>
+              <h4 class="alert-heading h6 fw-bold mb-1">Atenção: Aportes sem vínculo com a carteira</h4>
+              <p class="mb-2" style="font-size:0.9rem">
+                Existem <strong>${t.semVinculo.entries.length}</strong> lançamentos (${formatCurrency(t.semVinculo.total)}) classificados como "Investimento", mas que não estão ligados a nenhum item da sua carteira. Eles não estão somando no rendimento.
+              </p>
+              <details>
+                <summary style="cursor:pointer; font-weight:500; font-size:0.9rem">Ver aportes soltos</summary>
+                <ul class="mod-history mt-2 bg-white rounded p-3 shadow-sm border" style="max-height: 200px; overflow-y:auto">
+                  ${t.semVinculo.entries.map(e => `
+                    <li class="border-bottom pb-2 mb-2">
+                      <span><strong>${dayjs(`${e.mes}-01`).format('MMM/YY')}</strong> · ${escapeHtml(e.description || 'Sem descrição')}</span>
+                      <strong class="text-danger">${formatCurrency(e.value)}</strong>
+                    </li>
+                  `).join('')}
+                </ul>
+                <p class="mt-2 text-muted" style="font-size:0.8rem">Para corrigir, vá até o mês correspondente, edite o lançamento e selecione a Categoria correta da carteira.</p>
+              </details>
+            </div>
+          </div>
+        `;
+      }
 
       c.innerHTML = `
         <div class="view-header">
-          <div><h2 class="h4"><i class="bi bi-graph-up-arrow app-icon"></i> Investimentos</h2>
-          <p class="view-header__hint">Crie categorias aqui (ex: Caixinha Turbo, Reserva de emergência) e escolha-as todo mês no lançamento — Tipo = Investimento</p></div>
+          <div>
+            <h2 class="h4"><i class="bi bi-graph-up-arrow app-icon"></i> Carteira de Investimentos</h2>
+            <p class="view-header__hint">
+              Crie os itens da sua carteira aqui. Ao adicionar aportes todo mês, selecione o item no campo "Categoria" e eles aparecerão detalhados dentro de cada card!
+            </p>
+          </div>
           <div class="d-flex gap-2 flex-wrap">
-            ${(list.length || temMensal) ? `<button class="btn btn-outline-danger" data-mod="investimentos" data-act="limpar-tudo"><i class="bi bi-trash3-fill"></i> Excluir tudo</button>` : ''}
-            <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Nova categoria</button>
+            <button class="btn btn-primary" data-mod="investimentos" data-act="add"><i class="bi bi-plus-lg"></i> Novo Item na Carteira</button>
           </div>
         </div>
-        ${(list.length || temMensal) ? `<div class="mod-summary">
-          <div class="mod-summary__item"><span>Total investido hoje</span><strong style="color:var(--app-investment)">${formatCurrency(t.total)}</strong></div>
-          <div class="mod-summary__item"><span>Aplicado na carteira</span><strong>${formatCurrency(t.aplicado)}</strong></div>
-          <div class="mod-summary__item"><span>Lançamentos mensais (todos os meses)</span><strong>${formatCurrency(totalMensal)}</strong></div>
-          <div class="mod-summary__item"><span>Rentabilidade</span><strong style="color:${moneyColor(rentTotal)}">${rentTotal >= 0 ? '+' : ''}${rentTotal.toFixed(2)}%</strong></div>
-          ${t.semVinculo.qtd ? `<div class="mod-summary__item"><span>Sem vínculo (${t.semVinculo.qtd} lanç.)</span><strong>${formatCurrency(t.semVinculo.total)}</strong></div>` : ''}
+        
+        ${warningSemVinculo}
+        
+        ${list.length ? `
+        <div class="mod-summary mb-4">
+          <div class="mod-summary__item"><span>Total investido hoje</span><strong style="color:var(--app-investment); font-size:1.3rem">${formatCurrency(t.atual)}</strong></div>
+          <div class="mod-summary__item"><span>Total Aplicado</span><strong>${formatCurrency(t.aplicado)}</strong></div>
+          <div class="mod-summary__item"><span>Rentabilidade global</span><strong style="color:${moneyColor(rentTotal)}">${rentTotal >= 0 ? '+' : ''}${rentTotal.toFixed(2)}%</strong></div>
+          <div class="mod-summary__item"><span>Ativos</span><strong>${list.length}</strong></div>
         </div>
-        ${t.semVinculo.qtd ? `<button type="button" class="btn btn-sm btn-outline-danger mb-3" data-mod="investimentos" data-act="limpar-sem-vinculo">
-          <i class="bi bi-trash3"></i> Excluir ${t.semVinculo.qtd} lançamento(s) sem categoria (${formatCurrency(t.semVinculo.total)})
-        </button>` : ''}
-        <div class="row g-3 mb-3">
-          ${list.length ? '<div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Alocação por tipo</h3><canvas id="chartInvestAloc" height="200"></canvas></div></div>' : ''}
-          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Investido por mês (12 meses)</h3><canvas id="chartInvestMensal" height="200"></canvas></div></div>
-        </div>` : ''}
-        ${list.length ? `<div class="mod-table-wrap"><table class="mod-table">
-          <thead><tr><th>Tipo</th><th>Nome</th><th class="num">Aplicado</th><th class="num">Atual</th><th class="num">Rent.</th><th>Início</th><th></th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table></div>` : emptyBlock('graph-up-arrow', 'Nenhuma categoria de investimento criada ainda. Clique em "Nova categoria" (pode começar do zero) — ela aparece no lançamento do mês assim que Tipo = Investimento.')}
-        ${grupos.length ? `<h3 class="chart-box__title mt-4 mb-1"><i class="bi bi-calendar-check"></i> Lançamentos mensais de investimento — todos os meses</h3>
-        <p class="mod-hint mb-2"><i class="bi bi-info-circle"></i> Tudo que você lançou como Investimento, mês a mês, agrupado pelo nome. Abra um grupo para ver cada mês e vincule à carteira (ou crie um investimento do zero com o mesmo nome) para somar lá em cima.</p>
-        <div class="inv-groups">${grupos.map((g) => this.grupoHtml(g, list, grupos)).join('')}</div>` : ''}`;
+        
+        <div class="row g-3 mb-4">
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Alocação da Carteira</h3><canvas id="chartInvestAloc" height="200"></canvas></div></div>
+          <div class="col-md-6"><div class="chart-box"><h3 class="chart-box__title">Aportes por mês (últimos 12m)</h3><canvas id="chartInvestMensal" height="200"></canvas></div></div>
+        </div>
+        
+        <div class="mod-grid">${rows}</div>
+        ` : emptyBlock('graph-up-arrow', 'Sua carteira está vazia. Clique em "Novo Item na Carteira" para começar a controlar seus investimentos.')}
+      `;
 
       const { grid, text } = getChartTheme();
       if (list.length) {
-        const byTipo = {};
-        list.forEach((i) => { byTipo[i.tipo] = (byTipo[i.tipo] || 0) + this.atual(i); });
+        // Alocação por ativo
+        const topAtivos = list.slice(0, 6);
+        const topLabels = topAtivos.map(i => i.instituicao);
+        const topData = topAtivos.map(i => this.atual(i));
+        if (list.length > 6) {
+          topLabels.push('Outros');
+          topData.push(sum(list.slice(6), i => this.atual(i)));
+        }
+
         drawChart('chartInvestAloc', {
           type: 'doughnut',
-          data: { labels: Object.keys(byTipo), datasets: [{ data: Object.values(byTipo), backgroundColor: CHART_COLORS, borderWidth: 0 }] },
+          data: { labels: topLabels, datasets: [{ data: topData, backgroundColor: CHART_COLORS, borderWidth: 0 }] },
           options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: text, font: { size: 11 } } }, tooltip: { callbacks: { label: (x) => formatCurrency(x.raw) } } } }
         });
-      }
-      if (list.length || temMensal) {
+
         drawChart('chartInvestMensal', {
           type: 'bar',
           data: { labels: porMes.map((p) => p.label), datasets: [{ data: porMes.map((p) => p.total), backgroundColor: '#8b5cf6', borderRadius: 5, maxBarThickness: 26 }] },
