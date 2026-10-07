@@ -653,3 +653,54 @@
 .passeio-btn--muted { flex: 1; }
 .passeio-btn--icon { padding: 0.4rem 0.6rem; }
 .passeio-btn--danger:hover { color: var(--app-expense); border-color: var(--app-expense); }
+
+/* ---------- Investimentos (categorias + aportes mês a mês) ---------- */
+.inv-card { gap: 0.6rem; border-top: 3px solid var(--app-investment); }
+.inv-card__saldo {
+  display: flex; flex-direction: column; padding: 0.75rem 0.9rem; border-radius: var(--app-radius-sm);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--app-investment) 16%, transparent), color-mix(in srgb, var(--app-balance) 8%, transparent));
+}
+.inv-card__saldo span, .inv-card__grid span { font-size: 0.74rem; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: .03em; }
+.inv-card__saldo strong { font-size: 1.45rem; color: var(--app-investment); font-variant-numeric: tabular-nums; }
+.inv-card__saldo small, .inv-card__grid small { font-size: 0.74rem; color: var(--app-text-muted); }
+.inv-card__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+.inv-card__grid > div { display: flex; flex-direction: column; padding: 0.55rem 0.7rem; border: 1px solid var(--app-border); border-radius: var(--app-radius-sm); }
+.inv-card__grid strong { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+.inv-card__det summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--app-primary); margin: 0.2rem 0 0.4rem; }
+.inv-table .inv-zero { color: var(--app-text-faint); }
+.inv-table .inv-row--atual { background: color-mix(in srgb, var(--app-investment) 9%, transparent); }
+.inv-table tfoot .inv-foot-sub td { font-weight: 600; border-top: 1px solid var(--app-border); }
+.inv-table tfoot tr + tr td { border-top: 1px solid var(--app-border); }
+
+/* Lista de aportes do card (linha do tempo) */
+.inv-det { margin-top: 0.3rem; border: 1px solid var(--app-border); border-radius: var(--app-radius-sm); overflow: hidden; }
+.inv-det__sum {
+  list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+  padding: 0.6rem 0.8rem; font-size: 0.86rem; font-weight: 600; color: var(--app-text);
+  background: color-mix(in srgb, var(--app-investment) 7%, transparent); transition: background .2s;
+}
+.inv-det__sum::-webkit-details-marker { display: none; }
+.inv-det__sum:hover { background: color-mix(in srgb, var(--app-investment) 14%, transparent); }
+.inv-det__sum .bi-list-ul { color: var(--app-investment); margin-right: 0.25rem; }
+.inv-det__count {
+  display: inline-block; min-width: 1.4rem; padding: 0 0.4rem; margin-left: 0.2rem; border-radius: 999px; text-align: center;
+  font-size: 0.72rem; line-height: 1.25rem; background: var(--app-investment); color: #fff;
+}
+.inv-det__last { font-size: 0.75rem; font-weight: 500; color: var(--app-text-muted); white-space: nowrap; }
+.inv-det__chev { display: inline-block; margin-left: 0.25rem; transition: transform .25s; }
+.inv-det[open] .inv-det__chev { transform: rotate(180deg); }
+.inv-tl { list-style: none; margin: 0; padding: 0.35rem 0; max-height: 260px; overflow-y: auto; animation: invFade .25s ease; }
+.inv-tl__item { display: flex; align-items: center; gap: 0.7rem; padding: 0.5rem 0.8rem; position: relative; }
+.inv-tl__item + .inv-tl__item { border-top: 1px dashed var(--app-border); }
+.inv-tl__item:hover { background: var(--app-surface-2, rgba(127,127,127,.06)); }
+.inv-tl__date {
+  flex: 0 0 auto; width: 3rem; padding: 0.25rem 0; border-radius: 8px; text-align: center; display: flex; flex-direction: column; line-height: 1.1;
+  background: color-mix(in srgb, var(--app-investment) 15%, transparent); color: var(--app-investment);
+}
+.inv-tl__date strong { font-size: 0.82rem; }
+.inv-tl__date small { font-size: 0.66rem; opacity: .85; }
+.inv-tl__body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.inv-tl__desc { font-size: 0.86rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inv-tl__acc { font-size: 0.72rem; color: var(--app-text-muted); }
+.inv-tl__val { flex: 0 0 auto; font-size: 0.92rem; color: var(--app-income); font-variant-numeric: tabular-nums; }
+@keyframes invFade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
