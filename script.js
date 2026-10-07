@@ -1306,40 +1306,10 @@ const updateCharts = (entries) => {
 const getInvestimentosCarteira = () =>
   (Array.isArray(allData.__app?.investimentos) ? allData.__app.investimentos : []);
 
-// O que uma categoria "trouxe" quando foi cadastrada: o aporte inicial, ou — se ele
-// ficou em branco/zero — o valor atual informado (é o que sobra quando a pessoa cria
-// a categoria já preenchendo "quanto tem hoje" em vez de "aporte inicial").
-const investimentoContribuicaoInicial = (inv) => {
-  const aporte = Number(inv.valorAplicado) || 0;
-  return aporte > 0 ? aporte : (Number(inv.valorAtual) || 0);
-};
-
-// Soma, por mês (YYYY-MM), o que as categorias da carteira com essa "Data de início"
-// contribuem — assim o valor batido direto na aba Investimentos entra nas contas do
-// Mês/Dashboard/Anual no mês certo, mesmo sem passar pelo lançamento manual.
-const investimentoAtribuidoAoMes = (mes) =>
-  getInvestimentosCarteira()
-    .filter((i) => String(i.data || '').slice(0, 7) === mes)
-    .reduce((acc, i) => acc + investimentoContribuicaoInicial(i), 0);
-
-// Uma linha "de mentira" pra cada categoria da carteira com Data de início nesse mês —
-// só pra EXIBIR na lista de Investimentos do mês (não é gravada em allData; editar ou
-// excluir de verdade continua sendo feito na aba Investimentos).
-const investimentosDoMesSintetico = (mes) =>
-  getInvestimentosCarteira()
-    .filter((i) => String(i.data || '').slice(0, 7) === mes && investimentoContribuicaoInicial(i) > 0)
-    .map((i) => ({
-      id: `carteira:${i.id}`,
-      __carteiraId: i.id,
-      description: i.instituicao || i.tipo || 'Categoria sem nome',
-      category: i.tipo || 'Investimentos',
-      type: 'investimento',
-      person: '',
-      value: investimentoContribuicaoInicial(i),
-      status: 'pago',
-      due_day: null,
-      observation: (Number(i.valorAplicado) || 0) > 0 ? 'Aporte inicial (cadastrado na carteira)' : 'Valor atual informado (cadastrado na carteira)'
-    }));
+// Funções sintéticas removidas a pedido do usuário, pois confundiam o painel mensal
+// (dinheiro já existente na carteira não deve somar como gasto/investimento do mês)
+const investimentoAtribuidoAoMes = () => 0;
+const investimentosDoMesSintetico = () => [];
 
 // Só o nome — o Tipo (CDB, Ações…) é só uma classificação interna, mostrada na
 // tabela da carteira; aqui só polui ("Outros · Caixinha Turbo" pra quem nem
