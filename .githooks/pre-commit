@@ -51,10 +51,14 @@ if [ -f "index.html" ]; then
 
     if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
         echo "[AUTO-VERSION] Atualizando versao com data e horario: $OLD_VERSION -> $NEW_VERSION"
-        # Substitui na meta e em todas as query strings ?v= do index.html
+        # Substitui na meta e em todas as query strings ?v= do index.html e no sw.js
         sed -i "s/$OLD_VERSION/$NEW_VERSION/g" index.html
         git add index.html
-        echo "[AUTO-VERSION] index.html atualizado e pronto para commit (v$NEW_VERSION)."
+        if [ -f "sw.js" ]; then
+            sed -i "s/SW_BUILD_VERSION = '[^']*'/SW_BUILD_VERSION = '$NEW_VERSION'/g" sw.js
+            git add sw.js
+        fi
+        echo "[AUTO-VERSION] index.html e sw.js atualizados e prontos para commit (v$NEW_VERSION)."
     else
         echo "Versao atual do app: $OLD_VERSION"
     fi

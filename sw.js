@@ -14,7 +14,8 @@
  * ============================================================
  */
 
-const VERSION = new URLSearchParams(self.location.search).get('v') || 'dev';
+const SW_BUILD_VERSION = '20261024-1358';
+const VERSION = new URLSearchParams(self.location.search).get('v') || SW_BUILD_VERSION;
 const CACHE = `financas-${VERSION}`;
 
 // Só o essencial para abrir offline; o resto entra no cache conforme é usado.
@@ -53,6 +54,12 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -64,11 +71,10 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     try {
-      // No HTML o cache HTTP é ignorado de propósito: é ele que carrega o ?v=
-      // dos demais arquivos, então precisa ser sempre o mais recente.
+      // Ignora o cache HTTP do navegador/PWA para trazer sempre os arquivos mais recentes da rede
       const resposta = ehNavegacao
         ? await fetch(req.url, { cache: 'no-store', credentials: 'same-origin' })
-        : await fetch(req);
+        : await fetch(req, { cache: 'no-cache' });
 
       if (resposta && resposta.ok) {
         const copia = resposta.clone();
