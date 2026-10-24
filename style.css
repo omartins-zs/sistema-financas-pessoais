@@ -160,35 +160,43 @@ body {
 
 .topbar__title {
   margin: 0;
-  font-size: clamp(1rem, 2.8vw, 1.25rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
   font-weight: 700;
   color: var(--app-text);
   letter-spacing: -0.02em;
   white-space: nowrap;
+  max-width: 100%;
+}
+
+.topbar__title-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Selo de versão — clicar recarrega buscando a versão mais recente */
+/* Selo de versão — sempre visível no PC e no celular; clicar recarrega buscando a versão mais recente */
 .topbar__title .topbar__version {
-  margin-left: 0.4rem;
-  padding: 0.05rem 0.4rem;
+  flex-shrink: 0;
+  padding: 0.12rem 0.48rem;
   border: 1px solid var(--app-border);
   border-radius: 999px;
-  background: transparent;
-  color: var(--app-text-faint);
-  font-size: 0.6rem;
+  background: var(--header-elevated);
+  color: var(--app-text-muted);
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0;
-  vertical-align: middle;
+  line-height: 1.2;
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .topbar__title .topbar__version:hover,
 .topbar__title .topbar__version:focus-visible {
   color: var(--app-primary);
   border-color: var(--app-primary);
+  background: var(--btn-hover);
 }
 
 .topbar__subtitle {
@@ -1621,22 +1629,51 @@ body.auth-locked { overflow: hidden; }
 
 .auth-toggle:hover { text-decoration: underline; }
 
-/* Usuário logado na topbar */
+/* Botão de Logout vermelho no padrão global */
 .topbar__user {
-  display: inline-flex;
-  align-items: center;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--app-text-muted);
-  padding: 0 0.35rem;
+  display: none !important;
 }
 
-@media (max-width: 575px) {
-  .topbar__user { display: none; }
+.topbar__logout {
+  width: auto;
+  height: 34px;
+  padding: 0 0.75rem;
+  margin-left: 0.15rem;
+  border-radius: 999px;
+  gap: 0.35rem;
+  background: var(--app-expense);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+
+.topbar__logout i {
+  font-size: 0.95rem;
+}
+
+.topbar__logout:hover,
+.topbar__logout:focus-visible {
+  background: #dc2626;
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
+}
+
+.topbar__logout:active {
+  transform: scale(0.97);
+}
+
+@media (max-width: 575.98px) {
+  .topbar__logout-text {
+    display: none;
+  }
+  .topbar__logout {
+    width: 34px;
+    padding: 0;
+    border-radius: 50%;
+  }
 }
 
 /* ---- Cartão de crédito: itens da fatura ---- */

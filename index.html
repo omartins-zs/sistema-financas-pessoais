@@ -8,13 +8,13 @@
 
   <!-- Versão do app. Trocar SÓ aqui a cada deploy: um replace deste valor no arquivo
        atualiza o selo na tela, o service worker e o ?v= de todos os arquivos. -->
-  <meta name="app-version" content="20261024-1326">
+  <meta name="app-version" content="20261024-1350">
 
   <link rel="icon" type="image/png" href="icon-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest?v=20261024-1326">
+  <link rel="manifest" href="manifest.webmanifest?v=20261024-1350">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,8 +24,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css" rel="stylesheet">
   <!-- ?v=AAAAMMDD-N — trocar a cada deploy: muda a URL e nenhum dispositivo reusa o cache antigo -->
-  <link rel="stylesheet" href="style.css?v=20261024-1326">
-  <link rel="stylesheet" href="modules.css?v=20261024-1326">
+  <link rel="stylesheet" href="style.css?v=20261024-1350">
+  <link rel="stylesheet" href="modules.css?v=20261024-1350">
 </head>
 <body>
 
@@ -65,7 +65,7 @@
           <div class="topbar__brand">
             <img src="logo.png" alt="" class="topbar__logo" width="42" height="42">
             <div class="topbar__brand-text">
-              <h1 class="topbar__title">Finanças da Casa<button type="button" class="topbar__version" id="appVersion" title="Recarregar buscando a versão mais recente" hidden></button></h1>
+              <h1 class="topbar__title"><span class="topbar__title-text">Finanças</span><button type="button" class="topbar__version" id="appVersion" title="Recarregar buscando a versão mais recente" hidden></button></h1>
               <p class="topbar__subtitle" id="currentMonthLabel">—</p>
             </div>
           </div>
@@ -136,9 +136,9 @@
             <input type="file" id="inputImportSheet" accept=".csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
             <input type="file" id="inputImportBank" accept=".ofx,.csv,.qif,.txt" hidden>
 
-            <span class="topbar__user" id="authUser" data-auth-only hidden></span>
-            <button type="button" class="topbar__tool" id="btnLogout" data-auth-only hidden title="Sair" aria-label="Sair">
+            <button type="button" class="topbar__tool topbar__logout" id="btnLogout" data-auth-only hidden title="Sair da conta" aria-label="Sair da conta">
               <i class="bi bi-box-arrow-right"></i>
+              <span class="topbar__logout-text">Sair</span>
             </button>
           </div>
 
@@ -648,11 +648,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20261024-1326"></script>
-  <script src="cloud-sync.js?v=20261024-1326"></script>
+  <script src="firebase-config.js?v=20261024-1350"></script>
+  <script src="cloud-sync.js?v=20261024-1350"></script>
 
-  <script src="script.js?v=20261024-1326"></script>
-  <script src="app-modules.js?v=20261024-1326"></script>
+  <script src="script.js?v=20261024-1350"></script>
+  <script src="app-modules.js?v=20261024-1350"></script>
 </body>
 </html>
 

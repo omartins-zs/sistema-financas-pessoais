@@ -398,6 +398,8 @@ const AppStorage = (() => {
         uid = user.uid;
         const label = el('authUser');
         if (label) label.textContent = user.email;
+        const logoutBtn = el('btnLogout');
+        if (logoutBtn && user.email) logoutBtn.title = `Sair (${user.email})`;
         setAuthError('');
         showOverlay(false);
         if (!booted || previousUid !== uid) {
