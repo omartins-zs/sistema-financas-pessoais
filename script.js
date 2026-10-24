@@ -1637,6 +1637,27 @@ const handleEditEntry = (e) => {
   render();
 };
 
+const duplicateEntry = (id) => {
+  const entries = getCurrentEntries();
+  const entry = entries.find((e) => e.id === id);
+  if (!entry) return;
+
+  const clonedCardItems = Array.isArray(entry.card_items)
+    ? entry.card_items.map((item) => ({ ...cloneDados(item), id: generateId() }))
+    : [];
+
+  const duplicated = normalizeEntry({
+    ...cloneDados(entry),
+    id: generateId(),
+    card_items: clonedCardItems,
+    _updatedAt: Date.now()
+  });
+
+  setCurrentEntries([...entries, duplicated], `duplicou ${resumoLancamento(duplicated)}`);
+  notify.success('Lançamento duplicado!');
+  render();
+};
+
 const deleteEntry = async (id) => {
   const entry = getCurrentEntries().find((e) => e.id === id);
   if (!entry) return;
@@ -2932,6 +2953,9 @@ const createStatusPicker = (entry) => {
 
 const createActionButtons = (id) => `
   <div class="row-actions">
+    <button type="button" class="row-action row-action--duplicate" data-id="${id}" data-action="duplicate" title="Duplicar lançamento" aria-label="Duplicar lançamento">
+      <i class="bi bi-copy"></i>
+    </button>
     <button type="button" class="row-action row-action--edit" data-id="${id}" data-action="edit" title="Editar" aria-label="Editar">
       <i class="bi bi-pencil-fill"></i>
     </button>
@@ -3607,6 +3631,7 @@ const handleListClick = (e) => {
     return;
   }
 
+  if (action === 'duplicate') duplicateEntry(id);
   if (action === 'edit') openEditModal(id);
   if (action === 'delete') deleteEntry(id);
   if (action === 'edit-carteira') {

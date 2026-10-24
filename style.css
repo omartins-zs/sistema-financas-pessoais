@@ -458,6 +458,14 @@ body {
   transform: scale(0.96);
 }
 
+.row-action--duplicate {
+  background: #0ea5e9;
+}
+
+.row-action--duplicate:hover {
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.45);
+}
+
 .row-action--edit {
   background: var(--app-primary);
 }
