@@ -788,12 +788,35 @@ const desfazerRegistroHistorico = (id) => {
   return true;
 };
 
+const formatarAcaoHistorico = (r) => {
+  if (!r || typeof r !== 'object') return '';
+  const acaoBase = String(r.acao || r.resumo || '');
+  if (r.tipo === 'mes' && Array.isArray(r.alterados) && r.alterados.length && !acaoBase.includes('→') && !acaoBase.startsWith('desfez:')) {
+    const partes = [];
+    if (Array.isArray(r.adicionados) && r.adicionados.length) {
+      partes.push(r.adicionados.length === 1
+        ? `adicionou ${resumoLancamento(r.adicionados[0])}`
+        : `adicionou ${r.adicionados.length} lançamentos`);
+    }
+    if (Array.isArray(r.removidos) && r.removidos.length) {
+      partes.push(r.removidos.length === 1
+        ? `excluiu ${resumoLancamento(r.removidos[0])}`
+        : `excluiu ${r.removidos.length} lançamentos`);
+    }
+    partes.push(r.alterados.length === 1
+      ? `alterou ${detalheAlteracaoLancamento(r.alterados[0].antes, r.alterados[0].depois)}`
+      : `alterou ${r.alterados.length} lançamentos (${r.alterados.slice(0, 3).map((x) => detalheAlteracaoLancamento(x.antes, x.depois)).join('; ')})`);
+    return partes.join(' · ');
+  }
+  return acaoBase;
+};
+
 const abrirHistorico = async () => {
   const h = getHistorico();
   const linhas = h.slice(0, 80).map((r) => `
     <div class="hist-row${r.desfeito ? ' is-undone' : ''}">
       <span class="hist-row__when">${dayjs(r.quando).format('DD/MM HH:mm')}</span>
-      <span class="hist-row__what">${escapeHtml(r.acao)}${r.mes ? ` <span class="hist-row__mes">${dayjs(`${r.mes}-01`).format('MMM/YY')}</span>` : ''}${r.desfeito ? ' <span class="hist-row__tag">desfeito</span>' : ''}</span>
+      <span class="hist-row__what">${escapeHtml(formatarAcaoHistorico(r))}${r.mes ? ` <span class="hist-row__mes">${dayjs(`${r.mes}-01`).format('MMM/YY')}</span>` : ''}${r.desfeito ? ' <span class="hist-row__tag">desfeito</span>' : ''}</span>
       ${r.reversivel && !r.desfeito
         ? `<button type="button" class="hist-row__undo" data-undo="${r.id}" title="Voltar como estava antes desta mudança"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>`
         : '<span></span>'}
@@ -3885,10 +3908,11 @@ const reconciliarDadosRecentes = () => {
   }
 
   // Se Caixinha Turbo já estava em 450 mas sem o registro de histórico 600 -> 450, garante no histórico
-  const jaTemHistCaixinha = allData.__app.historico.some((h) =>
-    regexCaixinhaTurbo.test(String(h?.acao || h?.resumo || ''))
-  );
-  if (!jaTemHistCaixinha) {
+  const jaTemHistCaixinha600 = allData.__app.historico.some((h) => {
+    const txt = String(h?.acao || h?.resumo || '');
+    return regexCaixinhaTurbo.test(txt) && txt.includes('600');
+  });
+  if (!jaTemHistCaixinha600) {
     const invRef = allData.__app.investimentos.find(
       (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
     );
@@ -3896,15 +3920,42 @@ const reconciliarDadosRecentes = () => {
     if (entryRef) {
       const antes600 = { ...JSON.parse(JSON.stringify(entryRef)), value: 600 };
       const depois450 = { ...JSON.parse(JSON.stringify(entryRef)), value: 450 };
-      novoRegistroHistorico({
-        tipo: 'mes',
-        mes: mesAlvo,
-        acao: `alterou “Caixinha Turbo” (${formatCurrency(600)} → ${formatCurrency(450)})`,
-        reversivel: true,
-        adicionados: [],
-        removidos: [],
-        alterados: [{ antes: antes600, depois: depois450 }]
-      });
+      const idxAdd450 = allData.__app.historico.findIndex((h) =>
+        h?.tipo === 'mes' &&
+        regexCaixinhaTurbo.test(String(h?.acao || '')) &&
+        Array.isArray(h?.adicionados) &&
+        h.adicionados.length === 1 &&
+        Number(h.adicionados[0]?.value) === 450
+      );
+      if (idxAdd450 >= 0) {
+        const regAdd = allData.__app.historico[idxAdd450];
+        const tsAdd = dayjs(regAdd.quando).subtract(1, 'minute').toISOString();
+        regAdd.acao = `adicionou “Caixinha Turbo” (${formatCurrency(600)})`;
+        regAdd.adicionados = [antes600];
+        const regEdit = {
+          id: generateId(),
+          quando: regAdd.quando,
+          tipo: 'mes',
+          mes: regAdd.mes || mesAlvo,
+          acao: `alterou “Caixinha Turbo” (${formatCurrency(600)} → ${formatCurrency(450)})`,
+          reversivel: true,
+          adicionados: [],
+          removidos: [],
+          alterados: [{ antes: antes600, depois: depois450 }]
+        };
+        regAdd.quando = tsAdd;
+        allData.__app.historico.splice(idxAdd450, 0, regEdit);
+      } else {
+        novoRegistroHistorico({
+          tipo: 'mes',
+          mes: mesAlvo,
+          acao: `alterou “Caixinha Turbo” (${formatCurrency(600)} → ${formatCurrency(450)})`,
+          reversivel: true,
+          adicionados: [],
+          removidos: [],
+          alterados: [{ antes: antes600, depois: depois450 }]
+        });
+      }
       houveMudanca = true;
     } else if (invRef) {
       const antes600 = { ...JSON.parse(JSON.stringify(invRef)), valorAplicado: 600, valorAtual: 600 };
