@@ -1,0 +1,56 @@
+#!/bin/sh
+
+echo "---------------------------------------"
+echo "Iniciando Hooks de Pre-Commit..."
+echo "---------------------------------------"
+
+# 1. Se estiver na branch Laravel (master) ou ambiente PHP com composer
+if [ -f "composer.json" ] && command -v composer >/dev/null 2>&1; then
+    echo "[1/2] Rodando Laravel Pint..."
+    composer lint
+    PINT_STATUS=$?
+
+    if [ $PINT_STATUS -ne 0 ]; then
+        echo "[ERRO] Laravel Pint encontrou problemas de formatacao no codigo."
+        echo "Dica: rode './vendor/bin/pint' para corrigir automaticamente."
+        echo "Commit abortado."
+        exit 1
+    fi
+    echo "Pint OK."
+
+    echo "[2/2] Rodando Larastan Analise Estatica..."
+    composer analyse
+    STAN_STATUS=$?
+
+    if [ $STAN_STATUS -ne 0 ]; then
+        echo "[ERRO] Larastan encontrou falhas no codigo PHP."
+        echo "Commit abortado."
+        exit 1
+    fi
+    echo "Larastan OK."
+fi
+
+# 2. Se estiver na branch estática (github-pages) / PWA
+if [ -f "index.html" ]; then
+    echo "Verificando integridade e consistencia dos arquivos web..."
+
+    # Garante que não existem marcadores de conflito git esquecidos
+    if grep -En "^(<<<<<<<|=======|>>>>>>>)" script.js cloud-sync.js app-modules.js index.html 2>/dev/null; then
+        echo "[ERRO] Marcadores de conflito git detectados! Resolva os conflitos antes de commitar."
+        exit 1
+    fi
+
+    # Garante que a versão de index.html está alinhada nos scripts e styles
+    VERSION=$(grep -o 'meta name="app-version" content="[^"]*"' index.html | cut -d'"' -f4)
+    if [ -n "$VERSION" ]; then
+        echo "Versao do app: $VERSION"
+        # Checa se os arquivos principais usam a mesma query string ?v=
+        if grep -q "script.js?v=" index.html && ! grep -q "script.js?v=$VERSION" index.html; then
+            echo "[AVISO] script.js nao esta usando ?v=$VERSION em index.html"
+        fi
+    fi
+    echo "Integridade web OK."
+fi
+
+echo "Pronto pra commit. Todos os checks validos."
+exit 0

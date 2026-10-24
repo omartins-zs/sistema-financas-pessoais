@@ -312,6 +312,27 @@ fica preso numa versão velha. Com o `?v=` novo, a URL é outra e todo dispositi
 baixa a versão nova. O service worker fecha o cerco: ele busca o HTML sempre na
 rede (`cache: 'no-store'`), então o próprio refresh já traz a versão mais recente.
 
+
+---
+
+### 🪝 Git Hooks & Padrão de Commits
+
+O repositório possui hooks automáticos versionados em [`.githooks/`](.githooks) para garantir a integridade do código antes de commitar e dar push:
+
+```bash
+# Ativação dos hooks no repositório local (rodar uma vez):
+git config core.hooksPath .githooks
+```
+
+- **Pre-commit (`.githooks/pre-commit`):**
+  - **Laravel (`master`):** roda `composer lint` (Laravel Pint) e `composer analyse` (Larastan).
+  - **GitHub Pages (`github-pages`):** valida marcadores de conflito git e consistência de versão `?v=`.
+- **Pre-push (`.githooks/pre-push`):**
+  - **Laravel (`master`):** roda `php artisan test`, `./vendor/bin/pint --test` e `./vendor/bin/phpstan analyse`.
+  - **GitHub Pages (`github-pages`):** valida metadados de versão e integridade do app antes do deploy.
+
+> Regras detalhadas para desenvolvimento e agentes de IA em [`AGENTS.md`](AGENTS.md).
+
 ---
 
 ### 🧱 Laravel — instalação local

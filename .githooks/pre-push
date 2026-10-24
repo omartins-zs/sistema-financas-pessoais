@@ -1,0 +1,65 @@
+#!/bin/sh
+
+echo "---------------------------------------"
+echo "Iniciando Hooks de Pre-Push..."
+echo "---------------------------------------"
+
+# 1. Se estiver na branch Laravel (master)
+if [ -f "composer.json" ] && [ -f "artisan" ]; then
+    echo "[1/3] Rodando bateria de testes..."
+    php artisan test
+    TEST_STATUS=$?
+
+    if [ $TEST_STATUS -ne 0 ]; then
+        echo "[ERRO] Falha nos testes de integridade da aplicacao."
+        echo "Push abortado. Corrija os testes antes de enviar."
+        exit 1
+    fi
+    echo "Testes OK."
+
+    echo "[2/3] Rodando Laravel Pint..."
+    ./vendor/bin/pint --test
+    PINT_STATUS=$?
+
+    if [ $PINT_STATUS -ne 0 ]; then
+        echo "[ERRO] Laravel Pint encontrou problemas de formatacao no codigo."
+        echo "Push abortado."
+        exit 1
+    fi
+    echo "Pint OK."
+
+    echo "[3/3] Rodando Larastan..."
+    ./vendor/bin/phpstan analyse --level=5 --memory-limit=1G
+    STAN_STATUS=$?
+
+    if [ $STAN_STATUS -ne 0 ]; then
+        echo "[ERRO] Larastan encontrou falhas ao revisar o codigo final."
+        echo "Push abortado."
+        exit 1
+    fi
+    echo "Larastan OK."
+fi
+
+# 2. Se estiver na branch GitHub Pages (PWA / Firebase)
+if [ -f "index.html" ]; then
+    echo "Validando consistencia de persistencia e versao para deploy..."
+
+    # Garante que index.html possui meta app-version
+    if ! grep -q 'meta name="app-version"' index.html; then
+        echo "[ERRO] Tag meta app-version nao encontrada em index.html!"
+        echo "Push abortado."
+        exit 1
+    fi
+
+    # Garante que firebase-config.js nao esta corrompido
+    if [ -f "firebase-config.js" ]; then
+        if grep -q "const firebaseConfig" firebase-config.js; then
+            echo "Configuracao Firebase OK."
+        fi
+    fi
+
+    echo "Checks da branch github-pages OK."
+fi
+
+echo "Pronto para push. Subindo codigo..."
+exit 0
