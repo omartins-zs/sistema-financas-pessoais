@@ -42,7 +42,7 @@ fi
 
 # 2. Se estiver na branch GitHub Pages (PWA / Firebase)
 if [ -f "index.html" ]; then
-    echo "Validando consistencia de persistencia e versao para deploy..."
+    echo "Validando consistencia de versao (data/horario) e deploy do frontend..."
 
     # Garante que index.html possui meta app-version
     if ! grep -q 'meta name="app-version"' index.html; then
@@ -51,14 +51,22 @@ if [ -f "index.html" ]; then
         exit 1
     fi
 
-    # Garante que firebase-config.js nao esta corrompido
+    CURRENT_VERSION=$(grep -o 'meta name="app-version" content="[^"]*"' index.html | head -n 1 | sed 's/.*content="//; s/".*//')
+    echo "Versao registrada para deploy no GitHub Pages: v$CURRENT_VERSION"
+
+    # Avisa se houver arquivos modificados e não commitados no frontend
+    if ! git diff --quiet script.js cloud-sync.js app-modules.js style.css index.html 2>/dev/null; then
+        echo "[AVISO] Atencao: ha alteracoes em arquivos do frontend que nao foram commitadas antes do push."
+    fi
+
+    # Garante que firebase-config.js existe e esta integro
     if [ -f "firebase-config.js" ]; then
         if grep -q "const firebaseConfig" firebase-config.js; then
             echo "Configuracao Firebase OK."
         fi
     fi
 
-    echo "Checks da branch github-pages OK."
+    echo "Checks da branch github-pages concluidos com sucesso."
 fi
 
 echo "Pronto para push. Subindo codigo..."

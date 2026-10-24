@@ -77,5 +77,5 @@ Para nunca perder dados preenchidos pelo usuário:
    - **NUNCA** altere objetos diretamente no array vivo antes de calcular o histórico de auditoria (`diffListas` / `registrarHistorico`). Sempre faça clone profundo (`cloneDados(item)` / `JSON.parse(JSON.stringify(item))`) antes da edição.
 4. **Merge Inteligente (`mergeAllData`):**
    - Manter resolução com base em timestamps (`_updatedAt`) e mapa de exclusões (`_deleted`) para que nenhuma aba ou dispositivo sobrescreva alterações de outro.
-5. **Versionamento PWA:**
-   - Sempre que alterar código JS ou CSS, incremente a versão no `index.html` (`meta[name="app-version"]`) e nas query strings `?v=` dos arquivos referenciados para que os caches do Service Worker e dos navegadores/celulares atualizem imediatamente.
+5. **Versionamento PWA com Data e Horário (`YYYYMMDD-HHMM`):**
+   - O hook `.githooks/pre-commit` atualiza automaticamente a versão no `index.html` (`meta[name="app-version"]` e todas as query strings `?v=`) para o formato de data e horário atual (ex.: `20261024-1245`), garantindo que o Service Worker e os navegadores/celulares baixem a versão mais recente e nunca fiquem presos em cache antigo.

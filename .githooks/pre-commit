@@ -30,9 +30,9 @@ if [ -f "composer.json" ] && command -v composer >/dev/null 2>&1; then
     echo "Larastan OK."
 fi
 
-# 2. Se estiver na branch estática (github-pages) / PWA
+# 2. Se for o frontend / PWA (index.html)
 if [ -f "index.html" ]; then
-    echo "Verificando integridade e consistencia dos arquivos web..."
+    echo "Verificando integridade e atualizando versao do frontend..."
 
     # Garante que não existem marcadores de conflito git esquecidos
     if grep -En "^(<<<<<<<|=======|>>>>>>>)" script.js cloud-sync.js app-modules.js index.html 2>/dev/null; then
@@ -40,16 +40,26 @@ if [ -f "index.html" ]; then
         exit 1
     fi
 
-    # Garante que a versão de index.html está alinhada nos scripts e styles
-    VERSION=$(grep -o 'meta name="app-version" content="[^"]*"' index.html | cut -d'"' -f4)
-    if [ -n "$VERSION" ]; then
-        echo "Versao do app: $VERSION"
-        # Checa se os arquivos principais usam a mesma query string ?v=
-        if grep -q "script.js?v=" index.html && ! grep -q "script.js?v=$VERSION" index.html; then
-            echo "[AVISO] script.js nao esta usando ?v=$VERSION em index.html"
-        fi
+    # Extrai versão atual
+    OLD_VERSION=$(grep -o 'meta name="app-version" content="[^"]*"' index.html | head -n 1 | sed 's/.*content="//; s/".*//')
+
+    # Gera nova versão automática com Data e Horário (ex: 20261024-1245)
+    NEW_VERSION=$(date +"%Y%m%d-%H%M")
+    if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
+        NEW_VERSION=$(date +"%Y%m%d-%H%M%S")
     fi
-    echo "Integridade web OK."
+
+    if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+        echo "[AUTO-VERSION] Atualizando versao com data e horario: $OLD_VERSION -> $NEW_VERSION"
+        # Substitui na meta e em todas as query strings ?v= do index.html
+        sed -i "s/$OLD_VERSION/$NEW_VERSION/g" index.html
+        git add index.html
+        echo "[AUTO-VERSION] index.html atualizado e pronto para commit (v$NEW_VERSION)."
+    else
+        echo "Versao atual do app: $OLD_VERSION"
+    fi
+
+    echo "Integridade web e versao OK."
 fi
 
 echo "Pronto pra commit. Todos os checks validos."
