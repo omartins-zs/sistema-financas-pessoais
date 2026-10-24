@@ -363,6 +363,57 @@ body {
   color: var(--app-primary);
 }
 
+.topbar__sync {
+  width: auto;
+  padding: 0 0.65rem;
+  border-radius: 999px;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.topbar__sync i {
+  font-size: 0.95rem;
+}
+
+.topbar__sync.is-saved {
+  color: var(--app-income);
+}
+
+.topbar__sync.is-saving {
+  color: var(--app-primary);
+}
+
+.topbar__sync.is-offline {
+  color: #d97706;
+}
+
+.topbar__sync.is-error {
+  color: var(--app-expense);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+@keyframes syncSpin {
+  to { transform: rotate(360deg); }
+}
+
+.sync-spin {
+  display: inline-block;
+  animation: syncSpin 1s linear infinite;
+}
+
+@media (max-width: 575.98px) {
+  .topbar__sync-text {
+    display: none;
+  }
+  .topbar__sync {
+    width: 36px;
+    padding: 0;
+    border-radius: 50%;
+  }
+}
+
 .dropdown-header {
   font-size: 0.7rem;
   font-weight: 700;

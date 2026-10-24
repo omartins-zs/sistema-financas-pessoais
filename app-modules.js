@@ -52,17 +52,21 @@
   const upsert = (name, item) => {
     const list = coll(name);
     const idx = list.findIndex((x) => x.id === item.id);
-    const antes = idx >= 0 ? list[idx] : null;
-    if (idx >= 0) list[idx] = item;
-    else list.push(item);
-    if (typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo(name, antes, item);
+    const antes = idx >= 0 ? JSON.parse(JSON.stringify(list[idx])) : null;
+    const itemComMeta = { ...item, _updatedAt: Date.now() };
+    window.desmarcarExclusaoIds?.([itemComMeta.id]);
+    if (idx >= 0) list[idx] = itemComMeta;
+    else list.push(itemComMeta);
+    if (typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo(name, antes, itemComMeta);
     persist();
   };
 
   const removeItem = (name, id) => {
     const s = getStore();
-    const antes = coll(name).find((x) => x.id === id) || null;
+    const encontrado = coll(name).find((x) => x.id === id) || null;
+    const antes = encontrado ? JSON.parse(JSON.stringify(encontrado)) : null;
     s[name] = coll(name).filter((x) => x.id !== id);
+    window.registrarExclusaoIds?.([id]);
     if (antes && typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo(name, antes, null);
     persist();
   };
@@ -222,10 +226,10 @@
         ]
       });
       if (!v) return;
-      m.aportes = m.aportes || [];
-      m.aportes.push({ id: generateId(), valor: v.valor, data: v.data || today().format('YYYY-MM-DD') });
-      if (metaAtual(m) >= m.valorObjetivo) m.status = 'concluida';
-      upsert('metas', m);
+      const novosAportes = [...(m.aportes || []), { id: generateId(), valor: v.valor, data: v.data || today().format('YYYY-MM-DD') }];
+      const atualizado = { ...m, aportes: novosAportes };
+      if (metaAtual(atualizado) >= atualizado.valorObjetivo) atualizado.status = 'concluida';
+      upsert('metas', atualizado);
       notify.success('Aporte registrado!');
     },
     card(m) {
@@ -310,9 +314,8 @@
         notify.error('Saldo insuficiente na reserva.');
         return;
       }
-      r.movimentacoes = r.movimentacoes || [];
-      r.movimentacoes.push({ id: generateId(), tipo, valor: v.valor, data: v.data || today().format('YYYY-MM-DD'), obs: v.obs || '' });
-      upsert('reservas', r);
+      const novasMovs = [...(r.movimentacoes || []), { id: generateId(), tipo, valor: v.valor, data: v.data || today().format('YYYY-MM-DD'), obs: v.obs || '' }];
+      upsert('reservas', { ...r, movimentacoes: novasMovs });
       notify.success('Movimentação registrada!');
     },
     card(r) {
@@ -1878,7 +1881,8 @@
   // Hook chamado por render() em script.js após cada atualização de dados
   window.AppModules = {
     onDataRender() { refreshAlerts(); if (activeTab !== 'mes') refreshActiveView(); },
-    activate
+    activate,
+    editInvestimento: (id) => Investimentos.edit(id)
   };
 
   document.addEventListener('DOMContentLoaded', init);

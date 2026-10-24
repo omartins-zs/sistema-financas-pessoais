@@ -69,6 +69,7 @@ const salvarCategorias = () => {
   if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
   allData.__app.categorias = [...CATEGORIAS];
   allData.__app.categoriasPapel = { ...PAPEIS_CATEGORIA };
+  allData.__app._categoriasUpdatedAt = Date.now();
   saveData();
 };
 
@@ -503,10 +504,12 @@ const toggleTheme = () => {
 
 const loadData = async () => {
   try {
-    allData = (await AppStorage.load()) ?? {};
+    const loaded = await AppStorage.load();
+    if (loaded && typeof loaded === 'object') {
+      allData = loaded;
+    }
   } catch {
-    allData = {};
-    notify.error('Erro ao carregar dados. Iniciando do zero.');
+    notify.error('Falha de rede ao buscar nuvem — mantendo dados salvos no aparelho.');
   }
 };
 
@@ -517,6 +520,26 @@ const saveData = () => {
     notify.error('Erro ao salvar os dados.');
   }
 };
+
+const registrarExclusaoIds = (ids = []) => {
+  if (!ids.length) return;
+  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+  if (!allData.__app._deleted || typeof allData.__app._deleted !== 'object') allData.__app._deleted = {};
+  const now = Date.now();
+  ids.forEach((id) => {
+    if (id) allData.__app._deleted[id] = now;
+  });
+};
+
+const desmarcarExclusaoIds = (ids = []) => {
+  if (!ids.length || !allData.__app?._deleted) return;
+  ids.forEach((id) => {
+    if (id) delete allData.__app._deleted[id];
+  });
+};
+
+window.registrarExclusaoIds = registrarExclusaoIds;
+window.desmarcarExclusaoIds = desmarcarExclusaoIds;
 
 const getCurrentEntries = () => allData[getMonthKey(currentDate)] ?? [];
 
@@ -530,8 +553,8 @@ const HISTORICO_MAX = 150;
 const HISTORICO_MAX_CHARS = 150000;
 
 const NOMES_COLECAO = {
-  metas: 'Metas', reservas: 'Reservas', cartoes: 'Cartões', investimentos: 'Investimentos',
-  patrimonio: 'Patrimônio', assinaturas: 'Contas fixas', passeios: 'Passeios'
+  metas: 'Metas', reservas: 'Reservas', cartoes: 'Cartões', comprasCartao: 'Compras no cartão',
+  investimentos: 'Investimentos', patrimonio: 'Patrimônio', assinaturas: 'Contas fixas', passeios: 'Passeios'
 };
 
 // Instantâneo do último estado salvo de cada mês: várias ações alteram os objetos
@@ -539,7 +562,13 @@ const NOMES_COLECAO = {
 const snapshotsMes = {};
 const cloneDados = (v) => JSON.parse(JSON.stringify(v ?? []));
 const iniciarSnapshotsHistorico = () => {
-  Object.keys(allData).forEach((k) => { if (/^\d{4}-\d{2}$/.test(k)) snapshotsMes[k] = cloneDados(allData[k]); });
+  Object.keys(snapshotsMes).forEach((k) => delete snapshotsMes[k]);
+  Object.keys(allData).forEach((k) => {
+    if (/^\d{4}-\d{2}$/.test(k) && Array.isArray(allData[k])) {
+      allData[k] = allData[k].map(normalizeEntry);
+      snapshotsMes[k] = cloneDados(allData[k]);
+    }
+  });
 };
 
 const getHistorico = () => {
@@ -561,6 +590,36 @@ const novoRegistroHistorico = (dados) => {
 
 const resumoLancamento = (e) => `“${e.description}” (${formatCurrency(Number(e.value) || 0)})`;
 
+const detalheAlteracaoLancamento = (antes, depois) => {
+  const mudancas = [];
+  const vA = Number(antes?.value) || 0;
+  const vD = Number(depois?.value) || 0;
+  if (Math.abs(vA - vD) >= 0.005) {
+    mudancas.push(`${formatCurrency(vA)} → ${formatCurrency(vD)}`);
+  } else {
+    mudancas.push(formatCurrency(vD));
+  }
+  if (antes?.status !== depois?.status) {
+    mudancas.push(`${STATUS_LABELS[antes?.status] || antes?.status || '—'} → ${STATUS_LABELS[depois?.status] || depois?.status || '—'}`);
+  }
+  if (antes?.description !== depois?.description) {
+    mudancas.push(`nome “${antes?.description || ''}” → “${depois?.description || ''}”`);
+  }
+  if (antes?.category !== depois?.category) {
+    mudancas.push(`cat. ${antes?.category || '—'} → ${depois?.category || '—'}`);
+  }
+  if ((antes?.person || '') !== (depois?.person || '')) {
+    mudancas.push(`tag ${PERSON_LABELS[antes?.person] || '—'} → ${PERSON_LABELS[depois?.person] || '—'}`);
+  }
+  return `“${depois?.description || ''}” (${mudancas.join(' · ')})`;
+};
+
+const stripSyncMeta = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const { _updatedAt, ...rest } = obj;
+  return rest;
+};
+
 const diffListas = (antes, depois) => {
   const mapA = new Map(antes.map((e) => [e.id, e]));
   const mapD = new Map(depois.map((e) => [e.id, e]));
@@ -568,21 +627,46 @@ const diffListas = (antes, depois) => {
     adicionados: depois.filter((e) => !mapA.has(e.id)),
     removidos: antes.filter((e) => !mapD.has(e.id)),
     alterados: depois
-      .filter((e) => mapA.has(e.id) && JSON.stringify(mapA.get(e.id)) !== JSON.stringify(e))
-      .map((e) => ({ antes: mapA.get(e.id), depois: e }))
+      .filter((e) => mapA.has(e.id) && JSON.stringify(stripSyncMeta(mapA.get(e.id))) !== JSON.stringify(stripSyncMeta(e)))
+      .map((e) => ({ antes: cloneDados(mapA.get(e.id)), depois: cloneDados(e) }))
   };
 };
 
 // Mudança nos lançamentos de um mês (usado por setCurrentEntries e pelas importações)
 const registrarHistoricoMes = (mes, antes, depois, acao) => {
   const d = diffListas(antes || [], depois || []);
+  const now = Date.now();
+  const changedIds = new Set([
+    ...d.adicionados.map((e) => e.id),
+    ...d.alterados.map(({ depois: dep }) => dep.id)
+  ]);
+  const removedIds = d.removidos.map((e) => e.id);
+  if (removedIds.length) registrarExclusaoIds(removedIds);
+  if (changedIds.size) desmarcarExclusaoIds([...changedIds]);
+
+  depois.forEach((e) => {
+    if (changedIds.has(e.id) || !e._updatedAt) e._updatedAt = now;
+  });
+
   snapshotsMes[mes] = cloneDados(depois); // próximo diff parte daqui
   if (!d.adicionados.length && !d.removidos.length && !d.alterados.length) return null;
   if (!acao) {
     const partes = [];
-    if (d.adicionados.length) partes.push(d.adicionados.length === 1 ? `adicionou ${resumoLancamento(d.adicionados[0])}` : `adicionou ${d.adicionados.length} lançamentos`);
-    if (d.removidos.length) partes.push(d.removidos.length === 1 ? `excluiu ${resumoLancamento(d.removidos[0])}` : `excluiu ${d.removidos.length} lançamentos`);
-    if (d.alterados.length) partes.push(d.alterados.length === 1 ? `alterou ${resumoLancamento(d.alterados[0].depois)}` : `alterou ${d.alterados.length} lançamentos`);
+    if (d.adicionados.length) {
+      partes.push(d.adicionados.length === 1
+        ? `adicionou ${resumoLancamento(d.adicionados[0])}`
+        : `adicionou ${d.adicionados.length} lançamentos`);
+    }
+    if (d.removidos.length) {
+      partes.push(d.removidos.length === 1
+        ? `excluiu ${resumoLancamento(d.removidos[0])}`
+        : `excluiu ${d.removidos.length} lançamentos`);
+    }
+    if (d.alterados.length) {
+      partes.push(d.alterados.length === 1
+        ? `alterou ${detalheAlteracaoLancamento(d.alterados[0].antes, d.alterados[0].depois)}`
+        : `alterou ${d.alterados.length} lançamentos (${d.alterados.slice(0, 3).map((x) => detalheAlteracaoLancamento(x.antes, x.depois)).join('; ')})`);
+    }
     acao = partes.join(' · ');
   }
   const reg = { tipo: 'mes', mes, acao, reversivel: true, ...d };
@@ -590,15 +674,57 @@ const registrarHistoricoMes = (mes, antes, depois, acao) => {
   return reg;
 };
 
+const valorItemModulo = (colecao, item) => {
+  if (!item || typeof item !== 'object') return null;
+  if (colecao === 'investimentos') {
+    const at = Number(item.valorAtual) || 0;
+    const ap = Number(item.valorAplicado) || 0;
+    return at > 0 ? at : ap;
+  }
+  if (colecao === 'reservas') {
+    return (item.movimentacoes || []).reduce((acc, m) => acc + (m.tipo === 'deposito' ? (Number(m.valor) || 0) : -(Number(m.valor) || 0)), 0);
+  }
+  if (colecao === 'metas') {
+    const acum = (item.aportes || []).reduce((acc, a) => acc + (Number(a.valor) || 0), 0);
+    return acum > 0 ? acum : (Number(item.valorObjetivo) || 0);
+  }
+  if (colecao === 'patrimonio') return Number(item.valorAtual) || 0;
+  if (colecao === 'assinaturas') return Number(item.valor) || 0;
+  if (colecao === 'cartoes') return Number(item.limite) || 0;
+  if (colecao === 'comprasCartao') return Number(item.valor) || 0;
+  return null;
+};
+
 // Mudança num item de módulo (metas, reservas, investimentos…) — chamado pelo app-modules
 const registrarHistoricoModulo = (colecao, antes, depois) => {
-  if (JSON.stringify(antes ?? null) === JSON.stringify(depois ?? null)) return;
-  const alvo = depois ?? antes ?? {};
-  const nome = alvo.nome || alvo.instituicao || alvo.description || alvo.tipo || '';
-  const verbo = !antes ? 'adicionou' : !depois ? 'excluiu' : 'alterou';
+  const antesLimpo = antes ? cloneDados(stripSyncMeta(antes)) : null;
+  const depoisLimpo = depois ? cloneDados(stripSyncMeta(depois)) : null;
+  if (JSON.stringify(antesLimpo) === JSON.stringify(depoisLimpo)) return;
+
+  const alvo = depoisLimpo ?? antesLimpo ?? {};
+  const nome = alvo.nome || alvo.instituicao || alvo.descricao || alvo.description || alvo.tipo || '';
+  const verbo = !antesLimpo ? 'adicionou' : !depoisLimpo ? 'excluiu' : 'alterou';
+
+  const vA = valorItemModulo(colecao, antesLimpo);
+  const vD = valorItemModulo(colecao, depoisLimpo);
+  let sufixoValor = '';
+  if (!antesLimpo && vD !== null) {
+    sufixoValor = ` (${formatCurrency(vD)})`;
+  } else if (!depoisLimpo && vA !== null) {
+    sufixoValor = ` (${formatCurrency(vA)})`;
+  } else if (antesLimpo && depoisLimpo && vA !== null && vD !== null) {
+    sufixoValor = Math.abs(vA - vD) >= 0.005
+      ? ` (${formatCurrency(vA)} → ${formatCurrency(vD)})`
+      : ` (${formatCurrency(vD)})`;
+  }
+
   novoRegistroHistorico({
-    tipo: 'modulo', colecao, acao: `${NOMES_COLECAO[colecao] || colecao}: ${verbo} ${nome ? `“${nome}”` : 'item'}`,
-    antes: antes ?? null, depois: depois ?? null, reversivel: true
+    tipo: 'modulo',
+    colecao,
+    acao: `${NOMES_COLECAO[colecao] || colecao}: ${verbo} ${nome ? `“${nome}”` : 'item'}${sufixoValor}`,
+    antes: antes ? cloneDados(antes) : null,
+    depois: depois ? cloneDados(depois) : null,
+    reversivel: true
   });
 };
 
@@ -608,16 +734,24 @@ const registrarHistoricoInfo = (acao) => novoRegistroHistorico({ tipo: 'info', a
 const desfazerRegistroHistorico = (id) => {
   const reg = getHistorico().find((r) => r.id === id);
   if (!reg || !reg.reversivel || reg.desfeito) return false;
+  const now = Date.now();
 
   if (reg.tipo === 'mes') {
-    const antesLista = allData[reg.mes] || [];
+    const antesLista = cloneDados(allData[reg.mes] || []);
     const addIds = new Set((reg.adicionados || []).map((e) => e.id));
+    if (addIds.size) registrarExclusaoIds([...addIds]);
     const nova = antesLista.filter((e) => !addIds.has(e.id));
     (reg.alterados || []).forEach(({ antes }) => {
+      const restaurado = { ...cloneDados(antes), _updatedAt: now };
+      desmarcarExclusaoIds([restaurado.id]);
       const i = nova.findIndex((e) => e.id === antes.id);
-      if (i >= 0) nova[i] = antes; else nova.push(antes);
+      if (i >= 0) nova[i] = restaurado; else nova.push(restaurado);
     });
-    (reg.removidos || []).forEach((e) => { if (!nova.some((x) => x.id === e.id)) nova.push(e); });
+    (reg.removidos || []).forEach((e) => {
+      const restaurado = { ...cloneDados(e), _updatedAt: now };
+      desmarcarExclusaoIds([restaurado.id]);
+      if (!nova.some((x) => x.id === e.id)) nova.push(restaurado);
+    });
     allData[reg.mes] = nova.map(normalizeEntry);
     reg.desfeito = true;
     registrarHistoricoMes(reg.mes, antesLista, allData[reg.mes], `desfez: ${reg.acao}`);
@@ -628,10 +762,23 @@ const desfazerRegistroHistorico = (id) => {
     const lista = allData.__app[reg.colecao];
     const alvoId = (reg.depois ?? reg.antes)?.id;
     const i = lista.findIndex((x) => x.id === alvoId);
-    if (reg.antes) { if (i >= 0) lista[i] = reg.antes; else lista.push(reg.antes); }
-    else if (i >= 0) lista.splice(i, 1);
+    if (reg.antes) {
+      const restaurado = { ...cloneDados(reg.antes), _updatedAt: now };
+      desmarcarExclusaoIds([alvoId]);
+      if (i >= 0) lista[i] = restaurado; else lista.push(restaurado);
+    } else if (i >= 0) {
+      registrarExclusaoIds([alvoId]);
+      lista.splice(i, 1);
+    }
     reg.desfeito = true;
-    novoRegistroHistorico({ tipo: 'modulo', colecao: reg.colecao, acao: `desfez: ${reg.acao}`, antes: reg.depois ?? null, depois: reg.antes ?? null, reversivel: true });
+    novoRegistroHistorico({
+      tipo: 'modulo',
+      colecao: reg.colecao,
+      acao: `desfez: ${reg.acao}`,
+      antes: reg.depois ? cloneDados(reg.depois) : null,
+      depois: reg.antes ? cloneDados(reg.antes) : null,
+      reversivel: true
+    });
   } else {
     return false;
   }
@@ -656,9 +803,9 @@ const abrirHistorico = async () => {
     title: 'Histórico de alterações',
     html: `<div class="hist">
       ${linhas || '<p class="text-muted mb-0">Nada registrado ainda. A partir de agora toda mudança fica aqui.</p>'}
-      <p class="hist__hint">Guarda as últimas ${HISTORICO_MAX} mudanças. Desfazer também entra no histórico, então dá para desfazer o desfazer.</p>
+      <p class="hist__hint">Guarda as últimas ${HISTORICO_MAX} mudanças com valores antes e depois. Desfazer também entra no histórico, então dá para desfazer o desfazer.</p>
     </div>`,
-    width: '42rem',
+    width: '44rem',
     showConfirmButton: false,
     showCancelButton: true,
     cancelButtonText: 'Fechar',
@@ -695,10 +842,10 @@ const addCardItem = (entryId, description, value, recurring = false) => {
   const items = [...(entries[index].card_items ?? [])];
   items.push({ id: generateId(), description, value, recurring: recurring === true });
   const total = sumCardItems(items);
-  entries[index] = { ...entries[index], card_items: items, value: total };
+  const nextEntries = entries.map((e, i) => (i === index ? { ...e, card_items: items, value: total } : e));
   expandedCardEntries.add(entryId);
   pendingCardFocusEntryId = entryId;
-  setCurrentEntries(entries);
+  setCurrentEntries(nextEntries);
   notify.success(recurring ? 'Item recorrente adicionado ao cartão.' : 'Item adicionado ao cartão.');
   render();
   return true;
@@ -810,11 +957,13 @@ const updateCardItem = (entryId, itemId, description, value, recurring) => {
     return next;
   });
 
-  entries[index] = syncCardEntryFromItems({ ...entries[index], card_items: items });
+  const nextEntries = entries.map((e, i) => (
+    i === index ? syncCardEntryFromItems({ ...e, card_items: items }) : e
+  ));
   editingCardItems.delete(`${entryId}:${itemId}`);
   expandedCardEntries.add(entryId);
   pendingCardFocusEntryId = entryId;
-  setCurrentEntries(entries);
+  setCurrentEntries(nextEntries);
   notify.success('Item atualizado.');
   render();
 };
@@ -845,9 +994,9 @@ const toggleCardItemRecurring = (entryId, itemId) => {
     return { ...item, recurring: !item.recurring };
   });
 
-  entries[index] = { ...entries[index], card_items: items };
+  const nextEntries = entries.map((e, i) => (i === index ? { ...e, card_items: items } : e));
   expandedCardEntries.add(entryId);
-  setCurrentEntries(entries);
+  setCurrentEntries(nextEntries);
   render();
 };
 
@@ -868,13 +1017,11 @@ const deleteCardItem = (entryId, itemId) => {
   const items = currentItems.filter((item) => item.id !== itemId);
   const total = sumCardItems(items);
 
-  entries[index] = syncCardEntryFromItems({
-    ...entries[index],
-    card_items: items,
-    value: total
-  });
+  const nextEntries = entries.map((e, i) => (
+    i === index ? syncCardEntryFromItems({ ...e, card_items: items, value: total }) : e
+  ));
   expandedCardEntries.add(entryId);
-  setCurrentEntries(entries);
+  setCurrentEntries(nextEntries);
   notify.info('Item removido da fatura.');
   render();
 };
@@ -897,9 +1044,9 @@ const applyCardItemsOrder = (entryId, orderedIds) => {
 
   if (next.every((item, i) => item.id === items[i].id)) return false;
 
-  entries[index] = { ...entries[index], card_items: next };
+  const nextEntries = entries.map((e, i) => (i === index ? { ...e, card_items: next } : e));
   expandedCardEntries.add(entryId);
-  setCurrentEntries(entries);
+  setCurrentEntries(nextEntries);
   return true;
 };
 
@@ -1460,8 +1607,8 @@ const handleEditEntry = (e) => {
 
   if (!validateEntry(updated)) return;
 
-  entries[index] = updated;
-  setCurrentEntries(entries);
+  const nextEntries = entries.map((item, i) => (i === index ? updated : item));
+  setCurrentEntries(nextEntries);
   editModal.hide();
   notify.success('Lançamento atualizado!');
   render();
@@ -1488,10 +1635,10 @@ const deleteEntry = async (id) => {
 const changeStatus = (id, newStatus) => {
   const entries = getCurrentEntries();
   const index = entries.findIndex((e) => e.id === id);
-  if (index === -1) return;
+  if (index === -1 || entries[index].status === newStatus) return;
 
-  entries[index].status = newStatus;
-  setCurrentEntries(entries);
+  const nextEntries = entries.map((e, i) => (i === index ? { ...e, status: newStatus } : e));
+  setCurrentEntries(nextEntries);
   render();
 };
 
@@ -3440,8 +3587,13 @@ const handleListClick = (e) => {
   if (action === 'edit') openEditModal(id);
   if (action === 'delete') deleteEntry(id);
   if (action === 'edit-carteira') {
-    window.AppModules?.activate('investimentos');
-    notify.info('Editando na aba Investimentos — encontre a categoria e clique no lápis.');
+    const carteiraId = btn.dataset.carteiraId;
+    if (carteiraId && window.AppModules?.editInvestimento) {
+      window.AppModules.editInvestimento(carteiraId);
+    } else {
+      window.AppModules?.activate('investimentos');
+      notify.info('Editando na aba Investimentos — encontre a categoria e clique no lápis.');
+    }
   }
 };
 
@@ -3579,14 +3731,222 @@ const onEditTypeChange = () => {
 // Init
 // ============================================
 
+// Reconciliação única dos ajustes recentes relatados (Caixinha Turbo 600 -> 450,
+// MEI pago, Cabelo Gabriel pago + histórico de alterações correspondente) caso
+// tenham se perdido antes da correção do sync/histórico.
+const reconciliarDadosRecentes = () => {
+  if (!allData || typeof allData !== 'object') return false;
+  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
+  if (allData.__app._reconciliado20261024) return false;
+
+  const mesesComDados = Object.keys(allData)
+    .filter((k) => /^\d{4}-\d{2}$/.test(k) && Array.isArray(allData[k]) && allData[k].length > 0)
+    .sort();
+
+  // Só reconcilia quando os dados reais do usuário já estiverem carregados
+  if (!mesesComDados.length && !(Array.isArray(allData.__app.investimentos) && allData.__app.investimentos.length)) {
+    return false;
+  }
+
+  let houveMudanca = false;
+  const mesAtualKey = getMonthKey(currentDate);
+  const mesAlvo = allData[mesAtualKey]?.length
+    ? mesAtualKey
+    : (mesesComDados[mesesComDados.length - 1] || mesAtualKey);
+
+  // 1. Marcar MEI e Cabelo Gabriel como "pago" no mês ativo/recente se estiverem "nao_pago"
+  const mesesParaVerificar = Array.from(new Set([mesAlvo, mesAtualKey])).filter((m) => Array.isArray(allData[m]));
+  mesesParaVerificar.forEach((mes) => {
+    const listaOriginal = allData[mes];
+    let alterouMes = false;
+    const novaLista = listaOriginal.map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      const desc = String(item.description || '').trim();
+      const person = String(item.person || '').toLowerCase();
+      const ehMei =
+        /^(mei|mei\s+gabriel|das\s*mei|imposto\s*mei|microempreendedor)$/i.test(desc) ||
+        (/\bmei\b/i.test(desc) && (person === 'gabriel' || !person));
+      const ehCabeloGabriel =
+        /cabelo\s*gabriel|barbeiro\s*gabriel|corte\s*(de\s*)?cabelo\s*gabriel/i.test(desc) ||
+        (/\b(cabelo|barbeiro|barbearia|corte\s+de\s+cabelo)\b/i.test(desc) && person === 'gabriel');
+
+      if ((ehMei || ehCabeloGabriel) && item.status !== 'pago') {
+        alterouMes = true;
+        return { ...item, status: 'pago', _updatedAt: Date.now() };
+      }
+      return item;
+    });
+
+    if (alterouMes) {
+      registrarHistoricoMes(mes, listaOriginal, novaLista);
+      allData[mes] = novaLista;
+      houveMudanca = true;
+    }
+  });
+
+  // 2. Garantir Caixinha Turbo em R$ 450,00 (com histórico 600 -> 450)
+  if (!Array.isArray(allData.__app.investimentos)) allData.__app.investimentos = [];
+  if (!Array.isArray(allData.__app.historico)) allData.__app.historico = [];
+
+  const regexCaixinhaTurbo = /caixinha\s*turbo/i;
+  let encontrouCaixinhaMes = false;
+
+  mesesParaVerificar.forEach((mes) => {
+    const listaOriginal = allData[mes];
+    let alterouMes = false;
+    const novaLista = listaOriginal.map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      if (regexCaixinhaTurbo.test(String(item.description || ''))) {
+        encontrouCaixinhaMes = true;
+        if (Number(item.value) === 600) {
+          alterouMes = true;
+          return { ...item, value: 450, status: 'pago', _updatedAt: Date.now() };
+        }
+      }
+      return item;
+    });
+
+    if (alterouMes) {
+      registrarHistoricoMes(mes, listaOriginal, novaLista);
+      allData[mes] = novaLista;
+      houveMudanca = true;
+    }
+  });
+
+  const idxCarteira = allData.__app.investimentos.findIndex(
+    (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
+  );
+
+  if (idxCarteira >= 0) {
+    const invAtual = allData.__app.investimentos[idxCarteira];
+    const vAplicado = Number(invAtual.valorAplicado) || 0;
+    const vAtual = Number(invAtual.valorAtual) || 0;
+    if (vAplicado === 600 || vAtual === 600 || (!encontrouCaixinhaMes && vAplicado !== 450 && vAtual !== 450)) {
+      const invAntes600 = {
+        ...JSON.parse(JSON.stringify(invAtual)),
+        valorAplicado: 600,
+        valorAtual: 600
+      };
+      const invDepois450 = {
+        ...JSON.parse(JSON.stringify(invAtual)),
+        valorAplicado: 450,
+        valorAtual: 450,
+        _updatedAt: Date.now()
+      };
+      allData.__app.investimentos[idxCarteira] = invDepois450;
+      registrarHistoricoModulo('investimentos', invAntes600, invDepois450);
+      houveMudanca = true;
+    }
+  } else if (!encontrouCaixinhaMes) {
+    // Se não estava nem na carteira nem no mês (perdeu-se ao sair do site),
+    // garante a categoria na carteira e o lançamento de R$ 450,00 no mês alvo + histórico 600 -> 450
+    const carteiraId = generateId();
+    const dataInicio = `${mesAlvo}-01`;
+    const novaCarteira = {
+      id: carteiraId,
+      tipo: 'Renda Fixa',
+      instituicao: 'Caixinha Turbo',
+      valorAplicado: 0,
+      valorAtual: 0,
+      rentabilidade: 0,
+      data: dataInicio,
+      _updatedAt: Date.now()
+    };
+    allData.__app.investimentos.push(novaCarteira);
+
+    const entryId = generateId();
+    const entry600 = normalizeEntry({
+      id: entryId,
+      description: 'Caixinha Turbo',
+      category: catPapel('investimentos'),
+      type: 'investimento',
+      person: 'gabriel',
+      value: 600,
+      status: 'pago',
+      due_day: null,
+      observation: '',
+      card_items: [],
+      investimento_id: carteiraId,
+      _updatedAt: Date.now() - 60000
+    });
+    const entry450 = {
+      ...entry600,
+      value: 450,
+      _updatedAt: Date.now()
+    };
+
+    const baseMes = Array.isArray(allData[mesAlvo]) ? allData[mesAlvo] : [];
+    const listaCom600 = [...baseMes, entry600];
+    registrarHistoricoMes(mesAlvo, baseMes, listaCom600);
+    const listaCom450 = [...baseMes, entry450];
+    registrarHistoricoMes(mesAlvo, listaCom600, listaCom450);
+    allData[mesAlvo] = listaCom450;
+    houveMudanca = true;
+  }
+
+  // Se Caixinha Turbo já estava em 450 mas sem o registro de histórico 600 -> 450, garante no histórico
+  const jaTemHistCaixinha = allData.__app.historico.some((h) =>
+    regexCaixinhaTurbo.test(String(h?.acao || h?.resumo || ''))
+  );
+  if (!jaTemHistCaixinha) {
+    const invRef = allData.__app.investimentos.find(
+      (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
+    );
+    const entryRef = (allData[mesAlvo] || []).find((e) => regexCaixinhaTurbo.test(String(e?.description || '')));
+    if (entryRef) {
+      const antes600 = { ...JSON.parse(JSON.stringify(entryRef)), value: 600 };
+      const depois450 = { ...JSON.parse(JSON.stringify(entryRef)), value: 450 };
+      novoRegistroHistorico({
+        tipo: 'mes',
+        mes: mesAlvo,
+        acao: `alterou “Caixinha Turbo” (${formatCurrency(600)} → ${formatCurrency(450)})`,
+        reversivel: true,
+        adicionados: [],
+        removidos: [],
+        alterados: [{ antes: antes600, depois: depois450 }]
+      });
+      houveMudanca = true;
+    } else if (invRef) {
+      const antes600 = { ...JSON.parse(JSON.stringify(invRef)), valorAplicado: 600, valorAtual: 600 };
+      const depois450 = { ...JSON.parse(JSON.stringify(invRef)), valorAplicado: 450, valorAtual: 450 };
+      registrarHistoricoModulo('investimentos', antes600, depois450);
+      houveMudanca = true;
+    }
+  }
+
+  allData.__app._reconciliado20261024 = true;
+  return houveMudanca;
+};
+
 // Carrega os dados e desenha a tela (chamado quando o armazenamento está pronto)
 const startApp = async () => {
   await loadData();
   iniciarSnapshotsHistorico();
+  const reconciliou = reconciliarDadosRecentes();
+  if (reconciliou) {
+    saveData();
+  }
   aplicarCategoriasSalvas();
   populateCategories();
   populateInvestimentoSelects();
   toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'));
+  render();
+};
+
+// Recebe atualizações em tempo real da nuvem (outro aparelho/aba) sem perder edições locais
+const handleRemoteUpdate = (remoteData) => {
+  if (!remoteData || typeof remoteData !== 'object') return;
+  allData = AppStorage.mergeAllData ? AppStorage.mergeAllData(allData, remoteData, false) : remoteData;
+  Object.keys(allData).forEach((month) => {
+    if (month.startsWith('__')) return;
+    if (Array.isArray(allData[month])) {
+      allData[month] = allData[month].map(normalizeEntry);
+    }
+  });
+  iniciarSnapshotsHistorico();
+  aplicarCategoriasSalvas();
+  populateCategories();
+  populateInvestimentoSelects();
   render();
 };
 
@@ -3601,8 +3961,11 @@ const showAppVersion = () => {
   if (!dom.appVersion) return;
   dom.appVersion.textContent = `v${APP_VERSION}`;
   dom.appVersion.hidden = false;
-  // Recarregar basta: o service worker busca o HTML sempre na rede
-  dom.appVersion.addEventListener('click', () => location.reload());
+  // Garante flush de qualquer alteração pendente antes de recarregar
+  dom.appVersion.addEventListener('click', async () => {
+    await AppStorage.flush?.();
+    location.reload();
+  });
 };
 
 const registerServiceWorker = async () => {
@@ -3646,9 +4009,9 @@ const init = () => {
   editModal = new bootstrap.Modal(dom.editModalEl);
   bindEvents();
 
-  // Inicia o armazenamento: em modo nuvem aguarda o login;
+  // Inicia o armazenamento: em modo nuvem aguarda o login e escuta mudanças em tempo real;
   // em modo local dispara startApp() imediatamente.
-  AppStorage.init(startApp);
+  AppStorage.init(startApp, handleRemoteUpdate);
 };
 
 document.addEventListener('DOMContentLoaded', init);
