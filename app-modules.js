@@ -1767,6 +1767,10 @@
     if (activeTab === 'mes') return;
     const mod = MODULES[activeTab];
     const container = document.getElementById(`view-${activeTab}`);
+    if (activeTab === 'historico' && container) {
+      window.HistoricoPage?.render(container);
+      return;
+    }
     if (mod && container) mod.render(container);
   };
 
@@ -1856,7 +1860,8 @@
     ['cartoes', 'credit-card-2-front', 'Cartões'],
     ['patrimonio', 'houses', 'Patrimônio'],
     ['assinaturas', 'arrow-repeat', 'Contas fixas'],
-    ['relatorios', 'funnel', 'Relatórios']
+    ['relatorios', 'funnel', 'Relatórios'],
+    ['historico', 'clock-history', 'Histórico']
   ];
 
   const buildTabs = () => {

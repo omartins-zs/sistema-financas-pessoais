@@ -483,7 +483,7 @@ const AppStorage = (() => {
   const LOCAL_BACKUP_INTERVAL_MS = 3 * 60 * 1000;
   const LOCAL_BACKUP_KEEP_RECENT = 40;
   const LOCAL_BACKUP_KEEP_DAYS = 45;
-  const LOCAL_LOG_MAX = 800;
+  const LOCAL_LOG_MAX = 10000;
   const LOG_DETAIL_MAX_CHARS = 300000;
   const MODULE_COLLECTIONS = ['metas', 'reservas', 'cartoes', 'comprasCartao', 'investimentos', 'patrimonio', 'assinaturas', 'passeios'];
   let cloudExtrasError = '';
@@ -491,6 +491,7 @@ const AppStorage = (() => {
   let retryTimer = null;
   let retryCount = 0;
   const loggedHistIds = new Set();
+  const auditWrites = new Map();
 
   const appVersion = () => document.querySelector?.('meta[name="app-version"]')?.content?.trim() || 'dev';
 
@@ -661,6 +662,71 @@ const AppStorage = (() => {
     } catch {}
   };
 
+  // Cada alteração recebe seu próprio registro local e na nuvem. O histórico
+  // embutido no documento principal continua servindo ao desfazer imediato;
+  // esta cópia individual não depende do limite de tamanho desse documento.
+  const enviarEventoAuditoria = (entry) => {
+    if (auditWrites.has(entry.id)) return auditWrites.get(entry.id);
+    const promise = (async () => {
+      if (!podeUsarExtrasNuvem()) return false;
+      try {
+        const ref = userDoc().collection('logs').doc(entry.id);
+        const existing = await ref.get();
+        if (!existing.exists) {
+          try {
+            await ref.set({
+              ...entry,
+              cloudSaved: true,
+              servidorEm: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          } catch (err) {
+            // Outro aparelho pode ter criado o mesmo id em paralelo. Os logs são
+            // imutáveis; basta confirmar que o registro idempotente já existe.
+            const afterRace = await ref.get();
+            if (!afterRace.exists) throw err;
+          }
+        }
+        await idbPut('logs', { ...entry, cloudSaved: true, origem: 'aparelho' });
+        return true;
+      } catch (err) {
+        handleExtrasError(err);
+        return false;
+      }
+    })();
+    auditWrites.set(entry.id, promise);
+    promise.finally(() => auditWrites.delete(entry.id));
+    return promise;
+  };
+
+  const registrarEventoAuditoria = async (evento) => {
+    if (!evento?.id) return false;
+    let detalhesJson = '';
+    try { detalhesJson = JSON.stringify({ evento }); } catch {}
+    const entry = {
+      id: `auditoria-${evento.id}`,
+      tipo: 'alteracao',
+      quando: Date.parse(evento.quando) || Date.now(),
+      resumo: String(evento.acao || 'Alteração registrada').slice(0, 2000),
+      detalhesJson,
+      cloudSaved: false,
+      ...autorInfo()
+    };
+    await registrarLogLocal(entry);
+    return enviarEventoAuditoria(entry);
+  };
+
+  const sincronizarAuditoriasPendentes = async () => {
+    if (!podeUsarExtrasNuvem()) return;
+    try {
+      const logs = await idbGetAll('logs');
+      for (const entry of logs) {
+        if (entry?.tipo === 'alteracao' && !entry.cloudSaved) {
+          await enviarEventoAuditoria(entry);
+        }
+      }
+    } catch {}
+  };
+
   const userDoc = () => db.collection('financas').doc(uid);
 
   const handleExtrasError = (err) => {
@@ -826,6 +892,27 @@ const AppStorage = (() => {
     };
   };
 
+  const listarLogsPaginado = async (limite = 100, cursor = null) => {
+    let nuvem = [];
+    let proximoCursor = null;
+    let temMais = false;
+    if (isCloud && uid && db && cloudExtrasError !== 'permission-denied') {
+      try {
+        let consulta = userDoc().collection('logs').orderBy('quando', 'desc');
+        if (cursor) consulta = consulta.startAfter(cursor);
+        const qs = await consulta.limit(limite).get();
+        nuvem = qs.docs.map((doc) => ({ ...doc.data(), origem: 'nuvem' }));
+        proximoCursor = qs.docs.at(-1) || null;
+        temMais = qs.docs.length === limite;
+      } catch (err) {
+        handleExtrasError(err);
+      }
+    }
+    let local = [];
+    try { local = (await idbGetAll('logs')).map((entry) => ({ ...entry, origem: 'aparelho' })); } catch {}
+    return { nuvem, local, cursor: proximoCursor, temMais, erroNuvem: cloudExtrasError };
+  };
+
   // Backup imediato (aparelho + nuvem) — usado antes de restaurar/limpar/importar
   const backupNow = async (data, motivo = 'manual', { nuvem = true } = {}) => {
     const snapshot = data && hasEntries(data) ? data : localLoad();
@@ -928,6 +1015,7 @@ const AppStorage = (() => {
           ? acoes.map((a) => a.acao).filter(Boolean).join(' | ')
           : (mudancasContagem.length ? `sincronizou (${mudancasContagem.join(', ')})` : 'sincronizou');
         registrarLog('salvou', resumo, { acoes, contagemAntes, contagemDepois, mudancasContagem });
+        sincronizarAuditoriasPendentes();
         salvarBackupNuvem(serialized, finalToWrite);
       } catch {}
       return true;
@@ -1133,6 +1221,7 @@ const AppStorage = (() => {
         if (!booted || previousUid !== uid) {
           booted = true;
           onReady();
+          sincronizarAuditoriasPendentes();
         }
       } else {
         uid = null;
@@ -1177,6 +1266,7 @@ const AppStorage = (() => {
     });
 
     window.addEventListener('online', () => {
+      sincronizarAuditoriasPendentes();
       const meta = getLocalMeta();
       if (meta.dirty && uid) {
         const local = localLoad();
@@ -1486,6 +1576,9 @@ const AppStorage = (() => {
     listarBackups,
     obterBackup,
     listarLogs,
+    listarLogsPaginado,
+    registrarEventoAuditoria,
+    sincronizarAuditoriasPendentes,
     registrarLog,
     getDeviceName,
     setDeviceName,

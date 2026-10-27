@@ -41,8 +41,11 @@ const podarHistorico = () => {
 const novoRegistroHistorico = (dados) => {
   // Guarda quem fez (nome do aparelho: ex. "Barbara", "Gabriel") — vocês usam o mesmo login
   const autor = AppStorage.getDeviceName?.() || '';
-  getHistorico().unshift({ id: generateId(), quando: dayjs().toISOString(), ...(autor ? { autor } : {}), ...dados });
+  const registro = { id: generateId(), quando: dayjs().toISOString(), ...(autor ? { autor } : {}), ...dados };
+  getHistorico().unshift(registro);
   podarHistorico();
+  Promise.resolve(AppStorage.registrarEventoAuditoria?.(registro)).catch(() => {});
+  return registro;
 };
 
 const resumoLancamento = (e) => `“${e.description}” (${formatCurrency(Number(e.value) || 0)})`;
@@ -197,13 +200,38 @@ const registrarHistoricoModulo = (colecao, antes, depois) => {
 // Só auditoria (sem desfazer): ex. mudança nas categorias
 const registrarHistoricoInfo = (acao) => novoRegistroHistorico({ tipo: 'info', acao, reversivel: false });
 
-const desfazerRegistroHistorico = (id) => {
-  const reg = getHistorico().find((r) => r.id === id);
+const mesmoConteudoHistorico = (a, b) => {
+  const normalizar = (valor) => {
+    if (Array.isArray(valor)) return valor.map(normalizar);
+    if (!valor || typeof valor !== 'object') return valor;
+    return Object.keys(valor).filter((k) => k !== '_updatedAt').sort().reduce((out, k) => {
+      out[k] = normalizar(valor[k]);
+      return out;
+    }, {});
+  };
+  return JSON.stringify(normalizar(a)) === JSON.stringify(normalizar(b));
+};
+
+const desfazerRegistroHistorico = (registroOuId) => {
+  const historico = getHistorico();
+  const fornecido = typeof registroOuId === 'object' ? registroOuId : null;
+  let reg = (fornecido && historico.find((r) => r.id === fornecido.id))
+    || fornecido
+    || historico.find((r) => r.id === registroOuId);
   if (!reg || !reg.reversivel || reg.desfeito) return false;
   const now = Date.now();
 
   if (reg.tipo === 'mes') {
     const antesLista = cloneDados(allData[reg.mes] || []);
+    const atuais = new Map(antesLista.map((e) => [e.id, e]));
+    const conflito = (reg.adicionados || []).some((e) => !mesmoConteudoHistorico(atuais.get(e.id), e))
+      || (reg.alterados || []).some(({ depois }) => !mesmoConteudoHistorico(atuais.get(depois.id), depois))
+      || (reg.removidos || []).some((e) => atuais.has(e.id));
+    if (conflito) return false;
+    if (!historico.some((r) => r.id === reg.id)) {
+      reg = cloneDados(reg);
+      historico.unshift(reg);
+    }
     const addIds = new Set((reg.adicionados || []).map((e) => e.id));
     if (addIds.size) registrarExclusaoIds([...addIds]);
     const nova = antesLista.filter((e) => !addIds.has(e.id));
@@ -223,6 +251,13 @@ const desfazerRegistroHistorico = (id) => {
     registrarHistoricoMes(reg.mes, antesLista, allData[reg.mes], `desfez: ${reg.acao}`);
     if (reg.mes !== getMonthKey(currentDate)) { currentDate = dayjs(`${reg.mes}-01`); syncSelectors(); }
   } else if (reg.tipo === 'modulo') {
+    const listaAtual = allData.__app?.[reg.colecao] || [];
+    const alvoAtual = listaAtual.find((x) => x.id === (reg.depois ?? reg.antes)?.id) || null;
+    if (reg.depois ? !mesmoConteudoHistorico(alvoAtual, reg.depois) : Boolean(alvoAtual)) return false;
+    if (!historico.some((r) => r.id === reg.id)) {
+      reg = cloneDados(reg);
+      historico.unshift(reg);
+    }
     if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
     if (!Array.isArray(allData.__app[reg.colecao])) allData.__app[reg.colecao] = [];
     const lista = allData.__app[reg.colecao];
@@ -275,40 +310,6 @@ const formatarAcaoHistorico = (r) => {
     return partes.join(' · ');
   }
   return acaoBase;
-};
-
-const abrirHistorico = async () => {
-  const h = getHistorico();
-  const linhas = h.slice(0, 80).map((r) => `
-    <div class="hist-row${r.desfeito ? ' is-undone' : ''}">
-      <span class="hist-row__when">${dayjs(r.quando).format('DD/MM HH:mm')}</span>
-      <span class="hist-row__what">${escapeHtml(formatarAcaoHistorico(r))}${r.mes ? ` <span class="hist-row__mes">${dayjs(`${r.mes}-01`).format('MMM/YY')}</span>` : ''}${r.autor ? ` <span class="hist-row__mes" title="Quem fez">${escapeHtml(r.autor)}</span>` : ''}${r.desfeito ? ' <span class="hist-row__tag">desfeito</span>' : ''}</span>
-      ${r.reversivel && !r.desfeito
-        ? `<button type="button" class="hist-row__undo" data-undo="${r.id}" title="Voltar como estava antes desta mudança"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>`
-        : '<span></span>'}
-    </div>`).join('');
-
-  await Swal.fire({
-    title: 'Histórico de alterações',
-    html: `<div class="hist">
-      ${linhas || '<p class="text-muted mb-0">Nada registrado ainda. A partir de agora toda mudança fica aqui.</p>'}
-      <p class="hist__hint">Guarda as últimas ${HISTORICO_MAX} mudanças com valores antes e depois. Desfazer também entra no histórico, então dá para desfazer o desfazer. O registro completo e permanente fica em <strong>Backups e logs</strong> (ícone de escudo).</p>
-    </div>`,
-    width: '44rem',
-    showConfirmButton: false,
-    showCancelButton: true,
-    cancelButtonText: 'Fechar',
-    didOpen: () => {
-      Swal.getPopup().querySelectorAll('[data-undo]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const ok = desfazerRegistroHistorico(btn.dataset.undo);
-          Swal.close();
-          notify[ok ? 'success' : 'error'](ok ? 'Mudança desfeita.' : 'Não foi possível desfazer.');
-          if (ok) setTimeout(abrirHistorico, 150);
-        });
-      });
-    }
-  });
 };
 
 const setCurrentEntries = (entries, acao) => {
@@ -560,4 +561,10 @@ const moveCardItemBy = (entryId, itemId, delta) => {
 
   pendingCardItemFocusId = itemId;
   if (!reorderCardItems(entryId, ids)) pendingCardItemFocusId = null;
+};
+
+window.HistoricoAuditoria = {
+  listar: () => Array.isArray(allData.__app?.historico) ? cloneDados(allData.__app.historico) : [],
+  formatar: formatarAcaoHistorico,
+  desfazer: desfazerRegistroHistorico
 };

@@ -50,7 +50,10 @@ service cloud.firestore {
 
       // Permissões do documento pai não se estendem às subcoleções.
       match /logs/{logId} {
-        allow read, write: if dono(uid);
+        allow read: if dono(uid);
+        allow create: if dono(uid);
+        // Registros de auditoria são append-only: não podem ser editados nem apagados.
+        allow update, delete: if false;
       }
       match /backups/{backupId} {
         allow read, write: if dono(uid);
@@ -63,7 +66,7 @@ service cloud.firestore {
 }
 ```
 
-> Isso garante que **cada usuário só acessa os próprios dados**.
+> Isso garante que **cada usuário só acessa os próprios dados**. Os logs são somente leitura depois de criados; dados financeiros continuam no documento `financas/{uid}` e backups continuam na subcoleção `backups`.
 
 #### Publicar pelo Firebase CLI (alternativa)
 

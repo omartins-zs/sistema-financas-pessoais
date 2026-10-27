@@ -148,8 +148,8 @@ const bindEvents = () => {
   dom.btnCopyMonth.addEventListener('click', copyPreviousMonth);
   dom.btnClearMonth.addEventListener('click', clearCurrentMonth);
   dom.btnTheme.addEventListener('click', toggleTheme);
-  document.getElementById('btnHistory')?.addEventListener('click', abrirHistorico);
-  document.getElementById('btnBackups')?.addEventListener('click', () => window.abrirBackupsLogs?.());
+  document.getElementById('btnHistory')?.addEventListener('click', () => window.AppModules?.activate('historico'));
+  document.getElementById('btnBackups')?.addEventListener('click', () => window.HistoricoPage?.openTab('backups'));
   document.querySelectorAll('[data-import]').forEach((btn) => {
     btn.addEventListener('click', () => handleImportClick(btn.dataset.import));
   });

@@ -10,7 +10,9 @@ service cloud.firestore {
 
       // Regras do documento pai não se propagam às subcoleções.
       match /logs/{logId} {
-        allow read, write: if dono(uid);
+        allow read: if dono(uid);
+        allow create: if dono(uid);
+        allow update, delete: if false;
       }
       match /backups/{backupId} {
         allow read, write: if dono(uid);

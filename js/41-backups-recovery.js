@@ -187,7 +187,7 @@ const renderListaBackups = (dados) => {
     ${aparelho || '<p class="text-muted small mb-0">Nenhum backup neste aparelho ainda.</p>'}`;
 };
 
-const ROTULOS_LOG = { salvou: 'Salvou', abriu: 'Abriu', erro: 'Erro', restaurou: 'Restaurou', recuperou: 'Recuperou' };
+const ROTULOS_LOG = { salvou: 'Salvou', abriu: 'Abriu', erro: 'Erro', restaurou: 'Restaurou', recuperou: 'Recuperou', alteracao: 'Alteração' };
 
 const renderListaLogs = (dados) => {
   const linhas = dados.logs.map((l) => {
@@ -216,123 +216,303 @@ const renderListaLogs = (dados) => {
     <p class="hist__hint">Cada gravação registra quem fez (nome do aparelho), a hora exata, o que mudou e quantos lançamentos ficaram em cada mês. Linhas em vermelho indicam erro ou mês que perdeu lançamentos.</p>`;
 };
 
-const abrirBackupsLogs = async () => {
-  const st = AppStorage.getStatus?.() || {};
-  const statusHtml = `
-    <div class="bkp__status">
-      <div><i class="bi bi-person-badge"></i> Este aparelho: <strong>${escapeHtml(st.nomeAparelho || 'sem nome')}</strong> <small class="text-muted">(${escapeHtml(st.aparelho || '')})</small></div>
-      <div><i class="bi bi-cloud-check"></i> Último salvamento na nuvem: <strong>${fmtDataHoraCompleta(st.ultimoSalvoNuvem)}</strong></div>
-      <div><i class="bi ${st.pendente ? 'bi-hourglass-split text-warning' : 'bi-check-circle text-success'}"></i> ${st.pendente ? 'Há alterações aguardando envio para a nuvem' : 'Nada pendente: tudo enviado'}</div>
-    </div>`;
+const historicoPagina = {
+  aba: 'alteracoes',
+  busca: '',
+  mes: '',
+  tipo: 'todas',
+  visibleCount: 100,
+  visibleLogs: 100,
+  logs: [],
+  cursor: null,
+  temMais: false,
+  carregando: false,
+  logsCarregados: false,
+  backups: null,
+  backupsCarregados: false,
+  erro: ''
+};
 
-  let acaoPendente = null;
-  await Swal.fire({
-    title: 'Backups e logs',
-    width: '54rem',
-    html: `<div class="bkp">
-      ${statusHtml}
-      <div class="bkp__actions">
-        <button type="button" class="btn btn-sm btn-primary" data-bkp-action="backup"><i class="bi bi-shield-plus"></i> Fazer backup agora</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bkp-action="export"><i class="bi bi-filetype-json"></i> Baixar tudo (JSON)</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bkp-action="device"><i class="bi bi-person-gear"></i> Nome do aparelho</button>
-      </div>
-      <div class="bkp__tabs" role="tablist">
-        <button type="button" class="bkp__tab is-active" data-bkp-tab="backups">Backups</button>
-        <button type="button" class="bkp__tab" data-bkp-tab="logs">Log de alterações</button>
-      </div>
-      <div class="bkp__panel" data-bkp-panel="backups"><p class="text-muted"><span class="sync-spin bi bi-arrow-repeat"></span> Carregando backups...</p></div>
-      <div class="bkp__panel" data-bkp-panel="logs" hidden><p class="text-muted"><span class="sync-spin bi bi-arrow-repeat"></span> Carregando log...</p></div>
-    </div>`,
-    showConfirmButton: false,
-    showCancelButton: true,
-    cancelButtonText: 'Fechar',
-    didOpen: async (popup) => {
-      const painel = (nome) => popup.querySelector(`[data-bkp-panel="${nome}"]`);
+const lerDetalhesLog = (log) => {
+  try { return log.detalhesJson ? JSON.parse(log.detalhesJson) : {}; } catch { return {}; }
+};
 
-      popup.querySelectorAll('[data-bkp-tab]').forEach((tab) => {
-        tab.addEventListener('click', () => {
-          popup.querySelectorAll('[data-bkp-tab]').forEach((t) => t.classList.toggle('is-active', t === tab));
-          popup.querySelectorAll('[data-bkp-panel]').forEach((p) => { p.hidden = p.dataset.bkpPanel !== tab.dataset.bkpTab; });
-        });
-      });
+const reunirEventosHistorico = () => {
+  const eventos = new Map();
+  const incluir = (evento, origem = '') => {
+    if (!evento?.id) return;
+    const anterior = eventos.get(evento.id) || {};
+    eventos.set(evento.id, {
+      ...anterior,
+      ...evento,
+      autor: evento.autor || anterior.autor || '',
+      aparelho: evento.aparelho || anterior.aparelho || '',
+      origem: origem || anterior.origem || 'histórico'
+    });
+  };
 
-      popup.addEventListener('click', (e) => {
-        const btn = e.target.closest('button');
-        if (!btn) return;
-        if (btn.dataset.bkpAction) {
-          acaoPendente = { tipo: btn.dataset.bkpAction };
-          Swal.close();
-        } else if (btn.dataset.bkpRecover || btn.dataset.bkpRestore || btn.dataset.bkpDownload) {
-          acaoPendente = {
-            tipo: btn.dataset.bkpRecover ? 'recover' : btn.dataset.bkpRestore ? 'restore' : 'download',
-            id: btn.dataset.bkpRecover || btn.dataset.bkpRestore || btn.dataset.bkpDownload,
-            origem: btn.dataset.bkpOrigem
-          };
-          Swal.close();
-        }
-      });
-
-      try {
-        const backups = await AppStorage.listarBackups();
-        if (painel('backups')) painel('backups').innerHTML = renderListaBackups(backups);
-      } catch {
-        if (painel('backups')) painel('backups').innerHTML = '<p class="text-danger">Não foi possível listar os backups.</p>';
-      }
-      try {
-        const logs = await AppStorage.listarLogs(200);
-        if (painel('logs')) painel('logs').innerHTML = renderListaLogs(logs);
-      } catch {
-        if (painel('logs')) painel('logs').innerHTML = '<p class="text-danger">Não foi possível carregar o log.</p>';
-      }
-    }
+  (window.HistoricoAuditoria?.listar?.() || []).forEach((evento) => incluir(evento));
+  historicoPagina.logs.forEach((log) => {
+    const detalhes = lerDetalhesLog(log);
+    if (detalhes.evento) incluir({ ...detalhes.evento, autor: detalhes.evento.autor || log.autor, aparelho: detalhes.evento.aparelho || log.aparelho }, log.origem);
+    (Array.isArray(detalhes.acoes) ? detalhes.acoes : []).forEach((evento) => {
+      incluir({ ...evento, autor: evento.autor || log.autor, aparelho: evento.aparelho || log.aparelho }, log.origem);
+    });
   });
+  return [...eventos.values()].sort((a, b) => (Date.parse(b.quando) || Number(b.quando) || 0) - (Date.parse(a.quando) || Number(a.quando) || 0));
+};
 
-  if (!acaoPendente) return;
-  const { tipo, id, origem } = acaoPendente;
+const renderDetalhesEventoHistorico = (evento) => {
+  const linhas = [];
+  const nome = (item) => item?.description || item?.nome || item?.descricao || item?.instituicao || item?.id || 'item';
+  const dinheiro = (item) => item && Number.isFinite(Number(item.value ?? item.valorAtual ?? item.valor))
+    ? formatCurrency(Number(item.value ?? item.valorAtual ?? item.valor)) : '';
+  const json = (label, item) => `<details><summary>${label}</summary><pre>${escapeHtml(JSON.stringify(item, null, 2))}</pre></details>`;
+  (evento.adicionados || []).forEach((item) => linhas.push(`<li><strong>Adicionado:</strong> ${escapeHtml(nome(item))}${dinheiro(item) ? ` · ${escapeHtml(dinheiro(item))}` : ''}${json('Ver todos os campos', item)}</li>`));
+  (evento.removidos || []).forEach((item) => linhas.push(`<li><strong>Removido:</strong> ${escapeHtml(nome(item))}${dinheiro(item) ? ` · ${escapeHtml(dinheiro(item))}` : ''}${json('Ver todos os campos', item)}</li>`));
+  (evento.alterados || []).forEach(({ antes, depois }) => {
+    const a = dinheiro(antes);
+    const d = dinheiro(depois);
+    const alteracao = a && d && a !== d ? `${a} → ${d}` : `${nome(antes)} → ${nome(depois)}`;
+    linhas.push(`<li><strong>Alterado:</strong> ${escapeHtml(alteracao)}<details><summary>Ver todos os campos antes e depois</summary><div class="audit-event__comparison"><div><strong>Antes</strong><pre>${escapeHtml(JSON.stringify(antes, null, 2))}</pre></div><div><strong>Depois</strong><pre>${escapeHtml(JSON.stringify(depois, null, 2))}</pre></div></div></details></li>`);
+  });
+  if (evento.antes || evento.depois) {
+    const antes = evento.antes ? JSON.stringify(evento.antes, null, 2) : '—';
+    const depois = evento.depois ? JSON.stringify(evento.depois, null, 2) : '—';
+    linhas.push(`<li><strong>Antes</strong><pre>${escapeHtml(antes)}</pre></li><li><strong>Depois</strong><pre>${escapeHtml(depois)}</pre></li>`);
+  }
+  if (!linhas.length) linhas.push(`<li>${escapeHtml(evento.acao || 'Sem detalhes adicionais.')}</li>`);
+  return `<ul class="audit-event__details">${linhas.join('')}</ul>`;
+};
 
-  if (tipo === 'backup') {
-    const r = await AppStorage.backupNow(allData, 'manual');
-    if (r.okNuvem) notify.success('Backup criado na nuvem e neste aparelho!');
-    else if (r.okLocal) notify.info('Backup criado neste aparelho. (Nuvem indisponível: veja o FIREBASE.md para ativar.)');
+const filtrarEventosHistoricoPagina = () => {
+  const eventos = reunirEventosHistorico();
+  const meses = [...new Set(eventos.map((e) => e.mes).filter(Boolean))].sort().reverse();
+  const query = historicoPagina.busca.trim().toLocaleLowerCase('pt-BR');
+  const filtrados = eventos.filter((evento) => {
+    if (historicoPagina.mes && evento.mes !== historicoPagina.mes) return false;
+    if (historicoPagina.tipo !== 'todas' && evento.tipo !== historicoPagina.tipo) return false;
+    const haystack = `${evento.acao || ''} ${evento.autor || ''} ${evento.aparelho || ''} ${evento.mes || ''}`.toLocaleLowerCase('pt-BR');
+    return !query || haystack.includes(query);
+  });
+  return { eventos, meses, filtrados };
+};
+
+const renderEventosHistoricoPagina = (container) => {
+  const { eventos, meses, filtrados } = filtrarEventosHistoricoPagina();
+  const rows = filtrados.slice(0, historicoPagina.visibleCount).map((evento) => {
+    const timestamp = Date.parse(evento.quando) || Number(evento.quando) || 0;
+    const reversivel = evento.reversivel && !evento.desfeito;
+    return `<article class="audit-event${evento.desfeito ? ' is-undone' : ''}">
+      <div class="audit-event__date"><strong>${timestamp ? dayjs(timestamp).format('DD/MM/YYYY') : 'Data indisponível'}</strong><span>${timestamp ? dayjs(timestamp).format('HH:mm:ss') : ''}</span></div>
+      <div class="audit-event__body"><div class="audit-event__meta"><span class="audit-event__type">${escapeHtml(evento.tipo === 'mes' ? 'Lançamentos' : evento.tipo === 'modulo' ? (NOMES_COLECAO[evento.colecao] || evento.colecao || 'Módulo') : 'Registro')}</span>${evento.mes ? `<span class="audit-event__pill">${escapeHtml(dayjs(`${evento.mes}-01`).format('MMM/YY'))}</span>` : ''}${evento.autor ? `<span class="audit-event__pill">${escapeHtml(evento.autor)}</span>` : ''}${evento.desfeito ? '<span class="audit-event__pill is-undone">Desfeito</span>' : ''}</div>
+        <p class="audit-event__summary">${escapeHtml(window.HistoricoAuditoria?.formatar?.(evento) || evento.acao || 'Alteração')}</p>
+        <details class="audit-event__more"><summary>Ver valores e detalhes</summary>${renderDetalhesEventoHistorico(evento)}</details>
+      </div>
+      <div class="audit-event__actions">${reversivel ? `<button type="button" class="audit-undo" data-audit-undo="${escapeAttr(evento.id)}"><i class="bi bi-arrow-counterclockwise"></i> Desfazer</button>` : '<span class="audit-event__status">Somente leitura</span>'}</div>
+    </article>`;
+  }).join('');
+  const list = container.querySelector('[data-history-results]');
+  if (list) list.innerHTML = rows || '<div class="audit-empty"><i class="bi bi-journal-check"></i><strong>Nenhuma alteração encontrada</strong><span>Ajuste os filtros ou carregue mais registros.</span></div>';
+  const count = container.querySelector('[data-history-count]');
+  if (count) count.textContent = `${Math.min(filtrados.length, historicoPagina.visibleCount)} de ${filtrados.length} alteração(ões) exibida(s) · ${eventos.length} carregada(s)`;
+  const monthSelect = container.querySelector('#historyMonth');
+  if (monthSelect) monthSelect.innerHTML = `<option value="">Todos os meses</option>${meses.map((mes) => `<option value="${escapeAttr(mes)}" ${mes === historicoPagina.mes ? 'selected' : ''}>${escapeHtml(dayjs(`${mes}-01`).format('MMMM [de] YYYY'))}</option>`).join('')}`;
+  const more = container.querySelector('[data-history-load-more]');
+  if (more) {
+    more.hidden = filtrados.length <= historicoPagina.visibleCount && !historicoPagina.temMais;
+    more.textContent = filtrados.length > historicoPagina.visibleCount ? 'Mostrar mais alterações carregadas' : 'Carregar registros anteriores';
+  }
+};
+
+const mesclarLogsPaginaHistorico = (base, novos) => {
+  const map = new Map(base.map((item) => [item.id, item]));
+  novos.forEach((item) => map.set(item.id, { ...(map.get(item.id) || {}), ...item }));
+  return [...map.values()].sort((a, b) => (b.quando || 0) - (a.quando || 0));
+};
+
+const carregarLogsHistorico = async (container, mais = false) => {
+  if (historicoPagina.carregando) return;
+  historicoPagina.carregando = true;
+  historicoPagina.erro = '';
+  const status = container.querySelector('[data-history-data-status]');
+  if (status) status.textContent = 'Carregando alterações e logs…';
+  try {
+    if (AppStorage.listarLogsPaginado) {
+      const resultado = await AppStorage.listarLogsPaginado(100, mais ? historicoPagina.cursor : null);
+      historicoPagina.logs = mesclarLogsPaginaHistorico(mais ? historicoPagina.logs : [], [...resultado.local, ...resultado.nuvem]);
+      historicoPagina.cursor = resultado.cursor;
+      historicoPagina.temMais = resultado.temMais;
+      historicoPagina.erro = resultado.erroNuvem || '';
+    } else {
+      const resultado = await AppStorage.listarLogs(1000);
+      historicoPagina.logs = resultado.logs || [];
+      historicoPagina.temMais = false;
+      historicoPagina.erro = resultado.erroNuvem || '';
+    }
+    historicoPagina.logsCarregados = true;
+  } catch {
+    historicoPagina.erro = 'Não foi possível carregar os logs agora.';
+  } finally {
+    historicoPagina.carregando = false;
+  }
+  if (container.isConnected) renderHistoricoPagina(container);
+};
+
+const carregarBackupsHistorico = async (container) => {
+  try {
+    historicoPagina.backups = await AppStorage.listarBackups();
+  } catch {
+    historicoPagina.backups = null;
+  }
+  historicoPagina.backupsCarregados = true;
+  if (container.isConnected) renderHistoricoPagina(container);
+};
+
+const executarAcaoBackupHistorico = async (button, container) => {
+  const action = button.dataset.bkpAction;
+  if (action === 'backup') {
+    const result = await AppStorage.backupNow(allData, 'manual');
+    if (result.okNuvem) notify.success('Backup criado na nuvem e neste aparelho!');
+    else if (result.okLocal) notify.info('Backup criado neste aparelho.');
     else notify.error('Não foi possível criar o backup.');
+    historicoPagina.backupsCarregados = false;
+    await carregarBackupsHistorico(container);
     return;
   }
-  if (tipo === 'export') { exportJSON(); return; }
-  if (tipo === 'device') { await perguntarNomeAparelho(true); return; }
-
-  let snapshot = null;
-  try {
-    snapshot = await AppStorage.obterBackup(origem, id);
-  } catch {
-    snapshot = null;
+  if (action === 'export') { exportJSON(); return; }
+  if (action === 'device') {
+    await perguntarNomeAparelho(true);
+    renderHistoricoPagina(container);
+    return;
   }
+
+  const id = button.dataset.bkpRecover || button.dataset.bkpRestore || button.dataset.bkpDownload;
+  const origem = button.dataset.bkpOrigem;
+  const tipo = button.dataset.bkpRecover ? 'recover' : button.dataset.bkpRestore ? 'restore' : 'download';
+  let snapshot = null;
+  try { snapshot = await AppStorage.obterBackup(origem, id); } catch {}
   if (!snapshot) { notify.error('Não foi possível abrir este backup.'); return; }
   const rotulo = `backup ${origem === 'nuvem' ? 'da nuvem' : 'do aparelho'}`;
-
   if (tipo === 'download') {
-    downloadBlob(
-      new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }),
-      `financas-casa-${origem}-${id}.json`
-    );
-    return;
-  }
-
-  if (tipo === 'recover') {
-    const n = recuperarItensFaltantes(snapshot, rotulo);
-    notify[n ? 'success' : 'info'](n ? `${n} item(ns) recuperado(s)!` : 'Nada para recuperar: tudo deste backup já existe hoje.');
-    return;
-  }
-
-  if (tipo === 'restore') {
+    downloadBlob(new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' }), `financas-casa-${origem}-${id}.json`);
+  } else if (tipo === 'recover') {
+    const total = recuperarItensFaltantes(snapshot, rotulo);
+    notify[total ? 'success' : 'info'](total ? `${total} item(ns) recuperado(s)!` : 'Nada para recuperar: tudo deste backup já existe hoje.');
+  } else {
     const ok = await confirmAction({
       title: 'Restaurar tudo deste backup?',
-      text: 'Os dados voltam exatamente como estavam neste backup (antes disso uma cópia do estado atual é guardada, então dá para voltar atrás).',
+      text: 'Esta ação substitui o estado atual pelo backup. Antes disso, o estado atual será copiado para outro backup.',
       icon: 'warning',
       confirmText: 'Sim, restaurar'
     });
     if (!ok) return;
     await restaurarDadosCompletos(snapshot, rotulo);
     notify.success('Backup restaurado!');
+  }
+  renderHistoricoPagina(container);
+};
+
+const renderHistoricoPagina = (container) => {
+  if (!container) return;
+  const status = AppStorage.getStatus?.() || {};
+  const eventos = reunirEventosHistorico();
+  container.innerHTML = `<div class="history-page">
+    <header class="history-page__header"><div><span class="history-page__eyebrow">REGISTRO E RECUPERAÇÃO</span><h1>Histórico completo</h1><p>Veja quem alterou cada informação, compare os valores e desfaça mudanças com segurança.</p></div><div class="history-page__header-actions"><button type="button" class="history-action" data-history-device><i class="bi bi-person-gear"></i> Identificar aparelho</button><button type="button" class="history-refresh" data-history-refresh><i class="bi bi-arrow-clockwise"></i> Atualizar</button></div></header>
+    <section class="history-status" aria-label="Estado do salvamento"><div><span>Este aparelho</span><strong>${escapeHtml(status.nomeAparelho || 'Sem nome')}</strong><small>${escapeHtml(status.aparelho || '')}</small></div><div><span>Último salvamento na nuvem</span><strong>${escapeHtml(fmtDataHoraCompleta(status.ultimoSalvoNuvem))}</strong><small>${status.pendente ? 'Há alterações aguardando envio' : 'Nenhuma alteração pendente'}</small></div><div><span>Alterações carregadas</span><strong data-history-count>${eventos.length} alteração(ões)</strong><small data-history-data-status>${historicoPagina.logsCarregados ? 'Histórico e logs sincronizados' : 'Preparando registro completo…'}</small></div></section>
+    <nav class="history-tabs" aria-label="Seções do histórico"><button type="button" data-history-tab="alteracoes" class="${historicoPagina.aba === 'alteracoes' ? 'is-active' : ''}"><i class="bi bi-journal-text"></i> Alterações</button><button type="button" data-history-tab="logs" class="${historicoPagina.aba === 'logs' ? 'is-active' : ''}"><i class="bi bi-cloud-check"></i> Logs de salvamento</button><button type="button" data-history-tab="backups" class="${historicoPagina.aba === 'backups' ? 'is-active' : ''}"><i class="bi bi-shield-check"></i> Backups</button></nav>
+    <section class="history-panel" data-history-panel="alteracoes" ${historicoPagina.aba !== 'alteracoes' ? 'hidden' : ''}><div class="history-panel__heading"><div><h2>Alterações registradas</h2><p>Filtros por mês e busca por descrição ou aparelho. Ações antigas só podem ser desfeitas quando o registro atual ainda corresponde ao valor esperado.</p></div><button type="button" class="history-export" data-history-export><i class="bi bi-download"></i> Exportar histórico</button></div><div class="history-filters"><label class="history-search"><i class="bi bi-search"></i><input id="historySearch" type="search" value="${escapeAttr(historicoPagina.busca)}" placeholder="Buscar descrição, pessoa ou aparelho"></label><select id="historyMonth" aria-label="Filtrar por mês"><option value="">Todos os meses</option></select><select id="historyType" aria-label="Filtrar por tipo"><option value="todas" ${historicoPagina.tipo === 'todas' ? 'selected' : ''}>Todos os tipos</option><option value="mes" ${historicoPagina.tipo === 'mes' ? 'selected' : ''}>Lançamentos</option><option value="modulo" ${historicoPagina.tipo === 'modulo' ? 'selected' : ''}>Módulos</option><option value="info" ${historicoPagina.tipo === 'info' ? 'selected' : ''}>Informações</option></select></div><div data-history-results class="audit-events"></div><button type="button" class="history-load-more" data-history-load-more ${historicoPagina.temMais ? '' : 'hidden'}>Carregar registros anteriores</button></section>
+    <section class="history-panel" data-history-panel="logs" ${historicoPagina.aba !== 'logs' ? 'hidden' : ''}><div class="history-panel__heading"><div><h2>Logs de salvamento</h2><p>Eventos de sincronização, recuperação e erros. As alterações detalhadas aparecem na seção Alterações.</p></div></div>${historicoPagina.erro ? `<p class="history-warning"><i class="bi bi-exclamation-triangle"></i> ${escapeHtml(historicoPagina.erro)}</p>` : ''}<div class="audit-log-list">${historicoPagina.logsCarregados ? renderListaLogs({ logs: historicoPagina.logs.slice(0, historicoPagina.visibleLogs), erroNuvem: historicoPagina.erro }) : '<p class="audit-loading"><span class="sync-spin bi bi-arrow-repeat"></span> Carregando logs…</p>'}</div><button type="button" class="history-load-more" data-history-load-more ${historicoPagina.logs.length > historicoPagina.visibleLogs || historicoPagina.temMais ? '' : 'hidden'}>${historicoPagina.logs.length > historicoPagina.visibleLogs ? 'Mostrar mais logs carregados' : 'Carregar logs anteriores'}</button></section>
+    <section class="history-panel" data-history-panel="backups" ${historicoPagina.aba !== 'backups' ? 'hidden' : ''}><div class="history-panel__heading"><div><h2>Backups e recuperação</h2><p>Recuperar itens faltantes adiciona dados sem remover o que existe. Restaurar tudo substitui o estado atual.</p></div></div><div class="bkp__actions"><button type="button" class="history-action history-action--primary" data-bkp-action="backup"><i class="bi bi-shield-plus"></i> Fazer backup agora</button><button type="button" class="history-action" data-bkp-action="export"><i class="bi bi-filetype-json"></i> Baixar tudo (JSON)</button><button type="button" class="history-action" data-bkp-action="device"><i class="bi bi-person-gear"></i> Nome do aparelho</button></div><div class="audit-backups">${historicoPagina.backupsCarregados ? (historicoPagina.backups ? renderListaBackups(historicoPagina.backups) : '<p class="history-warning">Não foi possível carregar os backups.</p>') : '<p class="audit-loading"><span class="sync-spin bi bi-arrow-repeat"></span> Carregando backups…</p>'}</div></section>
+  </div>`;
+  if (!container.dataset.historyBound) {
+    container.dataset.historyBound = 'true';
+    container.addEventListener('click', async (event) => {
+      const tab = event.target.closest('[data-history-tab]');
+      if (tab) { historicoPagina.aba = tab.dataset.historyTab; renderHistoricoPagina(container); return; }
+      if (event.target.closest('[data-history-refresh]')) {
+        historicoPagina.logs = [];
+        historicoPagina.cursor = null;
+        historicoPagina.temMais = false;
+        historicoPagina.logsCarregados = false;
+        historicoPagina.backupsCarregados = false;
+        historicoPagina.visibleCount = 100;
+        historicoPagina.visibleLogs = 100;
+        renderHistoricoPagina(container);
+        carregarLogsHistorico(container);
+        carregarBackupsHistorico(container);
+        return;
+      }
+      if (event.target.closest('[data-history-device]')) {
+        await perguntarNomeAparelho(true);
+        renderHistoricoPagina(container);
+        return;
+      }
+      if (event.target.closest('[data-history-load-more]')) {
+        if (historicoPagina.aba === 'logs') {
+          if (historicoPagina.logs.length > historicoPagina.visibleLogs) {
+            historicoPagina.visibleLogs += 100;
+            renderHistoricoPagina(container);
+          } else {
+            await carregarLogsHistorico(container, true);
+          }
+          return;
+        }
+        const { filtrados } = filtrarEventosHistoricoPagina();
+        if (filtrados.length > historicoPagina.visibleCount) {
+          historicoPagina.visibleCount += 100;
+          renderEventosHistoricoPagina(container);
+        } else {
+          await carregarLogsHistorico(container, true);
+        }
+        return;
+      }
+      if (event.target.closest('[data-history-export]')) {
+        downloadBlob(new Blob([JSON.stringify({ exportadoEm: new Date().toISOString(), alteracoes: reunirEventosHistorico(), logs: historicoPagina.logs }, null, 2)], { type: 'application/json' }), 'financas-casa-historico.json');
+        return;
+      }
+      const undo = event.target.closest('[data-audit-undo]');
+      if (undo) {
+        const registro = reunirEventosHistorico().find((item) => item.id === undo.dataset.auditUndo);
+        const ok = registro && window.HistoricoAuditoria?.desfazer?.(registro);
+        if (!ok) notify.error('Não foi possível desfazer: o registro pode ter mudado depois desta ação. Nenhum dado foi alterado.');
+        else notify.success('Alteração desfeita e registrada no histórico.');
+        renderHistoricoPagina(container);
+        return;
+      }
+      if (event.target.closest('[data-bkp-action], [data-bkp-recover], [data-bkp-restore], [data-bkp-download]')) {
+        await executarAcaoBackupHistorico(event.target.closest('[data-bkp-action], [data-bkp-recover], [data-bkp-restore], [data-bkp-download]'), container);
+      }
+    });
+    container.addEventListener('input', (event) => {
+      if (event.target.id !== 'historySearch') return;
+      historicoPagina.busca = event.target.value;
+      historicoPagina.visibleCount = 100;
+      renderEventosHistoricoPagina(container);
+    });
+    container.addEventListener('change', (event) => {
+      if (event.target.id === 'historyMonth') historicoPagina.mes = event.target.value;
+      if (event.target.id === 'historyType') historicoPagina.tipo = event.target.value;
+      if (event.target.id === 'historyMonth' || event.target.id === 'historyType') {
+        historicoPagina.visibleCount = 100;
+        renderEventosHistoricoPagina(container);
+      }
+    });
+  }
+  renderEventosHistoricoPagina(container);
+  if (!historicoPagina.logsCarregados && !historicoPagina.carregando) carregarLogsHistorico(container);
+  if (historicoPagina.aba === 'backups' && !historicoPagina.backupsCarregados) carregarBackupsHistorico(container);
+};
+
+const abrirBackupsLogs = async () => window.HistoricoPage?.openTab('backups');
+
+window.HistoricoPage = {
+  render: renderHistoricoPagina,
+  openTab(tab = 'alteracoes') {
+    historicoPagina.aba = tab;
+    window.AppModules?.activate('historico');
+    const container = document.getElementById('view-historico');
+    if (container) renderHistoricoPagina(container);
   }
 };
 

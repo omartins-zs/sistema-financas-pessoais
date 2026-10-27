@@ -63,7 +63,26 @@ test('a tela de backups e logs fica acessível pela barra principal', async () =
 
   assert.match(html, /id="btnBackups"[^>]*aria-label="Backups e logs de salvamento"/);
   assert.match(recovery, /window\.abrirBackupsLogs\s*=\s*abrirBackupsLogs/);
-  assert.match(events, /getElementById\('btnBackups'\).*window\.abrirBackupsLogs/);
+  assert.match(events, /getElementById\('btnBackups'\).*window\.HistoricoPage\?\.openTab\('backups'\)/);
+});
+
+test('histórico completo reúne alterações, logs paginados e tem uma tela dedicada', async () => {
+  const html = await read('index.html');
+  const modules = await read('app-modules.js');
+  const recovery = await read('js/41-backups-recovery.js');
+  const cloud = await read('cloud-sync.js');
+  const audit = await read('js/11-history-audit.js');
+
+  assert.match(html, /id="view-historico"/);
+  assert.match(modules, /\['historico', 'clock-history', 'Histórico'\]/);
+  assert.match(recovery, /data-history-tab="alteracoes"/);
+  assert.match(recovery, /data-history-tab="logs"/);
+  assert.match(recovery, /data-history-tab="backups"/);
+  assert.match(cloud, /const registrarEventoAuditoria = async/);
+  assert.match(cloud, /const listarLogsPaginado = async/);
+  assert.match(cloud, /userDoc\(\)\.collection\('logs'\)\.doc\(entry\.id\)/);
+  assert.match(audit, /AppStorage\.registrarEventoAuditoria/);
+  assert.match(audit, /const mesmoConteudoHistorico =/);
 });
 
 test('todos os scripts da aplicação passam pela verificação de sintaxe do Node', async () => {
@@ -117,6 +136,7 @@ test('regras Firestore limitam leitura e escrita ao dono da conta e cobrem as su
   for (const collection of ['logs', 'backups', 'backupsMeta']) {
     assert.match(rules, new RegExp(`match \/${collection}\\/\\{`));
   }
+  assert.match(rules, /match \/logs\/\{logId\}[\s\S]*allow create: if dono\(uid\);[\s\S]*allow update, delete: if false;/);
   assert.doesNotMatch(rules, /allow\s+(?:read|write|read,\s*write)\s*:\s*if\s+true/);
 });
 

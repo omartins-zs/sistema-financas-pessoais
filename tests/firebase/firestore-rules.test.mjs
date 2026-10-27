@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test, { after, before } from 'node:test';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
 
 const projectId = 'demo-financas-da-casa';
@@ -35,6 +35,10 @@ test('Firestore permite ao dono acessar somente seus dados e as subcoleções do
     const ownDoc = doc(alice, `financas/alice/${collection}/record-1`);
     await assertSucceeds(setDoc(ownDoc, { quando: Date.now() }));
     await assertSucceeds(getDoc(ownDoc));
+    if (collection === 'logs') {
+      await assertFails(updateDoc(ownDoc, { resumo: 'alterado' }));
+      await assertFails(deleteDoc(ownDoc));
+    }
     await assertFails(getDoc(doc(alice, `financas/bob/${collection}/record-1`)));
     await assertFails(setDoc(doc(alice, `financas/bob/${collection}/record-1`), { quando: Date.now() }));
   }
