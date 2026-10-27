@@ -423,7 +423,12 @@ body {
   }
 
   .topbar__brand {
+    width: 100%;
     gap: 0.5rem;
+  }
+
+  .topbar__brand-text {
+    flex: 1 1 auto;
   }
 
   .topbar__logo {
@@ -450,6 +455,8 @@ body {
   }
 
   .topbar__tools {
+    width: 100%;
+    justify-content: space-between;
     gap: 0.12rem;
     padding: 0.15rem;
   }
@@ -1265,11 +1272,12 @@ body {
 
 /* Mobile */
 .topbar__grid {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "brand tools"
-    "period period"
-    "actions actions";
+    "brand"
+    "tools"
+    "period"
+    "actions";
 }
 
 .topbar__brand   { grid-area: brand; }

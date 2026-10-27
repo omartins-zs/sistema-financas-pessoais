@@ -155,6 +155,15 @@ test('histórico e backups usam uma única entrada de navegação', async () => 
   assert.match(moduleStyles, /\.app-main \{ padding-bottom:/);
 });
 
+test('cabeçalho mobile separa o título da fileira de ferramentas', async () => {
+  const styles = await read('style.css');
+  const mobileLayout = styles.split('/* Mobile */')[1]?.split('/* Desktop: linha única */')[0] ?? '';
+
+  assert.match(mobileLayout, /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(mobileLayout, /"brand"\s+"tools"\s+"period"\s+"actions"/);
+  assert.match(styles, /\.topbar__tools\s*\{\s*width:\s*100%;\s*justify-content:\s*space-between/);
+});
+
 test('histórico completo reúne alterações, logs paginados e tem uma tela dedicada', async () => {
   const html = await read('index.html');
   const modules = await read('app-modules.js');
