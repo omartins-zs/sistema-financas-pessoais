@@ -36,7 +36,79 @@ const AppStorage = (() => {
   // ---------- DOM do login e indicador de sincronização ----------
   const el = (id) => document.getElementById(id);
 
+  // Aviso flutuante e bem visível de salvamento ("Salvando..." → "Tudo salvo"),
+  // para ninguém fechar o app achando que salvou quando ainda está enviando.
+  let toastState = 'idle';
+  let toastHideTimer = null;
+  let lastCloudSavedAt = 0;
+  let lastLocalSaveFailed = false;
+
+  const getSaveToast = () => {
+    let toast = el('saveToast');
+    if (!toast && document.body) {
+      toast = document.createElement('div');
+      toast.id = 'saveToast';
+      toast.className = 'save-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.hidden = true;
+      document.body.appendChild(toast);
+    }
+    return toast;
+  };
+
+  const escToast = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const updateSaveToast = (state, detail = '') => {
+    const toast = getSaveToast();
+    if (!toast) return;
+    clearTimeout(toastHideTimer);
+    const prev = toastState;
+    const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    // Só mostra "salvo" se antes estava salvando/carregando/com erro (evita piscar à toa)
+    if (state === 'saved' && (prev === 'idle' || prev === 'saved')) return;
+
+    toastState = state;
+    toast.classList.remove('is-saving', 'is-saved', 'is-offline', 'is-error');
+
+    if (state === 'loading') {
+      toast.classList.add('is-saving');
+      toast.innerHTML = '<i class="bi bi-arrow-repeat sync-spin"></i><span>Carregando seus dados da nuvem...</span>';
+      toast.hidden = false;
+    } else if (state === 'saving') {
+      toast.classList.add('is-saving');
+      toast.innerHTML = '<i class="bi bi-arrow-repeat sync-spin"></i><span>Salvando na nuvem... <small>não feche o app</small></span>';
+      toast.hidden = false;
+    } else if (state === 'saved') {
+      toast.classList.add('is-saved');
+      toast.innerHTML = `<i class="bi bi-cloud-check-fill"></i><span>Tudo salvo na nuvem · ${hora}</span>`;
+      toast.hidden = false;
+      toastHideTimer = setTimeout(() => {
+        toast.hidden = true;
+        toastState = 'idle';
+      }, 2600);
+    } else if (state === 'offline') {
+      toast.classList.add('is-offline');
+      toast.innerHTML = `<i class="bi bi-wifi-off"></i><span>${escToast(detail || 'Sem internet: salvo neste aparelho. Envio automático quando a conexão voltar.')}</span>`;
+      toast.hidden = false;
+    } else if (state === 'error') {
+      toast.classList.add('is-error');
+      const localStatus = lastLocalSaveFailed
+        ? ' Não foi possível confirmar o salvamento neste aparelho.'
+        : ' Seus dados estão guardados neste aparelho.';
+      toast.innerHTML = `<i class="bi bi-exclamation-triangle-fill"></i><span>${escToast(detail || 'Falha ao salvar na nuvem.')}${localStatus}</span><button type="button" class="save-toast__retry" data-save-retry>Tentar agora</button>`;
+      toast.hidden = false;
+    } else {
+      toast.hidden = true;
+      toastState = 'idle';
+    }
+  };
+
   const setSyncUI = (state, detail = '') => {
+    if (state === 'saved') lastCloudSavedAt = Date.now();
+    updateSaveToast(state, detail);
+    if (state === 'loading') state = 'saving';
     const btn = el('btnSyncStatus');
     const icon = el('syncStatusIcon');
     const text = el('syncStatusText');
@@ -149,7 +221,13 @@ const AppStorage = (() => {
         syncedAt: dirty ? (prevMeta.syncedAt || 0) : Date.now(),
         dirtyIds: dirty ? [...dirtyIdsSet] : []
       }));
-    } catch {}
+      lastLocalSaveFailed = false;
+      return true;
+    } catch (err) {
+      lastLocalSaveFailed = true;
+      console.error('[AppStorage] Falha ao gravar no armazenamento local:', err);
+      return false;
+    }
   };
 
   const markDirtyIds = (ids = []) => {
@@ -391,6 +469,372 @@ const AppStorage = (() => {
     return out;
   };
 
+  // ---------- Backups automáticos e log de auditoria ----------
+  // 1) Backup no APARELHO (IndexedDB): cópia completa a cada ~3 min de uso, ao abrir
+  //    o app e antes de qualquer ação perigosa (restaurar, limpar mês...).
+  // 2) Backup na NUVEM (financas/{uid}/backups): 1 por hora (24 slots rotativos)
+  //    + 1 por dia (histórico diário permanente).
+  // 3) LOG (financas/{uid}/logs + IndexedDB): toda gravação na nuvem registra quem
+  //    (nome do aparelho), quando, o que mudou e quantos lançamentos havia por mês.
+  const DEVICE_KEY = 'financas_casa_device_name';
+  const CLOUD_BACKUP_SLOT_KEY = 'financas_casa_last_cloud_backup';
+  const LOCAL_BACKUP_INTERVAL_MS = 3 * 60 * 1000;
+  const LOCAL_BACKUP_KEEP_RECENT = 40;
+  const LOCAL_BACKUP_KEEP_DAYS = 45;
+  const LOCAL_LOG_MAX = 800;
+  const LOG_DETAIL_MAX_CHARS = 300000;
+  const MODULE_COLLECTIONS = ['metas', 'reservas', 'cartoes', 'comprasCartao', 'investimentos', 'patrimonio', 'assinaturas', 'passeios'];
+  let cloudExtrasError = '';
+  let lastLocalBackupAt = 0;
+  let retryTimer = null;
+  let retryCount = 0;
+  const loggedHistIds = new Set();
+
+  const appVersion = () => document.querySelector?.('meta[name="app-version"]')?.content?.trim() || 'dev';
+
+  const detectDevice = () => {
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+    const so = /iPhone/i.test(ua) ? 'iPhone'
+      : /iPad/i.test(ua) ? 'iPad'
+        : /Android/i.test(ua) ? 'Android'
+          : /Windows/i.test(ua) ? 'Windows'
+            : /Mac/i.test(ua) ? 'Mac'
+              : /Linux/i.test(ua) ? 'Linux' : 'Aparelho';
+    const nav = /Edg\//.test(ua) ? 'Edge'
+      : /OPR\//.test(ua) ? 'Opera'
+        : /SamsungBrowser/i.test(ua) ? 'Samsung'
+          : /CriOS|Chrome\//.test(ua) ? 'Chrome'
+            : /FxiOS|Firefox\//.test(ua) ? 'Firefox'
+              : /Safari\//.test(ua) ? 'Safari' : 'Navegador';
+    let pwa = '';
+    try {
+      if (window.matchMedia?.('(display-mode: standalone)')?.matches || navigator.standalone) pwa = ' (app)';
+    } catch {}
+    return `${so} · ${nav}${pwa}`;
+  };
+
+  const getDeviceName = () => {
+    try { return localStorage.getItem(DEVICE_KEY) || ''; } catch { return ''; }
+  };
+
+  const setDeviceName = (name) => {
+    try { localStorage.setItem(DEVICE_KEY, String(name || '').trim().slice(0, 40)); } catch {}
+  };
+
+  const autorInfo = () => ({
+    autor: getDeviceName() || 'Sem nome',
+    aparelho: detectDevice(),
+    clientId,
+    email: auth?.currentUser?.email || '',
+    versao: appVersion()
+  });
+
+  const contarDados = (data) => {
+    const meses = {};
+    let lancamentos = 0;
+    Object.keys(data || {}).forEach((k) => {
+      if (/^\d{4}-\d{2}$/.test(k) && Array.isArray(data[k])) {
+        meses[k] = data[k].length;
+        lancamentos += data[k].length;
+      }
+    });
+    const app = (data && data.__app) || {};
+    const modulos = {};
+    MODULE_COLLECTIONS.forEach((c) => {
+      if (Array.isArray(app[c]) && app[c].length) modulos[c] = app[c].length;
+    });
+    return { meses, lancamentos, modulos };
+  };
+
+  // --- IndexedDB (cópias no próprio aparelho, não depende de internet nem de regras do Firebase) ---
+  const IDB_NAME = 'financas_casa_backup';
+  let idbPromise = null;
+  const openIdb = () => {
+    if (idbPromise) return idbPromise;
+    idbPromise = new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') {
+        reject(new Error('IndexedDB indisponível'));
+        return;
+      }
+      const req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const database = req.result;
+        ['snapshots', 'snapmeta', 'logs'].forEach((store) => {
+          if (!database.objectStoreNames.contains(store)) database.createObjectStore(store, { keyPath: 'id' });
+        });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    idbPromise.catch(() => { idbPromise = null; });
+    return idbPromise;
+  };
+
+  const idbRequest = (req) => new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+  const idbTxDone = (tx) => new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+
+  const idbPut = async (store, value) => {
+    const database = await openIdb();
+    const tx = database.transaction(store, 'readwrite');
+    tx.objectStore(store).put(value);
+    return idbTxDone(tx);
+  };
+
+  const idbGet = async (store, id) => {
+    const database = await openIdb();
+    return idbRequest(database.transaction(store, 'readonly').objectStore(store).get(id));
+  };
+
+  const idbGetAll = async (store) => {
+    const database = await openIdb();
+    return idbRequest(database.transaction(store, 'readonly').objectStore(store).getAll());
+  };
+
+  const idbGetAllKeys = async (store) => {
+    const database = await openIdb();
+    return idbRequest(database.transaction(store, 'readonly').objectStore(store).getAllKeys());
+  };
+
+  const idbDelete = async (store, ids = []) => {
+    if (!ids.length) return true;
+    const database = await openIdb();
+    const tx = database.transaction(store, 'readwrite');
+    const st = tx.objectStore(store);
+    ids.forEach((id) => st.delete(id));
+    return idbTxDone(tx);
+  };
+
+  const novoIdOrdenado = () => `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+  // Mantém as últimas 40 cópias + 1 por dia nos últimos 45 dias
+  const podarBackupsLocais = async () => {
+    const metas = (await idbGetAll('snapmeta')).sort((a, b) => b.quando - a.quando);
+    const manter = new Set();
+    const diasVistos = new Set();
+    const limiteDias = Date.now() - LOCAL_BACKUP_KEEP_DAYS * 24 * 60 * 60 * 1000;
+    metas.forEach((m, i) => {
+      if (i < LOCAL_BACKUP_KEEP_RECENT) { manter.add(m.id); return; }
+      if (m.quando < limiteDias) return;
+      const dia = new Date(m.quando).toDateString();
+      if (!diasVistos.has(dia)) { diasVistos.add(dia); manter.add(m.id); }
+    });
+    const remover = metas.filter((m) => !manter.has(m.id)).map((m) => m.id);
+    if (remover.length) {
+      await idbDelete('snapmeta', remover);
+      await idbDelete('snapshots', remover);
+    }
+  };
+
+  const salvarBackupLocal = async (data, motivo = 'automático', force = false) => {
+    if (!data || !hasEntries(data)) return false;
+    const now = Date.now();
+    if (!force && now - lastLocalBackupAt < LOCAL_BACKUP_INTERVAL_MS) return false;
+    lastLocalBackupAt = now;
+    try {
+      const id = novoIdOrdenado();
+      const json = JSON.stringify(data);
+      await idbPut('snapshots', { id, data: json });
+      await idbPut('snapmeta', { id, quando: now, motivo, tamanho: json.length, ...contarDados(data), ...autorInfo() });
+      await podarBackupsLocais();
+      return true;
+    } catch (err) {
+      console.warn('[AppStorage] Não foi possível criar backup local:', err);
+      return false;
+    }
+  };
+
+  const registrarLogLocal = async (entry) => {
+    try {
+      await idbPut('logs', entry);
+      const keys = await idbGetAllKeys('logs');
+      if (keys.length > LOCAL_LOG_MAX) await idbDelete('logs', keys.slice(0, keys.length - LOCAL_LOG_MAX));
+    } catch {}
+  };
+
+  const userDoc = () => db.collection('financas').doc(uid);
+
+  const handleExtrasError = (err) => {
+    cloudExtrasError = err?.code || 'erro';
+    console.warn('[AppStorage] Backup/log na nuvem indisponível:', err);
+  };
+
+  const podeUsarExtrasNuvem = () => Boolean(isCloud && uid && db && navigator.onLine && cloudExtrasError !== 'permission-denied');
+
+  // Registra um evento no log (aparelho + nuvem). Nunca bloqueia o salvamento principal.
+  const registrarLog = async (tipo, resumo = '', detalhes = null) => {
+    let detalhesJson = '';
+    if (detalhes) {
+      try {
+        detalhesJson = JSON.stringify(detalhes);
+        if (detalhesJson.length > LOG_DETAIL_MAX_CHARS) {
+          const leve = { ...detalhes };
+          if (Array.isArray(leve.acoes)) {
+            leve.acoes = leve.acoes.map((a) => ({ id: a.id, quando: a.quando, acao: a.acao, mes: a.mes, colecao: a.colecao, autor: a.autor }));
+          }
+          leve.truncado = true;
+          detalhesJson = JSON.stringify(leve).slice(0, LOG_DETAIL_MAX_CHARS);
+        }
+      } catch {
+        detalhesJson = '';
+      }
+    }
+    const entry = {
+      id: novoIdOrdenado(),
+      tipo,
+      quando: Date.now(),
+      resumo: String(resumo || '').slice(0, 2000),
+      detalhesJson,
+      ...autorInfo()
+    };
+    registrarLogLocal(entry);
+    if (!podeUsarExtrasNuvem()) return;
+    try {
+      await userDoc().collection('logs').doc(entry.id).set({
+        ...entry,
+        servidorEm: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } catch (err) {
+      handleExtrasError(err);
+    }
+  };
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const slotDia = (d) => `dia-${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const slotHora = (d) => `hora-${pad2(d.getHours())}`;
+
+  // Backup completo na nuvem: no máx. 1 por hora (slot rotativo hora-HH) + o do dia (dia-AAAA-MM-DD)
+  const salvarBackupNuvem = async (serialized, data, motivo = 'automático', force = false) => {
+    if (!podeUsarExtrasNuvem() || !serialized || !hasEntries(data)) return false;
+    const d = new Date();
+    const chaveHora = `${slotDia(d)}_${slotHora(d)}`;
+    let ultima = '';
+    try { ultima = localStorage.getItem(CLOUD_BACKUP_SLOT_KEY) || ''; } catch {}
+    if (!force && ultima === chaveHora) return false;
+    try { localStorage.setItem(CLOUD_BACKUP_SLOT_KEY, chaveHora); } catch {}
+
+    const meta = {
+      quando: Date.now(),
+      motivo,
+      tamanho: serialized.length,
+      resumoJson: JSON.stringify(contarDados(data)),
+      ...autorInfo()
+    };
+    const ids = force ? [`manual-${novoIdOrdenado()}`] : [slotHora(d), slotDia(d)];
+    try {
+      const batch = db.batch();
+      ids.forEach((id) => {
+        batch.set(userDoc().collection('backups').doc(id), { ...meta, slot: id, data: serialized });
+        batch.set(userDoc().collection('backupsMeta').doc(id), { ...meta, slot: id });
+      });
+      await batch.commit();
+      return true;
+    } catch (err) {
+      try { localStorage.setItem(CLOUD_BACKUP_SLOT_KEY, ultima); } catch {}
+      handleExtrasError(err);
+      return false;
+    }
+  };
+
+  const marcarHistoricoVisto = (data) => {
+    const h = data?.__app?.historico;
+    if (Array.isArray(h)) h.forEach((r) => { if (r?.id) loggedHistIds.add(r.id); });
+  };
+
+  // Entradas do histórico criadas neste aparelho que ainda não foram para o log
+  const extrairAcoesNovas = (data) => {
+    const h = data?.__app?.historico;
+    if (!Array.isArray(h)) return [];
+    const novas = h.filter((r) => r?.id && !loggedHistIds.has(r.id));
+    novas.forEach((r) => loggedHistIds.add(r.id));
+    return novas;
+  };
+
+  // Compara a contagem de lançamentos por mês para alertar no log quando algo sumiu
+  const compararContagens = (antes, depois) => {
+    if (!antes || !depois) return [];
+    const alertas = [];
+    const meses = new Set([...Object.keys(antes.meses || {}), ...Object.keys(depois.meses || {})]);
+    meses.forEach((m) => {
+      const a = antes.meses?.[m] || 0;
+      const d = depois.meses?.[m] || 0;
+      if (a !== d) alertas.push(`${m}: ${a} → ${d}`);
+    });
+    return alertas;
+  };
+
+  const listarBackups = async () => {
+    const out = { nuvem: [], aparelho: [], erroNuvem: '' };
+    try {
+      out.aparelho = (await idbGetAll('snapmeta')).sort((a, b) => b.quando - a.quando);
+    } catch {}
+    if (isCloud && uid && db && cloudExtrasError !== 'permission-denied') {
+      try {
+        const qs = await userDoc().collection('backupsMeta').orderBy('quando', 'desc').limit(80).get();
+        out.nuvem = qs.docs.map((doc) => {
+          const m = doc.data() || {};
+          let resumo = {};
+          try { resumo = JSON.parse(m.resumoJson || '{}'); } catch {}
+          return { id: doc.id, ...m, ...resumo };
+        });
+      } catch (err) {
+        handleExtrasError(err);
+      }
+    }
+    out.erroNuvem = cloudExtrasError;
+    return out;
+  };
+
+  const obterBackup = async (origem, id) => {
+    if (origem === 'nuvem') {
+      const snap = await userDoc().collection('backups').doc(id).get();
+      const raw = snap.exists ? snap.data()?.data : '';
+      return raw ? JSON.parse(raw) : null;
+    }
+    const rec = await idbGet('snapshots', id);
+    return rec?.data ? JSON.parse(rec.data) : null;
+  };
+
+  const listarLogs = async (limite = 150) => {
+    let nuvem = [];
+    if (isCloud && uid && db && cloudExtrasError !== 'permission-denied') {
+      try {
+        const qs = await userDoc().collection('logs').orderBy('quando', 'desc').limit(limite).get();
+        nuvem = qs.docs.map((doc) => ({ ...doc.data(), origem: 'nuvem' }));
+      } catch (err) {
+        handleExtrasError(err);
+      }
+    }
+    let local = [];
+    try { local = (await idbGetAll('logs')).map((l) => ({ ...l, origem: 'aparelho' })); } catch {}
+    const map = new Map();
+    [...local, ...nuvem].forEach((l) => {
+      if (l?.id) map.set(l.id, { ...(map.get(l.id) || {}), ...l });
+    });
+    return {
+      logs: [...map.values()].sort((a, b) => (b.quando || 0) - (a.quando || 0)).slice(0, limite),
+      erroNuvem: cloudExtrasError
+    };
+  };
+
+  // Backup imediato (aparelho + nuvem) — usado antes de restaurar/limpar/importar
+  const backupNow = async (data, motivo = 'manual', { nuvem = true } = {}) => {
+    const snapshot = data && hasEntries(data) ? data : localLoad();
+    const okLocal = await salvarBackupLocal(snapshot, motivo, true);
+    let okNuvem = false;
+    if (nuvem && podeUsarExtrasNuvem()) {
+      okNuvem = await salvarBackupNuvem(JSON.stringify(snapshot), snapshot, motivo, true);
+    }
+    return { okLocal, okNuvem, erroNuvem: cloudExtrasError };
+  };
+
   // ---------- Modo nuvem (Firebase Auth + Firestore) ----------
   const fetchServerDocWithTimeout = async (timeoutMs = 4500) => {
     const docRef = db.collection('financas').doc(uid);
@@ -413,65 +857,106 @@ const AppStorage = (() => {
     if (!uid || !db) return false;
     setSyncUI('saving');
 
+    const docRef = db.collection('financas').doc(uid);
     let finalToWrite = data;
-
-    // Antes de gravar no Firestore, busca/mescla com o estado atual da nuvem para que
-    // uma aba antiga ou dispositivo que acabou de acordar NUNCA apague meses (ex: novembro)
-    // ou edições feitas pelo parceiro em outro aparelho.
-    let remoteBase = latestUnmergedRemote;
-    latestUnmergedRemote = null;
-
-    if (navigator.onLine) {
-      try {
-        const snap = await fetchServerDocWithTimeout(3500);
-        if (snap && snap.exists) {
-          const raw = snap.data()?.data;
-          if (raw) {
-            try { remoteBase = JSON.parse(raw); } catch {}
-          }
-        }
-      } catch {}
-    }
-
-    if (remoteBase && hasEntries(remoteBase)) {
-      const merged = mergeAllData(finalToWrite, remoteBase, true);
-      const beforeJson = JSON.stringify(finalToWrite);
-      const afterJson = JSON.stringify(merged);
-      finalToWrite = merged;
-      if (afterJson !== beforeJson) {
-        localSave(finalToWrite, true);
-        if (typeof onRemoteUpdate === 'function') {
-          onRemoteUpdate(finalToWrite, true);
-        }
-      }
-    }
-
-    const serialized = JSON.stringify(finalToWrite);
-    lastWrittenJson = serialized;
+    let remoteBase = null;
+    let contagemAntes = null;
 
     try {
-      await db.collection('financas').doc(uid).set({
-        data: serialized,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        clientUpdatedAt: Date.now(),
-        clientId
+      // A leitura e a gravação acontecem na mesma transação. Se outro aparelho
+      // gravar primeiro, o Firestore repete esta função com a versão mais recente.
+      const result = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(docRef);
+        let remote = null;
+        if (snap.exists) {
+          const raw = snap.data()?.data;
+          if (raw) {
+            try { remote = JSON.parse(raw); } catch {}
+          }
+        }
+
+        const merged = remote && hasEntries(remote)
+          ? mergeAllData(data, remote, true)
+          : data;
+        const serialized = JSON.stringify(merged);
+        transaction.set(docRef, {
+          data: serialized,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          clientUpdatedAt: Date.now(),
+          clientId
+        });
+        return { data: merged, remote };
       });
-      // Só limpa o status dirty se não entrou nenhuma nova edição local durante o envio
+
+      finalToWrite = result.data;
+      remoteBase = result.remote;
+      const serialized = JSON.stringify(finalToWrite);
+      lastWrittenJson = serialized;
+
+      // Não substitui o espelho local se uma edição nova chegou enquanto a
+      // transação estava em andamento; a fila enviará essa edição em seguida.
+      if (JSON.stringify(data) !== serialized && !pendingData) {
+        localSave(finalToWrite, true);
+        if (typeof onRemoteUpdate === 'function') onRemoteUpdate(finalToWrite, true);
+      }
+
+      if (remoteBase) marcarHistoricoVisto(remoteBase);
+      contagemAntes = remoteBase ? contarDados(remoteBase) : null;
+      retryCount = 0;
+      clearTimeout(retryTimer);
+      retryTimer = null;
       if (!pendingData) {
         markLocalClean();
         setSyncUI('saved');
       }
+
+      // Log e backup não bloqueiam a confirmação do salvamento principal.
+      try {
+        const acoes = extrairAcoesNovas(finalToWrite);
+        const contagemDepois = contarDados(finalToWrite);
+        const mudancasContagem = compararContagens(contagemAntes, contagemDepois);
+        const resumo = acoes.length
+          ? acoes.map((a) => a.acao).filter(Boolean).join(' | ')
+          : (mudancasContagem.length ? `sincronizou (${mudancasContagem.join(', ')})` : 'sincronizou');
+        registrarLog('salvou', resumo, { acoes, contagemAntes, contagemDepois, mudancasContagem });
+        salvarBackupNuvem(serialized, finalToWrite);
+      } catch {}
       return true;
     } catch (err) {
       console.error('[AppStorage] Erro ao salvar no Firestore:', err);
+      registrarLog('erro', `Falha ao salvar na nuvem (${err?.code || 'desconhecido'})`);
       if (!navigator.onLine || err?.code === 'unavailable') {
-        setSyncUI('offline');
+        setSyncUI(lastLocalSaveFailed ? 'error' : 'offline', lastLocalSaveFailed
+          ? 'Sem conexão com a nuvem e falha ao salvar neste aparelho.'
+          : 'Sem internet: alterações salvas neste aparelho e aguardando envio.');
       } else {
-        setSyncUI('error', `Erro ao salvar na nuvem (${err?.code || 'desconhecido'}). Seus dados estão salvos neste aparelho — clique para tentar novamente.`);
-        notifySafe('Atenção: falha ao sincronizar na nuvem. Dados guardados neste aparelho; tentando novamente...', 'error');
+        const detail = lastLocalSaveFailed
+          ? `Falha ao salvar na nuvem (${err?.code || 'desconhecido'}) e neste aparelho.`
+          : `Erro ao salvar na nuvem (${err?.code || 'desconhecido'}).`;
+        setSyncUI('error', detail);
+        notifySafe(lastLocalSaveFailed
+          ? 'Atenção: nuvem e armazenamento local falharam. Mantenha o app aberto e tente novamente.'
+          : 'Atenção: falha ao sincronizar na nuvem. Dados guardados neste aparelho; tentando novamente...', 'error');
       }
       return false;
     }
+  };
+
+  // Se a gravação falhar, tenta de novo sozinho (3s, 6s, 12s... até 1 min)
+  const agendarNovaTentativa = () => {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    if (!navigator.onLine) return; // o evento 'online' reenvia
+    const delay = Math.min(60000, 3000 * (2 ** retryCount));
+    retryCount += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      if (!pendingData) {
+        const local = localLoad();
+        if (getLocalMeta().dirty && hasEntries(local)) pendingData = local;
+      }
+      processWriteQueue();
+    }, delay);
   };
 
   const processWriteQueue = async () => {
@@ -491,6 +976,7 @@ const AppStorage = (() => {
         isWriting = false;
         inFlightPromise = null;
       }
+      if (!lastOk) agendarNovaTentativa();
       return lastOk;
     })();
     return await inFlightPromise;
@@ -522,6 +1008,7 @@ const AppStorage = (() => {
       let remoteObj = null;
       try { remoteObj = JSON.parse(raw); } catch { return; }
       if (!remoteObj || typeof remoteObj !== 'object') return;
+      marcarHistoricoVisto(remoteObj);
 
       lastWrittenJson = raw;
       if (typeof onRemoteUpdate === 'function') {
@@ -563,6 +1050,7 @@ const AppStorage = (() => {
         let remoteObj = null;
         try { remoteObj = JSON.parse(raw); } catch { return; }
         if (!remoteObj || typeof remoteObj !== 'object') return;
+        marcarHistoricoVisto(remoteObj);
 
         // Se temos escrita local agendada ou em andamento, guarda o snapshot remoto
         // para ser mesclado dentro de writeToFirestore sem atropelar a tela no meio da edição
@@ -657,7 +1145,7 @@ const AppStorage = (() => {
       if (saveTimer || pendingData) {
         flushCloudSave();
       }
-      if (inFlightPromise || isWriting) {
+      if (inFlightPromise || isWriting || saveTimer || pendingData) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -669,6 +1157,7 @@ const AppStorage = (() => {
         const local = localLoad();
         if (hasEntries(local)) {
           pendingData = local;
+          retryCount = 0;
           processWriteQueue();
         }
       } else {
@@ -683,6 +1172,14 @@ const AppStorage = (() => {
 
     el('btnSyncStatus')?.addEventListener('click', () => {
       syncNow();
+    });
+
+    // Botão "Tentar agora" do aviso flutuante de erro
+    document.addEventListener('click', (e) => {
+      if (e.target?.closest?.('[data-save-retry]')) {
+        retryCount = 0;
+        syncNow();
+      }
     });
   };
 
@@ -741,7 +1238,7 @@ const AppStorage = (() => {
 
   const cloudLoad = async () => {
     if (!uid) return localLoad();
-    setSyncUI('saving');
+    setSyncUI('loading');
 
     let cloud = {};
     let loadedFromCloud = false;
@@ -773,12 +1270,36 @@ const AppStorage = (() => {
     const canMigrateInitial = (!meta.uid || meta.uid === uid) && hasEntries(local);
     const localSyncedWithThisUser = meta.uid === uid && hasEntries(local);
 
+    // Histórico que já existe na nuvem (ou no aparelho já sincronizado) não é "ação nova" no log
+    marcarHistoricoVisto(cloud);
+    if (!meta.dirty) marcarHistoricoVisto(local);
+
+    // Rede de segurança: guarda a cópia deste aparelho ANTES de mesclar com a nuvem,
+    // assim qualquer coisa que exista só aqui pode ser recuperada depois.
+    const contagemNuvem = contarDados(cloud);
+    const contagemAparelho = contarDados(local);
+    if (hasEntries(local) && JSON.stringify(local) !== JSON.stringify(cloud)) {
+      salvarBackupLocal(local, 'cópia do aparelho antes de sincronizar', true);
+    }
+    const registrarAbertura = (finalData) => {
+      const diferencas = compararContagens(contagemNuvem, contagemAparelho);
+      const total = contarDados(finalData);
+      registrarLog(
+        'abriu',
+        `abriu o app (${total.lancamentos} lançamentos em ${Object.keys(total.meses).length} meses)${diferencas.length ? ` · aparelho x nuvem: ${diferencas.join(', ')}` : ''}`,
+        { contagemNuvem, contagemAparelho, contagemFinal: total, aparelhoPendente: Boolean(meta.dirty) }
+      );
+      salvarBackupLocal(finalData, 'ao abrir o app', true);
+      salvarBackupNuvem(JSON.stringify(finalData), finalData, 'ao abrir o app');
+    };
+
     // Se a nuvem está vazia mas existem dados locais, envia para a nuvem
     if (!hasEntries(cloud) && canMigrateInitial) {
       isInitialLoadComplete = true;
       await writeToFirestore(local);
       notifySafe('Seus dados locais foram sincronizados na nuvem!');
       subscribeRealtime();
+      registrarAbertura(local);
       return local;
     }
 
@@ -808,6 +1329,7 @@ const AppStorage = (() => {
 
     isInitialLoadComplete = true;
     subscribeRealtime();
+    registrarAbertura(finalData);
     return finalData;
   };
 
@@ -831,6 +1353,8 @@ const AppStorage = (() => {
 
     // 1. Salva IMEDIATAMENTE (0ms) no localStorage como backup síncrono
     localSave(safeData, true);
+    // 1b. Cópia completa no IndexedDB do aparelho (no máx. a cada 3 min)
+    salvarBackupLocal(safeData);
 
     if (!uid || !db) return;
 
@@ -863,17 +1387,26 @@ const AppStorage = (() => {
         ? mergeAllData(local, remote, isLocalDirty)
         : remote;
 
-      if (isLocalDirty || JSON.stringify(merged) !== JSON.stringify(remote)) {
+      const needsWrite = isLocalDirty || JSON.stringify(merged) !== JSON.stringify(remote);
+      if (needsWrite) {
         localSave(merged, true);
-        await writeToFirestore(merged);
+        const saved = await writeToFirestore(merged);
+        if (!saved) return;
+        // Se houve nova edição enquanto a transação estava em andamento, espera
+        // também a fila que cloudSave agendou para essa edição mais recente.
+        if (pendingData || saveTimer) {
+          const queuedSaved = await flushCloudSave();
+          if (!queuedSaved) return;
+        }
       } else {
-        localSave(merged, false);
+        if (!localSave(merged, false)) {
+          setSyncUI('error', 'Não foi possível atualizar a cópia local deste aparelho.');
+          return;
+        }
+        if (typeof onRemoteUpdate === 'function') onRemoteUpdate(merged, true);
       }
 
-      if (typeof onRemoteUpdate === 'function') {
-        onRemoteUpdate(merged, true);
-      }
-      setSyncUI('saved');
+      if (!pendingData && !saveTimer && !isWriting) setSyncUI('saved');
       notifySafe('Sincronizado com o banco Google!', 'success');
     } catch {
       setSyncUI(navigator.onLine ? 'error' : 'offline');
@@ -907,7 +1440,11 @@ const AppStorage = (() => {
     },
     loadCached,
     save(data) {
-      return isCloud ? cloudSave(data) : localSave(data, false);
+      if (isCloud) return cloudSave(data);
+      const saved = localSave(data, false);
+      if (!saved) setSyncUI('error', 'Não foi possível salvar os dados neste aparelho. Mantenha o app aberto e libere espaço no navegador.');
+      salvarBackupLocal(data);
+      return saved;
     },
     mirrorLocal(data) {
       localSave(data, Boolean(getLocalMeta().dirty));
@@ -918,6 +1455,30 @@ const AppStorage = (() => {
     },
     flush: flushCloudSave,
     syncNow,
-    mergeAllData
+    mergeAllData,
+    // Backups, log de auditoria e identificação do aparelho
+    backupNow,
+    listarBackups,
+    obterBackup,
+    listarLogs,
+    registrarLog,
+    getDeviceName,
+    setDeviceName,
+    detectDevice,
+    contarDados,
+    getStatus() {
+      const meta = getLocalMeta();
+      return {
+        isCloud,
+        logado: Boolean(uid),
+        online: navigator.onLine,
+        pendente: Boolean(meta.dirty || saveTimer || pendingData || isWriting),
+        ultimoSalvoNuvem: lastCloudSavedAt || meta.syncedAt || 0,
+        erroExtrasNuvem: cloudExtrasError,
+        aparelho: detectDevice(),
+        nomeAparelho: getDeviceName(),
+        email: auth?.currentUser?.email || ''
+      };
+    }
   };
 })();

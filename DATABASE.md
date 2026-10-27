@@ -37,8 +37,23 @@ Firestore Database
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function dono(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
     match /financas/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if dono(uid);
+
+      // Permissões do documento pai não se estendem às subcoleções.
+      match /logs/{logId} {
+        allow read, write: if dono(uid);
+      }
+      match /backups/{backupId} {
+        allow read, write: if dono(uid);
+      }
+      match /backupsMeta/{backupId} {
+        allow read, write: if dono(uid);
+      }
     }
   }
 }
