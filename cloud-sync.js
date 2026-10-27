@@ -30,8 +30,10 @@ const AppStorage = (() => {
   let pendingData = null;
   let latestUnmergedRemote = null;
   let lastWrittenJson = '';
+  let lastWriteErrorCode = '';
   const dirtyIdsSet = new Set();
   const clientId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const MAX_FIRESTORE_DATA_BYTES = 900 * 1024;
 
   // ---------- DOM do login e indicador de sincronização ----------
   const el = (id) => document.getElementById(id);
@@ -879,6 +881,12 @@ const AppStorage = (() => {
           ? mergeAllData(data, remote, true)
           : data;
         const serialized = JSON.stringify(merged);
+        const bytes = new TextEncoder().encode(serialized).byteLength;
+        if (bytes > MAX_FIRESTORE_DATA_BYTES) {
+          const sizeError = new Error('O conjunto de dados excedeu o limite seguro para o documento Firestore.');
+          sizeError.code = 'app/document-too-large';
+          throw sizeError;
+        }
         transaction.set(docRef, {
           data: serialized,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -903,6 +911,7 @@ const AppStorage = (() => {
       if (remoteBase) marcarHistoricoVisto(remoteBase);
       contagemAntes = remoteBase ? contarDados(remoteBase) : null;
       retryCount = 0;
+      lastWriteErrorCode = '';
       clearTimeout(retryTimer);
       retryTimer = null;
       if (!pendingData) {
@@ -923,9 +932,16 @@ const AppStorage = (() => {
       } catch {}
       return true;
     } catch (err) {
+      lastWriteErrorCode = err?.code || 'unknown';
       console.error('[AppStorage] Erro ao salvar no Firestore:', err);
       registrarLog('erro', `Falha ao salvar na nuvem (${err?.code || 'desconhecido'})`);
-      if (!navigator.onLine || err?.code === 'unavailable') {
+      if (err?.code === 'app/document-too-large') {
+        const localStatus = lastLocalSaveFailed
+          ? ' Também falhou a gravação local neste navegador; mantenha o app aberto e exporte os dados assim que possível.'
+          : ' A cópia local permanece marcada como pendente.';
+        setSyncUI('error', `Os dados passaram de 900 KiB para envio seguro ao Firestore. Exporte um JSON e reduza o histórico.${localStatus}`);
+        notifySafe(`A nuvem não aceitou o volume atual.${localStatus} Exporte um JSON antes de remover histórico.`, 'error');
+      } else if (!navigator.onLine || err?.code === 'unavailable') {
         setSyncUI(lastLocalSaveFailed ? 'error' : 'offline', lastLocalSaveFailed
           ? 'Sem conexão com a nuvem e falha ao salvar neste aparelho.'
           : 'Sem internet: alterações salvas neste aparelho e aguardando envio.');
@@ -959,6 +975,15 @@ const AppStorage = (() => {
     }, delay);
   };
 
+  const erroPermanenteDeGravacao = (code) => [
+    'app/document-too-large',
+    'permission-denied',
+    'unauthenticated',
+    'invalid-argument',
+    'resource-exhausted',
+    'failed-precondition'
+  ].includes(code);
+
   const processWriteQueue = async () => {
     if (isWriting) return inFlightPromise || true;
     if (!uid || !db) return false;
@@ -976,7 +1001,7 @@ const AppStorage = (() => {
         isWriting = false;
         inFlightPromise = null;
       }
-      if (!lastOk) agendarNovaTentativa();
+      if (!lastOk && !erroPermanenteDeGravacao(lastWriteErrorCode)) agendarNovaTentativa();
       return lastOk;
     })();
     return await inFlightPromise;

@@ -37,6 +37,7 @@ const createTransactionalStorage = async (initialRemote) => {
   const localValues = new Map();
   let currentRemote = initialRemote;
   let transactionAttempts = 0;
+  let transactionWrites = 0;
   const docRef = {
     id: 'household',
     collection: () => ({ doc: () => ({ set: async () => {} }) })
@@ -53,7 +54,7 @@ const createTransactionalStorage = async (initialRemote) => {
             exists: Boolean(snapshotValue),
             data: () => ({ data: JSON.stringify(snapshotValue) })
           }),
-          set: (_ref, value) => { pendingWrite = value; }
+          set: (_ref, value) => { transactionWrites += 1; pendingWrite = value; }
         };
         const result = await callback(transaction);
         transactionAttempts += 1;
@@ -107,6 +108,7 @@ const createTransactionalStorage = async (initialRemote) => {
     },
     window: { addEventListener: () => {} },
     navigator: { onLine: true, userAgent: '' },
+    TextEncoder,
     console: { warn: () => {}, error: () => {}, log: () => {} },
     setTimeout,
     clearTimeout
@@ -120,7 +122,8 @@ const createTransactionalStorage = async (initialRemote) => {
   return {
     storage,
     getRemote: () => currentRemote,
-    getTransactionAttempts: () => transactionAttempts
+    getTransactionAttempts: () => transactionAttempts,
+    getTransactionWrites: () => transactionWrites
   };
 };
 
@@ -213,4 +216,25 @@ test('transação relê o Firestore em conflito e preserva o mês remoto novo e 
   assert.equal(result['2026-10'][0].id, 'remote-old');
   assert.equal(result['2026-11'][0].id, 'local-new');
   assert.equal(result['2026-12'][0].id, 'remote-new');
+});
+
+test('bloqueia documento acima do limite seguro antes de escrever e mantém a cópia local pendente', async () => {
+  const harness = await createTransactionalStorage({
+    '2026-10': [{ id: 'remote-old', description: 'Outubro', _updatedAt: Date.now() - 10_000 }]
+  });
+  const local = {
+    '2026-11': [{
+      id: 'local-too-large',
+      description: 'ç'.repeat(470_000),
+      _updatedAt: Date.now()
+    }]
+  };
+
+  harness.storage.save(local);
+  const saved = await harness.storage.flush();
+
+  assert.equal(saved, false);
+  assert.equal(harness.storage.isDirty(), true);
+  assert.equal(harness.getTransactionWrites(), 0);
+  assert.equal(harness.getRemote()['2026-10'][0].id, 'remote-old');
 });
