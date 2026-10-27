@@ -336,6 +336,8 @@ const abrirBackupsLogs = async () => {
   }
 };
 
+window.abrirBackupsLogs = abrirBackupsLogs;
+
 const importEntriesFromRows = async (rows, { title, text } = {}) => {
   const entries = parseSheetRows(rows);
 

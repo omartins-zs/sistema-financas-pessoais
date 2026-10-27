@@ -56,6 +56,16 @@ test('inicialização da PWA não inventa nem reescreve lançamentos financeiros
   assert.doesNotMatch(bootstrap, /reconciliarDadosRecentes|Caixinha Turbo/);
 });
 
+test('a tela de backups e logs fica acessível pela barra principal', async () => {
+  const html = await read('index.html');
+  const recovery = await read('js/41-backups-recovery.js');
+  const events = await read('js/70-events.js');
+
+  assert.match(html, /id="btnBackups"[^>]*aria-label="Backups e logs de salvamento"/);
+  assert.match(recovery, /window\.abrirBackupsLogs\s*=\s*abrirBackupsLogs/);
+  assert.match(events, /getElementById\('btnBackups'\).*window\.abrirBackupsLogs/);
+});
+
 test('todos os scripts da aplicação passam pela verificação de sintaxe do Node', async () => {
   const files = [...sourceFiles, 'app-modules.js', 'cloud-sync.js', 'firebase-config.js', 'sw.js'];
 

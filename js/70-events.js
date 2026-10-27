@@ -149,6 +149,7 @@ const bindEvents = () => {
   dom.btnClearMonth.addEventListener('click', clearCurrentMonth);
   dom.btnTheme.addEventListener('click', toggleTheme);
   document.getElementById('btnHistory')?.addEventListener('click', abrirHistorico);
+  document.getElementById('btnBackups')?.addEventListener('click', () => window.abrirBackupsLogs?.());
   document.querySelectorAll('[data-import]').forEach((btn) => {
     btn.addEventListener('click', () => handleImportClick(btn.dataset.import));
   });
