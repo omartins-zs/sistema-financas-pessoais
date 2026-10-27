@@ -50,6 +50,12 @@ test('shell do service worker inclui cada parte da aplicação', async () => {
   assert.ok(!serviceWorker.includes("'./script.js'"));
 });
 
+test('inicialização da PWA não inventa nem reescreve lançamentos financeiros', async () => {
+  const bootstrap = await read('js/80-bootstrap-pwa.js');
+
+  assert.doesNotMatch(bootstrap, /reconciliarDadosRecentes|Caixinha Turbo/);
+});
+
 test('todos os scripts da aplicação passam pela verificação de sintaxe do Node', async () => {
   const files = [...sourceFiles, 'app-modules.js', 'cloud-sync.js', 'firebase-config.js', 'sw.js'];
 
@@ -102,4 +108,14 @@ test('regras Firestore limitam leitura e escrita ao dono da conta e cobrem as su
     assert.match(rules, new RegExp(`match \/${collection}\\/\\{`));
   }
   assert.doesNotMatch(rules, /allow\s+(?:read|write|read,\s*write)\s*:\s*if\s+true/);
+});
+
+test('Firebase CLI aponta para as regras e o projeto configurado no app', async () => {
+  const firebase = JSON.parse(await read('firebase.json'));
+  const aliases = JSON.parse(await read('.firebaserc'));
+  const client = await read('firebase-config.js');
+  const configuredProject = client.match(/projectId:\s*["']([^"']+)["']/)?.[1];
+
+  assert.equal(firebase.firestore.rules, 'firestore.rules');
+  assert.equal(aliases.projects.default, configuredProject);
 });

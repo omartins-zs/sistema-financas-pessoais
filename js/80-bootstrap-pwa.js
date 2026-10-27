@@ -2,153 +2,12 @@
 // Init
 // ============================================
 
-// Reconciliação dos ajustes (garante Caixinha Turbo na carteira de investimentos e
-// no mês a mês em R$ 450,00, MEI pago, Cabelo Gabriel pago).
-const reconciliarDadosRecentes = () => {
-  if (!allData || typeof allData !== 'object') return false;
-  if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
-
-  const mesesComDados = Object.keys(allData)
-    .filter((k) => /^\d{4}-\d{2}$/.test(k) && Array.isArray(allData[k]) && allData[k].length > 0)
-    .sort();
-
-  // Só reconcilia quando os dados reais do usuário já estiverem carregados
-  if (!mesesComDados.length && !(Array.isArray(allData.__app.investimentos) && allData.__app.investimentos.length)) {
-    return false;
-  }
-
-  let houveMudanca = false;
-  const mesAtualKey = getMonthKey(currentDate);
-  const mesAlvo = allData[mesAtualKey]?.length
-    ? mesAtualKey
-    : (mesesComDados[mesesComDados.length - 1] || mesAtualKey);
-
-  // 1. Marcar MEI e Cabelo Gabriel como "pago" no mês ativo/recente se estiverem "nao_pago"
-  const mesesParaVerificar = Array.from(new Set([mesAlvo, mesAtualKey, '2026-10', '2026-11'])).filter((m) => Array.isArray(allData[m]));
-  mesesParaVerificar.forEach((mes) => {
-    const listaOriginal = allData[mes];
-    let alterouMes = false;
-    const novaLista = listaOriginal.map((item) => {
-      if (!item || typeof item !== 'object') return item;
-      const desc = String(item.description || '').trim();
-      const person = String(item.person || '').toLowerCase();
-      const ehMei =
-        /^(mei|mei\s+gabriel|das\s*mei|imposto\s*mei|microempreendedor)$/i.test(desc) ||
-        (/\bmei\b/i.test(desc) && (person === 'gabriel' || !person));
-      const ehCabeloGabriel =
-        /cabelo\s*gabriel|barbeiro\s*gabriel|corte\s*(de\s*)?cabelo\s*gabriel/i.test(desc) ||
-        (/\b(cabelo|barbeiro|barbearia|corte\s+de\s+cabelo)\b/i.test(desc) && person === 'gabriel');
-
-      if ((ehMei || ehCabeloGabriel) && item.status !== 'pago') {
-        alterouMes = true;
-        return { ...item, status: 'pago', _updatedAt: Date.now() };
-      }
-      return item;
-    });
-
-    if (alterouMes) {
-      registrarHistoricoMes(mes, listaOriginal, novaLista);
-      allData[mes] = novaLista;
-      houveMudanca = true;
-    }
-  });
-
-  // 2. Garantir Caixinha Turbo SEMPRE presente na aba Investimentos e no Mês a mês com R$ 450,00
-  if (!Array.isArray(allData.__app.investimentos)) allData.__app.investimentos = [];
-  if (!Array.isArray(allData.__app.historico)) allData.__app.historico = [];
-
-  const regexCaixinhaTurbo = /caixinha\s*turbo/i;
-  const idxCarteira = allData.__app.investimentos.findIndex(
-    (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
-  );
-
-  let carteiraId = '';
-  if (idxCarteira >= 0) {
-    carteiraId = allData.__app.investimentos[idxCarteira].id;
-    desmarcarExclusaoIds([carteiraId]);
-  } else {
-    // Se a categoria sumiu da carteira (ex: sobrescrita por outro aparelho), RECIRA IMEDIATAMENTE
-    carteiraId = generateId();
-    const novaCarteira = {
-      id: carteiraId,
-      tipo: 'Caixinha / Conta remunerada',
-      instituicao: 'Caixinha Turbo',
-      meta: 0,
-      rendimento: 0,
-      data: `${mesAlvo}-01`,
-      _updatedAt: Date.now()
-    };
-    allData.__app.investimentos.push(novaCarteira);
-    desmarcarExclusaoIds([carteiraId]);
-    houveMudanca = true;
-  }
-
-  let encontrouCaixinhaMes = false;
-  mesesParaVerificar.forEach((mes) => {
-    const listaOriginal = allData[mes];
-    let alterouMes = false;
-    const novaLista = listaOriginal.map((item) => {
-      if (!item || typeof item !== 'object') return item;
-      if (regexCaixinhaTurbo.test(String(item.description || ''))) {
-        encontrouCaixinhaMes = true;
-        let novoItem = item;
-        let mudou = false;
-        if (Number(item.value) === 600) {
-          novoItem = { ...novoItem, value: 450, status: 'pago' };
-          mudou = true;
-        }
-        if (novoItem.investimento_id !== carteiraId || novoItem.type !== 'investimento') {
-          novoItem = { ...novoItem, investimento_id: carteiraId, type: 'investimento' };
-          mudou = true;
-        }
-        if (mudou) {
-          alterouMes = true;
-          return { ...novoItem, _updatedAt: Date.now() };
-        }
-      }
-      return item;
-    });
-
-    if (alterouMes) {
-      registrarHistoricoMes(mes, listaOriginal, novaLista);
-      allData[mes] = novaLista;
-      houveMudanca = true;
-    }
-  });
-
-  // Se não estava em nenhum mês, cria no mês alvo com R$ 450,00 vinculado à carteira
-  if (!encontrouCaixinhaMes) {
-    const entry450 = normalizeEntry({
-      id: generateId(),
-      description: 'Caixinha Turbo',
-      category: catPapel('investimentos'),
-      type: 'investimento',
-      person: 'gabriel',
-      value: 450,
-      status: 'pago',
-      due_day: null,
-      observation: '',
-      card_items: [],
-      investimento_id: carteiraId,
-      _updatedAt: Date.now()
-    });
-    const baseMes = Array.isArray(allData[mesAlvo]) ? allData[mesAlvo] : [];
-    const novaLista = [...baseMes, entry450];
-    registrarHistoricoMes(mesAlvo, baseMes, novaLista);
-    allData[mesAlvo] = novaLista;
-    houveMudanca = true;
-  }
-
-  return houveMudanca;
-};
-
 // Carrega os dados e desenha a tela (chamado quando o armazenamento está pronto)
 const startApp = async () => {
   // 1. Exibe imediatamente o espelho local (0ms) enquanto busca a nuvem em segundo plano
   const cached = AppStorage.loadCached?.();
   if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
     allData = cached;
-    reconciliarDadosRecentes();
     iniciarSnapshotsHistorico();
     aplicarCategoriasSalvas();
     populateCategories();
@@ -160,10 +19,6 @@ const startApp = async () => {
   // 2. Carrega e sincroniza com o servidor (Firestore)
   await loadData();
   iniciarSnapshotsHistorico();
-  const reconciliou = reconciliarDadosRecentes();
-  if (reconciliou) {
-    saveData();
-  }
   aplicarCategoriasSalvas();
   populateCategories();
   populateInvestimentoSelects();
@@ -185,7 +40,6 @@ const handleRemoteUpdate = (remoteData, skipMirror = false) => {
   if (!skipMirror) {
     AppStorage.mirrorLocal?.(allData);
   }
-  reconciliarDadosRecentes();
   iniciarSnapshotsHistorico();
   aplicarCategoriasSalvas();
   populateCategories();

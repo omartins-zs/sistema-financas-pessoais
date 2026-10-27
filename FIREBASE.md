@@ -65,6 +65,17 @@ service cloud.firestore {
 
 > Isso garante que **cada usuário só acessa os próprios dados**.
 
+#### Publicar pelo Firebase CLI (alternativa)
+
+Na raiz deste repositório, `firebase.json` aponta para `firestore.rules` e `.firebaserc` seleciona o mesmo projeto configurado em `firebase-config.js`. Com o Firebase CLI instalado e autenticado, publique apenas as regras do Firestore:
+
+```bash
+firebase login
+firebase deploy --only firestore:rules
+```
+
+Confira o projeto selecionado antes de publicar com `firebase use`. A publicação não altera os documentos de dados; ela atualiza somente as regras de acesso.
+
 ---
 
 ## 4. Pegar a configuração do app Web
