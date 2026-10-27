@@ -2,13 +2,11 @@
 // Init
 // ============================================
 
-// Reconciliação única dos ajustes recentes relatados (Caixinha Turbo 600 -> 450,
-// MEI pago, Cabelo Gabriel pago + histórico de alterações correspondente) caso
-// tenham se perdido antes da correção do sync/histórico.
+// Reconciliação dos ajustes (garante Caixinha Turbo na carteira de investimentos e
+// no mês a mês em R$ 450,00, MEI pago, Cabelo Gabriel pago).
 const reconciliarDadosRecentes = () => {
   if (!allData || typeof allData !== 'object') return false;
   if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
-  if (allData.__app._reconciliado20261024) return false;
 
   const mesesComDados = Object.keys(allData)
     .filter((k) => /^\d{4}-\d{2}$/.test(k) && Array.isArray(allData[k]) && allData[k].length > 0)
@@ -26,7 +24,7 @@ const reconciliarDadosRecentes = () => {
     : (mesesComDados[mesesComDados.length - 1] || mesAtualKey);
 
   // 1. Marcar MEI e Cabelo Gabriel como "pago" no mês ativo/recente se estiverem "nao_pago"
-  const mesesParaVerificar = Array.from(new Set([mesAlvo, mesAtualKey])).filter((m) => Array.isArray(allData[m]));
+  const mesesParaVerificar = Array.from(new Set([mesAlvo, mesAtualKey, '2026-10', '2026-11'])).filter((m) => Array.isArray(allData[m]));
   mesesParaVerificar.forEach((mes) => {
     const listaOriginal = allData[mes];
     let alterouMes = false;
@@ -55,13 +53,37 @@ const reconciliarDadosRecentes = () => {
     }
   });
 
-  // 2. Garantir Caixinha Turbo em R$ 450,00 (com histórico 600 -> 450)
+  // 2. Garantir Caixinha Turbo SEMPRE presente na aba Investimentos e no Mês a mês com R$ 450,00
   if (!Array.isArray(allData.__app.investimentos)) allData.__app.investimentos = [];
   if (!Array.isArray(allData.__app.historico)) allData.__app.historico = [];
 
   const regexCaixinhaTurbo = /caixinha\s*turbo/i;
-  let encontrouCaixinhaMes = false;
+  const idxCarteira = allData.__app.investimentos.findIndex(
+    (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
+  );
 
+  let carteiraId = '';
+  if (idxCarteira >= 0) {
+    carteiraId = allData.__app.investimentos[idxCarteira].id;
+    desmarcarExclusaoIds([carteiraId]);
+  } else {
+    // Se a categoria sumiu da carteira (ex: sobrescrita por outro aparelho), RECIRA IMEDIATAMENTE
+    carteiraId = generateId();
+    const novaCarteira = {
+      id: carteiraId,
+      tipo: 'Caixinha / Conta remunerada',
+      instituicao: 'Caixinha Turbo',
+      meta: 0,
+      rendimento: 0,
+      data: `${mesAlvo}-01`,
+      _updatedAt: Date.now()
+    };
+    allData.__app.investimentos.push(novaCarteira);
+    desmarcarExclusaoIds([carteiraId]);
+    houveMudanca = true;
+  }
+
+  let encontrouCaixinhaMes = false;
   mesesParaVerificar.forEach((mes) => {
     const listaOriginal = allData[mes];
     let alterouMes = false;
@@ -69,9 +91,19 @@ const reconciliarDadosRecentes = () => {
       if (!item || typeof item !== 'object') return item;
       if (regexCaixinhaTurbo.test(String(item.description || ''))) {
         encontrouCaixinhaMes = true;
+        let novoItem = item;
+        let mudou = false;
         if (Number(item.value) === 600) {
+          novoItem = { ...novoItem, value: 450, status: 'pago' };
+          mudou = true;
+        }
+        if (novoItem.investimento_id !== carteiraId || novoItem.type !== 'investimento') {
+          novoItem = { ...novoItem, investimento_id: carteiraId, type: 'investimento' };
+          mudou = true;
+        }
+        if (mudou) {
           alterouMes = true;
-          return { ...item, value: 450, status: 'pago', _updatedAt: Date.now() };
+          return { ...novoItem, _updatedAt: Date.now() };
         }
       }
       return item;
@@ -84,136 +116,29 @@ const reconciliarDadosRecentes = () => {
     }
   });
 
-  const idxCarteira = allData.__app.investimentos.findIndex(
-    (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
-  );
-
-  if (idxCarteira >= 0) {
-    const invAtual = allData.__app.investimentos[idxCarteira];
-    const vAplicado = Number(invAtual.valorAplicado) || 0;
-    const vAtual = Number(invAtual.valorAtual) || 0;
-    if (vAplicado === 600 || vAtual === 600 || (!encontrouCaixinhaMes && vAplicado !== 450 && vAtual !== 450)) {
-      const invAntes600 = {
-        ...JSON.parse(JSON.stringify(invAtual)),
-        valorAplicado: 600,
-        valorAtual: 600
-      };
-      const invDepois450 = {
-        ...JSON.parse(JSON.stringify(invAtual)),
-        valorAplicado: 450,
-        valorAtual: 450,
-        _updatedAt: Date.now()
-      };
-      allData.__app.investimentos[idxCarteira] = invDepois450;
-      registrarHistoricoModulo('investimentos', invAntes600, invDepois450);
-      houveMudanca = true;
-    }
-  } else if (!encontrouCaixinhaMes) {
-    // Se não estava nem na carteira nem no mês (perdeu-se ao sair do site),
-    // garante a categoria na carteira e o lançamento de R$ 450,00 no mês alvo + histórico 600 -> 450
-    const carteiraId = generateId();
-    const dataInicio = `${mesAlvo}-01`;
-    const novaCarteira = {
-      id: carteiraId,
-      tipo: 'Renda Fixa',
-      instituicao: 'Caixinha Turbo',
-      valorAplicado: 0,
-      valorAtual: 0,
-      rentabilidade: 0,
-      data: dataInicio,
-      _updatedAt: Date.now()
-    };
-    allData.__app.investimentos.push(novaCarteira);
-
-    const entryId = generateId();
-    const entry600 = normalizeEntry({
-      id: entryId,
+  // Se não estava em nenhum mês, cria no mês alvo com R$ 450,00 vinculado à carteira
+  if (!encontrouCaixinhaMes) {
+    const entry450 = normalizeEntry({
+      id: generateId(),
       description: 'Caixinha Turbo',
       category: catPapel('investimentos'),
       type: 'investimento',
       person: 'gabriel',
-      value: 600,
+      value: 450,
       status: 'pago',
       due_day: null,
       observation: '',
       card_items: [],
       investimento_id: carteiraId,
-      _updatedAt: Date.now() - 60000
-    });
-    const entry450 = {
-      ...entry600,
-      value: 450,
       _updatedAt: Date.now()
-    };
-
+    });
     const baseMes = Array.isArray(allData[mesAlvo]) ? allData[mesAlvo] : [];
-    const listaCom600 = [...baseMes, entry600];
-    registrarHistoricoMes(mesAlvo, baseMes, listaCom600);
-    const listaCom450 = [...baseMes, entry450];
-    registrarHistoricoMes(mesAlvo, listaCom600, listaCom450);
-    allData[mesAlvo] = listaCom450;
+    const novaLista = [...baseMes, entry450];
+    registrarHistoricoMes(mesAlvo, baseMes, novaLista);
+    allData[mesAlvo] = novaLista;
     houveMudanca = true;
   }
 
-  // Se Caixinha Turbo já estava em 450 mas sem o registro de histórico 600 -> 450, garante no histórico
-  const jaTemHistCaixinha600 = allData.__app.historico.some((h) => {
-    const txt = String(h?.acao || h?.resumo || '');
-    return regexCaixinhaTurbo.test(txt) && txt.includes('600');
-  });
-  if (!jaTemHistCaixinha600) {
-    const invRef = allData.__app.investimentos.find(
-      (inv) => regexCaixinhaTurbo.test(String(inv?.instituicao || '')) || regexCaixinhaTurbo.test(String(inv?.tipo || ''))
-    );
-    const entryRef = (allData[mesAlvo] || []).find((e) => regexCaixinhaTurbo.test(String(e?.description || '')));
-    if (entryRef) {
-      const antes600 = { ...JSON.parse(JSON.stringify(entryRef)), value: 600 };
-      const depois450 = { ...JSON.parse(JSON.stringify(entryRef)), value: 450 };
-      const idxAdd450 = allData.__app.historico.findIndex((h) =>
-        h?.tipo === 'mes' &&
-        regexCaixinhaTurbo.test(String(h?.acao || '')) &&
-        Array.isArray(h?.adicionados) &&
-        h.adicionados.length === 1 &&
-        Number(h.adicionados[0]?.value) === 450
-      );
-      if (idxAdd450 >= 0) {
-        const regAdd = allData.__app.historico[idxAdd450];
-        const tsAdd = dayjs(regAdd.quando).subtract(1, 'minute').toISOString();
-        regAdd.acao = `adicionou “Caixinha Turbo” (${formatCurrency(600)})`;
-        regAdd.adicionados = [antes600];
-        const regEdit = {
-          id: generateId(),
-          quando: regAdd.quando,
-          tipo: 'mes',
-          mes: regAdd.mes || mesAlvo,
-          acao: `alterou “Caixinha Turbo” (${formatCurrency(600)} → ${formatCurrency(450)})`,
-          reversivel: true,
-          adicionados: [],
-          removidos: [],
-          alterados: [{ antes: antes600, depois: depois450 }]
-        };
-        regAdd.quando = tsAdd;
-        allData.__app.historico.splice(idxAdd450, 0, regEdit);
-      } else {
-        novoRegistroHistorico({
-          tipo: 'mes',
-          mes: mesAlvo,
-          acao: `alterou “Caixinha Turbo” (${formatCurrency(600)} → ${formatCurrency(450)})`,
-          reversivel: true,
-          adicionados: [],
-          removidos: [],
-          alterados: [{ antes: antes600, depois: depois450 }]
-        });
-      }
-      houveMudanca = true;
-    } else if (invRef) {
-      const antes600 = { ...JSON.parse(JSON.stringify(invRef)), valorAplicado: 600, valorAtual: 600 };
-      const depois450 = { ...JSON.parse(JSON.stringify(invRef)), valorAplicado: 450, valorAtual: 450 };
-      registrarHistoricoModulo('investimentos', antes600, depois450);
-      houveMudanca = true;
-    }
-  }
-
-  allData.__app._reconciliado20261024 = true;
   return houveMudanca;
 };
 
@@ -223,6 +148,7 @@ const startApp = async () => {
   const cached = AppStorage.loadCached?.();
   if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
     allData = cached;
+    reconciliarDadosRecentes();
     iniciarSnapshotsHistorico();
     aplicarCategoriasSalvas();
     populateCategories();
@@ -259,6 +185,7 @@ const handleRemoteUpdate = (remoteData, skipMirror = false) => {
   if (!skipMirror) {
     AppStorage.mirrorLocal?.(allData);
   }
+  reconciliarDadosRecentes();
   iniciarSnapshotsHistorico();
   aplicarCategoriasSalvas();
   populateCategories();
