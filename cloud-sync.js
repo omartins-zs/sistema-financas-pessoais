@@ -25,8 +25,12 @@ const AppStorage = (() => {
   let booted = false;
   let unsubscribeSnapshot = null;
   let inFlightPromise = null;
+  let isWriting = false;
+  let isInitialLoadComplete = false;
   let pendingData = null;
+  let latestUnmergedRemote = null;
   let lastWrittenJson = '';
+  const dirtyIdsSet = new Set();
   const clientId = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
   // ---------- DOM do login e indicador de sincronização ----------
@@ -100,6 +104,30 @@ const AppStorage = (() => {
   };
 
   // ---------- Persistência local imediata (espelho síncrono) ----------
+  const getLocalMeta = () => {
+    try {
+      const raw = localStorage.getItem(LS_META_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== 'object') {
+        return { updatedAt: 0, dirty: false, uid: null, syncedAt: 0, dirtyIds: [] };
+      }
+      return {
+        updatedAt: Number(parsed.updatedAt) || 0,
+        dirty: Boolean(parsed.dirty),
+        uid: parsed.uid || null,
+        syncedAt: Number(parsed.syncedAt) || 0,
+        dirtyIds: Array.isArray(parsed.dirtyIds) ? parsed.dirtyIds : []
+      };
+    } catch {
+      return { updatedAt: 0, dirty: false, uid: null, syncedAt: 0, dirtyIds: [] };
+    }
+  };
+
+  // Inicializa o conjunto de IDs sujos pendentes de sincronização a partir do localStorage
+  getLocalMeta().dirtyIds.forEach((id) => {
+    if (id) dirtyIdsSet.add(id);
+  });
+
   const localLoad = () => {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -109,28 +137,49 @@ const AppStorage = (() => {
 
   const localSave = (data, dirty = false) => {
     try {
+      const prevMeta = getLocalMeta();
+      if (!dirty) {
+        dirtyIdsSet.clear();
+      }
       localStorage.setItem(LS_KEY, JSON.stringify(data));
       localStorage.setItem(LS_META_KEY, JSON.stringify({
         updatedAt: Date.now(),
         dirty: Boolean(dirty),
-        uid: uid || null
+        uid: uid || prevMeta.uid || null,
+        syncedAt: dirty ? (prevMeta.syncedAt || 0) : Date.now(),
+        dirtyIds: dirty ? [...dirtyIdsSet] : []
       }));
     } catch {}
   };
 
-  const getLocalMeta = () => {
+  const markDirtyIds = (ids = []) => {
+    if (!Array.isArray(ids) || !ids.length) return;
+    ids.forEach((id) => {
+      if (id) dirtyIdsSet.add(id);
+    });
     try {
-      const raw = localStorage.getItem(LS_META_KEY);
-      return raw ? JSON.parse(raw) : { updatedAt: 0, dirty: false, uid: null };
-    } catch {
-      return { updatedAt: 0, dirty: false, uid: null };
-    }
+      const prevMeta = getLocalMeta();
+      localStorage.setItem(LS_META_KEY, JSON.stringify({
+        ...prevMeta,
+        updatedAt: Date.now(),
+        dirty: true,
+        uid: uid || prevMeta.uid || null,
+        dirtyIds: [...dirtyIdsSet]
+      }));
+    } catch {}
   };
 
   const markLocalClean = () => {
     try {
+      dirtyIdsSet.clear();
       const meta = getLocalMeta();
-      localStorage.setItem(LS_META_KEY, JSON.stringify({ ...meta, dirty: false, syncedAt: Date.now() }));
+      localStorage.setItem(LS_META_KEY, JSON.stringify({
+        ...meta,
+        dirty: false,
+        dirtyIds: [],
+        uid: uid || meta.uid || null,
+        syncedAt: Date.now()
+      }));
     } catch {}
   };
 
@@ -138,53 +187,116 @@ const AppStorage = (() => {
     obj && typeof obj === 'object' && Object.keys(obj).some((k) => k !== '__app' ? (Array.isArray(obj[k]) && obj[k].length > 0) : Object.keys(obj.__app || {}).length > 0);
 
   // ---------- Merge inteligente (sem perda entre dispositivos/abas) ----------
-  const mergeSubListById = (listA = [], listB = []) => {
+  const stripMeta = (item) => {
+    if (!item || typeof item !== 'object') return item;
+    const { _updatedAt, ...rest } = item;
+    return rest;
+  };
+
+  const mergeSubListById = (listA = [], listB = [], deletedMap = {}) => {
     const map = new Map();
     [...listA, ...listB].forEach((item) => {
       if (!item || !item.id) return;
+      const delAt = Number(deletedMap[item.id]) || 0;
+      const itemAt = Number(item._updatedAt) || 0;
+      if (delAt > 0 && delAt >= itemAt) return;
       const prev = map.get(item.id);
-      if (!prev || (Number(item._updatedAt) || 0) >= (Number(prev._updatedAt) || 0)) {
+      if (!prev || itemAt >= (Number(prev._updatedAt) || 0)) {
         map.set(item.id, item);
       }
     });
     return [...map.values()];
   };
 
-  const pickNewerItem = (a, b) => {
-    if (!a) return b;
-    if (!b) return a;
-    const ta = Number(a._updatedAt) || 0;
-    const tb = Number(b._updatedAt) || 0;
-    const winner = ta >= tb ? { ...a } : { ...b };
-    // Preserva sub-listas de aportes (metas) e movimentações (reservas)
-    if (Array.isArray(a.aportes) || Array.isArray(b.aportes)) {
-      winner.aportes = mergeSubListById(a.aportes, b.aportes);
+  const pickWinnerItem = (localItem, remoteItem, preferLocalOnTie = false, syncedAt = 0, deletedMap = {}) => {
+    if (!localItem) return remoteItem;
+    if (!remoteItem) return localItem;
+
+    // Se o conteúdo útil é idêntico, preserva o maior timestamp
+    const sameContent = JSON.stringify(stripMeta(localItem)) === JSON.stringify(stripMeta(remoteItem));
+    const tL = Number(localItem._updatedAt) || 0;
+    const tR = Number(remoteItem._updatedAt) || 0;
+
+    if (sameContent) {
+      const base = tL >= tR ? { ...localItem } : { ...remoteItem };
+      if (Math.max(tL, tR) > 0) base._updatedAt = Math.max(tL, tR);
+      return base;
     }
-    if (Array.isArray(a.movimentacoes) || Array.isArray(b.movimentacoes)) {
-      winner.movimentacoes = mergeSubListById(a.movimentacoes, b.movimentacoes);
+
+    const id = localItem.id || remoteItem.id;
+    const isItemDirtyLocally = Boolean(
+      (id && dirtyIdsSet.has(id)) ||
+      (preferLocalOnTie && syncedAt > 0 && tL > syncedAt)
+    );
+
+    let winner;
+    if (isItemDirtyLocally) {
+      // Item foi editado neste dispositivo e ainda não sincronizou: vence local, a menos que remoto seja ainda mais novo
+      winner = (tR > tL) ? { ...remoteItem } : { ...localItem };
+    } else if (!preferLocalOnTie || dirtyIdsSet.size > 0 || syncedAt > 0) {
+      // Este dispositivo NÃO tem edição pendente neste item: a versão que veio da nuvem é a mais atual
+      winner = { ...remoteItem };
+      if (Math.max(tL, tR) > 0) winner._updatedAt = Math.max(tL, tR);
+    } else {
+      // Fallback por timestamp quando preferLocalOnTie=true mas sem registro em dirtyIdsSet
+      if (tL > 0 && tR > 0) {
+        winner = tL >= tR ? { ...localItem } : { ...remoteItem };
+      } else if (tR > 0) {
+        winner = { ...remoteItem };
+      } else {
+        winner = { ...localItem };
+      }
+    }
+
+    // Preserva sub-listas de aportes (metas) e movimentações (reservas)
+    if (Array.isArray(localItem.aportes) || Array.isArray(remoteItem.aportes)) {
+      winner.aportes = mergeSubListById(remoteItem.aportes, localItem.aportes, deletedMap);
+    }
+    if (Array.isArray(localItem.movimentacoes) || Array.isArray(remoteItem.movimentacoes)) {
+      winner.movimentacoes = mergeSubListById(remoteItem.movimentacoes, localItem.movimentacoes, deletedMap);
     }
     return winner;
   };
 
-  const mergeListById = (localList = [], remoteList = [], deletedMap = {}) => {
-    const map = new Map();
+  const mergeListById = (localList = [], remoteList = [], deletedMap = {}, preferLocalOnTie = false, syncedAt = 0) => {
+    const mapL = new Map();
+    const mapR = new Map();
     const order = [];
-    const add = (item, isLocal) => {
-      if (!item || !item.id) return;
+    const seen = new Set();
+
+    const isAlive = (item) => {
+      if (!item || !item.id) return false;
       const delAt = Number(deletedMap[item.id]) || 0;
       const itemAt = Number(item._updatedAt) || 0;
-      if (delAt > 0 && delAt >= itemAt) return;
-      if (!map.has(item.id)) {
-        order.push(item.id);
-        map.set(item.id, item);
-      } else {
-        const existing = map.get(item.id);
-        map.set(item.id, isLocal ? pickNewerItem(item, existing) : pickNewerItem(existing, item));
-      }
+      return !(delAt > 0 && delAt >= itemAt);
     };
-    remoteList.forEach((x) => add(x, false));
-    localList.forEach((x) => add(x, true));
-    return order.map((id) => map.get(id)).filter(Boolean);
+
+    remoteList.forEach((item) => {
+      if (!isAlive(item)) return;
+      mapR.set(item.id, item);
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        order.push(item.id);
+      }
+    });
+
+    localList.forEach((item) => {
+      if (!isAlive(item)) return;
+      mapL.set(item.id, item);
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        order.push(item.id);
+      }
+    });
+
+    return order.map((id) => {
+      const itemL = mapL.get(id);
+      const itemR = mapR.get(id);
+      if (itemL && itemR) {
+        return pickWinnerItem(itemL, itemR, preferLocalOnTie, syncedAt, deletedMap);
+      }
+      return itemL || itemR;
+    }).filter(Boolean);
   };
 
   const mergeHistorico = (histA = [], histB = []) => {
@@ -217,6 +329,7 @@ const AppStorage = (() => {
     const local = JSON.parse(JSON.stringify(localData));
     const remote = JSON.parse(JSON.stringify(remoteData));
     const out = {};
+    const syncedAt = getLocalMeta().syncedAt || 0;
 
     const appL = (local.__app && typeof local.__app === 'object') ? local.__app : {};
     const appR = (remote.__app && typeof remote.__app === 'object') ? remote.__app : {};
@@ -243,9 +356,7 @@ const AppStorage = (() => {
     monthKeys.forEach((mes) => {
       const listL = Array.isArray(local[mes]) ? local[mes] : [];
       const listR = Array.isArray(remote[mes]) ? remote[mes] : [];
-      const primary = preferLocalOnTie ? listL : listR;
-      const secondary = preferLocalOnTie ? listR : listL;
-      out[mes] = mergeListById(primary, secondary, deletedMap);
+      out[mes] = mergeListById(listL, listR, deletedMap, preferLocalOnTie, syncedAt);
     });
 
     // Módulos em __app
@@ -255,20 +366,21 @@ const AppStorage = (() => {
     collections.forEach((col) => {
       const listL = Array.isArray(appL[col]) ? appL[col] : [];
       const listR = Array.isArray(appR[col]) ? appR[col] : [];
-      const primary = preferLocalOnTie ? listL : listR;
-      const secondary = preferLocalOnTie ? listR : listL;
-      mergedApp[col] = mergeListById(primary, secondary, deletedMap);
+      mergedApp[col] = mergeListById(listL, listR, deletedMap, preferLocalOnTie, syncedAt);
     });
 
     // Categorias: vence a atualizada mais recentemente
     const catAtL = Number(appL._categoriasUpdatedAt) || 0;
     const catAtR = Number(appR._categoriasUpdatedAt) || 0;
-    if (catAtR > catAtL) {
+    if (catAtR >= catAtL && catAtR > 0) {
       if (appR.categorias) mergedApp.categorias = appR.categorias;
       if (appR.categoriasPapel) mergedApp.categoriasPapel = appR.categoriasPapel;
       mergedApp._categoriasUpdatedAt = catAtR;
     } else if (catAtL > 0) {
       mergedApp._categoriasUpdatedAt = catAtL;
+    } else if (appR.categorias) {
+      mergedApp.categorias = appR.categorias;
+      if (appR.categoriasPapel) mergedApp.categoriasPapel = appR.categoriasPapel;
     }
 
     // Histórico: união completa sem perda
@@ -280,10 +392,61 @@ const AppStorage = (() => {
   };
 
   // ---------- Modo nuvem (Firebase Auth + Firestore) ----------
+  const fetchServerDocWithTimeout = async (timeoutMs = 4500) => {
+    const docRef = db.collection('financas').doc(uid);
+    if (navigator.onLine) {
+      try {
+        return await Promise.race([
+          docRef.get({ source: 'server' }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+        ]);
+      } catch {
+        /* cai para o get padrão (cache/servidor) */
+      }
+    }
+    return await docRef.get();
+  };
+
+  const fetchCloudDoc = () => fetchServerDocWithTimeout(5000);
+
   const writeToFirestore = async (data) => {
     if (!uid || !db) return false;
     setSyncUI('saving');
-    const serialized = JSON.stringify(data);
+
+    let finalToWrite = data;
+
+    // Antes de gravar no Firestore, busca/mescla com o estado atual da nuvem para que
+    // uma aba antiga ou dispositivo que acabou de acordar NUNCA apague meses (ex: novembro)
+    // ou edições feitas pelo parceiro em outro aparelho.
+    let remoteBase = latestUnmergedRemote;
+    latestUnmergedRemote = null;
+
+    if (navigator.onLine) {
+      try {
+        const snap = await fetchServerDocWithTimeout(3500);
+        if (snap && snap.exists) {
+          const raw = snap.data()?.data;
+          if (raw) {
+            try { remoteBase = JSON.parse(raw); } catch {}
+          }
+        }
+      } catch {}
+    }
+
+    if (remoteBase && hasEntries(remoteBase)) {
+      const merged = mergeAllData(finalToWrite, remoteBase, true);
+      const beforeJson = JSON.stringify(finalToWrite);
+      const afterJson = JSON.stringify(merged);
+      finalToWrite = merged;
+      if (afterJson !== beforeJson) {
+        localSave(finalToWrite, true);
+        if (typeof onRemoteUpdate === 'function') {
+          onRemoteUpdate(finalToWrite, true);
+        }
+      }
+    }
+
+    const serialized = JSON.stringify(finalToWrite);
     lastWrittenJson = serialized;
 
     try {
@@ -293,8 +456,11 @@ const AppStorage = (() => {
         clientUpdatedAt: Date.now(),
         clientId
       });
-      markLocalClean();
-      setSyncUI('saved');
+      // Só limpa o status dirty se não entrou nenhuma nova edição local durante o envio
+      if (!pendingData) {
+        markLocalClean();
+        setSyncUI('saved');
+      }
       return true;
     } catch (err) {
       console.error('[AppStorage] Erro ao salvar no Firestore:', err);
@@ -308,6 +474,28 @@ const AppStorage = (() => {
     }
   };
 
+  const processWriteQueue = async () => {
+    if (isWriting) return inFlightPromise || true;
+    if (!uid || !db) return false;
+    isWriting = true;
+    inFlightPromise = (async () => {
+      let lastOk = true;
+      try {
+        while (pendingData && uid && db) {
+          const dataToSave = pendingData;
+          pendingData = null;
+          lastOk = await writeToFirestore(dataToSave);
+          if (!lastOk) break;
+        }
+      } finally {
+        isWriting = false;
+        inFlightPromise = null;
+      }
+      return lastOk;
+    })();
+    return await inFlightPromise;
+  };
+
   const flushCloudSave = async () => {
     if (!isCloud || !uid) return true;
     if (saveTimer) {
@@ -315,17 +503,32 @@ const AppStorage = (() => {
       saveTimer = null;
     }
     if (pendingData) {
-      const dataToSave = pendingData;
-      pendingData = null;
-      inFlightPromise = writeToFirestore(dataToSave);
-      const ok = await inFlightPromise;
-      inFlightPromise = null;
-      return ok;
+      return await processWriteQueue();
     }
     if (inFlightPromise) {
       return await inFlightPromise;
     }
     return true;
+  };
+
+  const pullFromCloudIfChanged = async () => {
+    if (!isCloud || !uid || !db || !navigator.onLine) return;
+    if (saveTimer || pendingData || isWriting) return;
+    try {
+      const snap = await fetchServerDocWithTimeout(4000);
+      if (!snap || !snap.exists || snap.metadata?.hasPendingWrites) return;
+      const raw = snap.data()?.data;
+      if (!raw || raw === lastWrittenJson) return;
+      let remoteObj = null;
+      try { remoteObj = JSON.parse(raw); } catch { return; }
+      if (!remoteObj || typeof remoteObj !== 'object') return;
+
+      lastWrittenJson = raw;
+      if (typeof onRemoteUpdate === 'function') {
+        onRemoteUpdate(remoteObj);
+      }
+      setSyncUI('saved');
+    } catch {}
   };
 
   const subscribeRealtime = () => {
@@ -339,22 +542,34 @@ const AppStorage = (() => {
       { includeMetadataChanges: true },
       (snap) => {
         if (!snap.exists) return;
-        // Se há escrita local pendente no SDK ou nosso próprio timer ativo, não sobrescreve
+        // Se há escrita local pendente no SDK, não sobrescreve
         if (snap.metadata.hasPendingWrites) {
           setSyncUI('saving');
+          return;
+        }
+        // Ignora disparo de cache antigo se a carga inicial já terminou
+        if (snap.metadata.fromCache && isInitialLoadComplete) {
           return;
         }
         const raw = snap.data()?.data;
         if (!raw) return;
         if (raw === lastWrittenJson) {
-          markLocalClean();
-          setSyncUI('saved');
+          if (!pendingData && !saveTimer && !isWriting) {
+            markLocalClean();
+            setSyncUI('saved');
+          }
           return;
         }
-        // Se temos dados locais ainda não enviados, faz merge antes de aplicar
         let remoteObj = null;
         try { remoteObj = JSON.parse(raw); } catch { return; }
         if (!remoteObj || typeof remoteObj !== 'object') return;
+
+        // Se temos escrita local agendada ou em andamento, guarda o snapshot remoto
+        // para ser mesclado dentro de writeToFirestore sem atropelar a tela no meio da edição
+        if (saveTimer || pendingData || isWriting) {
+          latestUnmergedRemote = remoteObj;
+          return;
+        }
 
         lastWrittenJson = raw;
         if (typeof onRemoteUpdate === 'function') {
@@ -408,6 +623,7 @@ const AppStorage = (() => {
         }
       } else {
         uid = null;
+        isInitialLoadComplete = false;
         if (unsubscribeSnapshot) {
           try { unsubscribeSnapshot(); } catch {}
           unsubscribeSnapshot = null;
@@ -419,11 +635,18 @@ const AppStorage = (() => {
 
   const wireLifecycleEvents = () => {
     // Quando o usuário troca de aba, minimiza o app no celular ou fecha a janela,
-    // dispara imediatamente qualquer salvamento pendente.
+    // dispara imediatamente qualquer salvamento pendente. Ao voltar para o app,
+    // busca imediatamente qualquer atualização feita pelo parceiro.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         flushCloudSave();
+      } else if (document.visibilityState === 'visible') {
+        pullFromCloudIfChanged();
       }
+    });
+
+    window.addEventListener('focus', () => {
+      pullFromCloudIfChanged();
     });
 
     window.addEventListener('pagehide', () => {
@@ -434,7 +657,7 @@ const AppStorage = (() => {
       if (saveTimer || pendingData) {
         flushCloudSave();
       }
-      if (inFlightPromise) {
+      if (inFlightPromise || isWriting) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -445,9 +668,11 @@ const AppStorage = (() => {
       if (meta.dirty && uid) {
         const local = localLoad();
         if (hasEntries(local)) {
-          writeToFirestore(local);
+          pendingData = local;
+          processWriteQueue();
         }
       } else {
+        pullFromCloudIfChanged();
         setSyncUI('saved');
       }
     });
@@ -514,26 +739,9 @@ const AppStorage = (() => {
     });
   };
 
-  const fetchCloudDoc = async () => {
-    const docRef = db.collection('financas').doc(uid);
-    // Com internet, busca direto no servidor primeiro para garantir dado 100% atualizado
-    if (navigator.onLine) {
-      try {
-        return await docRef.get({ source: 'server' });
-      } catch {
-        /* cai para o get padrão (cache/servidor) */
-      }
-    }
-    return await docRef.get();
-  };
-
   const cloudLoad = async () => {
     if (!uid) return localLoad();
     setSyncUI('saving');
-
-    const local = localLoad();
-    const meta = getLocalMeta();
-    const localBelongsToUser = !meta.uid || meta.uid === uid;
 
     let cloud = {};
     let loadedFromCloud = false;
@@ -549,32 +757,45 @@ const AppStorage = (() => {
     } catch (err) {
       console.warn('[AppStorage] Falha ao ler da nuvem, usando cópia local segura:', err);
       setSyncUI('offline');
-      if (localBelongsToUser && hasEntries(local)) {
+      const localFallback = localLoad();
+      const metaFallback = getLocalMeta();
+      if ((!metaFallback.uid || metaFallback.uid === uid) && hasEntries(localFallback)) {
+        isInitialLoadComplete = true;
         subscribeRealtime();
-        return local;
+        return localFallback;
       }
       throw err;
     }
 
+    // Lê local e meta APÓS a resposta da rede para capturar qualquer clique feito durante o carregamento
+    const local = localLoad();
+    const meta = getLocalMeta();
+    const canMigrateInitial = (!meta.uid || meta.uid === uid) && hasEntries(local);
+    const localSyncedWithThisUser = meta.uid === uid && hasEntries(local);
+
     // Se a nuvem está vazia mas existem dados locais, envia para a nuvem
-    if (!hasEntries(cloud) && localBelongsToUser && hasEntries(local)) {
+    if (!hasEntries(cloud) && canMigrateInitial) {
+      isInitialLoadComplete = true;
       await writeToFirestore(local);
       notifySafe('Seus dados locais foram sincronizados na nuvem!');
       subscribeRealtime();
       return local;
     }
 
-    // Se havia alterações locais pendentes (ex: fechou a aba antes de terminar o envio)
-    // ou dados locais do mesmo usuário, faz merge inteligente sem perder nada!
+    // Se havia alterações locais pendentes (meta.dirty) ou meses locais do mesmo usuário,
+    // faz merge inteligente: quando meta.dirty=false, a nuvem vence em todos os itens existentes,
+    // nunca sobrescrevendo edições recentes feitas em outro aparelho.
     let finalData = cloud;
-    if (localBelongsToUser && hasEntries(local)) {
-      const merged = mergeAllData(local, cloud, Boolean(meta.dirty));
+    if (localSyncedWithThisUser) {
+      const isLocalDirty = Boolean(meta.dirty);
+      const merged = mergeAllData(local, cloud, isLocalDirty);
       const mergedJson = JSON.stringify(merged);
       const cloudJson = JSON.stringify(cloud);
       finalData = merged;
 
-      if (mergedJson !== cloudJson) {
+      if (isLocalDirty && mergedJson !== cloudJson) {
         localSave(finalData, true);
+        isInitialLoadComplete = true;
         await writeToFirestore(finalData);
       } else {
         localSave(finalData, false);
@@ -585,33 +806,41 @@ const AppStorage = (() => {
       setSyncUI('saved');
     }
 
+    isInitialLoadComplete = true;
     subscribeRealtime();
     return finalData;
   };
 
   const cloudSave = (data) => {
     if (!data || typeof data !== 'object') return;
-    if (!data.__app || typeof data.__app !== 'object') data.__app = {};
-    data.__app._updatedAt = Date.now();
-    data.__app._clientId = clientId;
+
+    // Proteção extra: se o usuário salvar algo antes de cloudLoad() terminar,
+    // mescla com o espelho local existente para jamais perder meses ainda não carregados
+    let safeData = data;
+    if (!isInitialLoadComplete) {
+      const existingLocal = localLoad();
+      const meta = getLocalMeta();
+      if ((!meta.uid || meta.uid === uid) && hasEntries(existingLocal)) {
+        safeData = mergeAllData(data, existingLocal, true);
+      }
+    }
+
+    if (!safeData.__app || typeof safeData.__app !== 'object') safeData.__app = {};
+    safeData.__app._updatedAt = Date.now();
+    safeData.__app._clientId = clientId;
 
     // 1. Salva IMEDIATAMENTE (0ms) no localStorage como backup síncrono
-    localSave(data, true);
+    localSave(safeData, true);
 
     if (!uid || !db) return;
 
-    // 2. Agenda envio rápido para o Firestore (120ms debounce)
-    pendingData = JSON.parse(JSON.stringify(data));
+    // 2. Agenda envio rápido para o Firestore (120ms debounce) em fila sequencial
+    pendingData = JSON.parse(JSON.stringify(safeData));
     setSyncUI('saving');
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
+    saveTimer = setTimeout(() => {
       saveTimer = null;
-      if (!pendingData) return;
-      const toWrite = pendingData;
-      pendingData = null;
-      inFlightPromise = writeToFirestore(toWrite);
-      await inFlightPromise;
-      inFlightPromise = null;
+      processWriteQueue();
     }, 120);
   };
 
@@ -629,9 +858,12 @@ const AppStorage = (() => {
       const snap = await fetchCloudDoc();
       const raw = snap.exists ? snap.data()?.data : '';
       const remote = raw ? JSON.parse(raw) : {};
-      const merged = mergeAllData(local, remote, Boolean(meta.dirty));
+      const isLocalDirty = Boolean(meta.dirty);
+      const merged = (meta.uid === uid && hasEntries(local))
+        ? mergeAllData(local, remote, isLocalDirty)
+        : remote;
 
-      if (meta.dirty || JSON.stringify(merged) !== JSON.stringify(remote)) {
+      if (isLocalDirty || JSON.stringify(merged) !== JSON.stringify(remote)) {
         localSave(merged, true);
         await writeToFirestore(merged);
       } else {
@@ -647,6 +879,12 @@ const AppStorage = (() => {
       setSyncUI(navigator.onLine ? 'error' : 'offline');
       notifySafe('Sem conexão com a nuvem no momento. Seus dados estão salvos no aparelho.', 'error');
     }
+  };
+
+  const loadCached = () => {
+    const meta = getLocalMeta();
+    if (isCloud && uid && meta.uid && meta.uid !== uid) return {};
+    return localLoad();
   };
 
   // ---------- API pública ----------
@@ -667,8 +905,16 @@ const AppStorage = (() => {
     load() {
       return isCloud ? cloudLoad() : Promise.resolve(localLoad());
     },
+    loadCached,
     save(data) {
       return isCloud ? cloudSave(data) : localSave(data, false);
+    },
+    mirrorLocal(data) {
+      localSave(data, Boolean(getLocalMeta().dirty));
+    },
+    markDirtyIds,
+    isDirty() {
+      return Boolean(getLocalMeta().dirty || dirtyIdsSet.size > 0 || saveTimer || pendingData || isWriting);
     },
     flush: flushCloudSave,
     syncNow,

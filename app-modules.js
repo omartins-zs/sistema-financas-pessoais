@@ -53,7 +53,8 @@
     const list = coll(name);
     const idx = list.findIndex((x) => x.id === item.id);
     const antes = idx >= 0 ? JSON.parse(JSON.stringify(list[idx])) : null;
-    const itemComMeta = { ...item, _updatedAt: Date.now() };
+    const prevAt = Number(antes?._updatedAt) || Number(item._updatedAt) || 0;
+    const itemComMeta = { ...item, _updatedAt: Math.max(Date.now(), prevAt + 1) };
     window.desmarcarExclusaoIds?.([itemComMeta.id]);
     if (idx >= 0) list[idx] = itemComMeta;
     else list.push(itemComMeta);
@@ -66,7 +67,7 @@
     const encontrado = coll(name).find((x) => x.id === id) || null;
     const antes = encontrado ? JSON.parse(JSON.stringify(encontrado)) : null;
     s[name] = coll(name).filter((x) => x.id !== id);
-    window.registrarExclusaoIds?.([id]);
+    window.registrarExclusaoIds?.([id], Number(antes?._updatedAt) || 0);
     if (antes && typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo(name, antes, null);
     persist();
   };
@@ -1871,7 +1872,6 @@
     document.addEventListener('click', handleModuleClick);
     document.addEventListener('input', handleRelatorioFilter);
     document.addEventListener('change', handleRelatorioFilter);
-    document.addEventListener('change', handleInvestGroupChange);
     document.addEventListener('keydown', handleRelatorioKeydown);
 
     // Mantém dashboard/anual/relatórios sincronizados ao trocar de mês/ano

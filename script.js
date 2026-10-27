@@ -521,18 +521,23 @@ const saveData = () => {
   }
 };
 
-const registrarExclusaoIds = (ids = []) => {
+const registrarExclusaoIds = (ids = [], minTimestamp = 0) => {
   if (!ids.length) return;
   if (!allData.__app || typeof allData.__app !== 'object') allData.__app = {};
   if (!allData.__app._deleted || typeof allData.__app._deleted !== 'object') allData.__app._deleted = {};
-  const now = Date.now();
+  const stamp = Math.max(Date.now(), (Number(minTimestamp) || 0) + 1);
   ids.forEach((id) => {
-    if (id) allData.__app._deleted[id] = now;
+    if (id) {
+      const prev = Number(allData.__app._deleted[id]) || 0;
+      allData.__app._deleted[id] = Math.max(stamp, prev);
+    }
   });
 };
 
 const desmarcarExclusaoIds = (ids = []) => {
-  if (!ids.length || !allData.__app?._deleted) return;
+  if (!ids.length) return;
+  AppStorage?.markDirtyIds?.(ids);
+  if (!allData.__app?._deleted) return;
   ids.forEach((id) => {
     if (id) delete allData.__app._deleted[id];
   });
@@ -636,16 +641,25 @@ const diffListas = (antes, depois) => {
 const registrarHistoricoMes = (mes, antes, depois, acao) => {
   const d = diffListas(antes || [], depois || []);
   const now = Date.now();
+  const mapAntes = new Map((antes || []).map((e) => [e.id, e]));
   const changedIds = new Set([
     ...d.adicionados.map((e) => e.id),
     ...d.alterados.map(({ depois: dep }) => dep.id)
   ]);
   const removedIds = d.removidos.map((e) => e.id);
-  if (removedIds.length) registrarExclusaoIds(removedIds);
+  if (removedIds.length) {
+    const maxRemovedAt = d.removidos.reduce((max, e) => Math.max(max, Number(e?._updatedAt) || 0), 0);
+    registrarExclusaoIds(removedIds, maxRemovedAt);
+  }
   if (changedIds.size) desmarcarExclusaoIds([...changedIds]);
 
   depois.forEach((e) => {
-    if (changedIds.has(e.id) || !e._updatedAt) e._updatedAt = now;
+    const prevAt = Number(mapAntes.get(e.id)?._updatedAt) || Number(e._updatedAt) || 0;
+    if (changedIds.has(e.id)) {
+      e._updatedAt = Math.max(now, prevAt + 1);
+    } else if (prevAt > 0) {
+      e._updatedAt = prevAt;
+    }
   });
 
   snapshotsMes[mes] = cloneDados(depois); // próximo diff parte daqui
@@ -1166,10 +1180,18 @@ const contarUsoCategorias = () => {
 };
 
 const renomearCategoriaNosDados = (de, para) => {
+  const now = Date.now();
+  const touchedIds = [];
   Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
-    allData[k] = (allData[k] || []).map((e) => (e.category === de ? { ...e, category: para } : e));
+    allData[k] = (allData[k] || []).map((e) => {
+      if (e.category !== de) return e;
+      touchedIds.push(e.id);
+      const prevAt = Number(e._updatedAt) || 0;
+      return { ...e, category: para, _updatedAt: Math.max(now, prevAt + 1) };
+    });
     snapshotsMes[k] = cloneDados(allData[k]); // mudança já auditada pelo registro de categorias
   });
+  if (touchedIds.length) desmarcarExclusaoIds(touchedIds);
 };
 
 const gerenciarCategorias = async () => {
@@ -1553,7 +1575,9 @@ const buildEntryFromForm = (formData) => normalizeEntry({
   observation: formData.observation.trim(),
   card_items: formData.card_items ?? [],
   ...(formData.type === 'investimento' && formData.investimento_id
-    ? { investimento_id: formData.investimento_id } : {})
+    ? { investimento_id: formData.investimento_id } : {}),
+  ...(formData.fitid ? { fitid: formData.fitid } : {}),
+  ...(formData._updatedAt ? { _updatedAt: formData._updatedAt } : {})
 });
 
 const validateEntry = (entry) => {
@@ -1625,7 +1649,9 @@ const handleEditEntry = (e) => {
     due_day: dom.editDueDay.value || null,
     observation: dom.editObservation.value,
     card_items: entries[index].card_items ?? [],
-    investimento_id: dom.editInvestimento?.value || ''
+    investimento_id: dom.editInvestimento?.value || '',
+    fitid: entries[index].fitid,
+    _updatedAt: entries[index]._updatedAt
   });
 
   if (!validateEntry(updated)) return;
@@ -1732,7 +1758,8 @@ const copyPreviousMonth = async () => {
     if (!confirmed) return;
   }
 
-  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation, card_items }) => normalizeEntry({
+  const now = Date.now();
+  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation, card_items, investimento_id }) => normalizeEntry({
     id: generateId(),
     description,
     category,
@@ -1742,7 +1769,9 @@ const copyPreviousMonth = async () => {
     status: 'nao_pago',
     due_day: due_day ?? null,
     observation: observation ?? '',
-    card_items: Array.isArray(card_items) ? card_items.map((item) => ({ ...item, id: generateId() })) : []
+    card_items: Array.isArray(card_items) ? card_items.map((item) => ({ ...item, id: generateId() })) : [],
+    ...(type === 'investimento' && investimento_id ? { investimento_id } : {}),
+    _updatedAt: now
   }));
 
   setCurrentEntries([...currentEntries, ...copied]);
@@ -3996,6 +4025,19 @@ const reconciliarDadosRecentes = () => {
 
 // Carrega os dados e desenha a tela (chamado quando o armazenamento está pronto)
 const startApp = async () => {
+  // 1. Exibe imediatamente o espelho local (0ms) enquanto busca a nuvem em segundo plano
+  const cached = AppStorage.loadCached?.();
+  if (cached && typeof cached === 'object' && Object.keys(cached).length > 0) {
+    allData = cached;
+    iniciarSnapshotsHistorico();
+    aplicarCategoriasSalvas();
+    populateCategories();
+    populateInvestimentoSelects();
+    toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'));
+    render();
+  }
+
+  // 2. Carrega e sincroniza com o servidor (Firestore)
   await loadData();
   iniciarSnapshotsHistorico();
   const reconciliou = reconciliarDadosRecentes();
@@ -4010,15 +4052,19 @@ const startApp = async () => {
 };
 
 // Recebe atualizações em tempo real da nuvem (outro aparelho/aba) sem perder edições locais
-const handleRemoteUpdate = (remoteData) => {
+const handleRemoteUpdate = (remoteData, skipMirror = false) => {
   if (!remoteData || typeof remoteData !== 'object') return;
-  allData = AppStorage.mergeAllData ? AppStorage.mergeAllData(allData, remoteData, false) : remoteData;
+  const isLocalDirty = Boolean(AppStorage.isDirty?.());
+  allData = AppStorage.mergeAllData ? AppStorage.mergeAllData(allData, remoteData, isLocalDirty) : remoteData;
   Object.keys(allData).forEach((month) => {
     if (month.startsWith('__')) return;
     if (Array.isArray(allData[month])) {
       allData[month] = allData[month].map(normalizeEntry);
     }
   });
+  if (!skipMirror) {
+    AppStorage.mirrorLocal?.(allData);
+  }
   iniciarSnapshotsHistorico();
   aplicarCategoriasSalvas();
   populateCategories();
@@ -4032,12 +4078,16 @@ const handleRemoteUpdate = (remoteData) => {
 
 // Fonte única da versão: a meta do index.html, que é o mesmo valor do ?v= dos arquivos
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content?.trim() || 'dev';
+const RELOAD_GUARD_KEY = 'financas_casa_reloaded_version';
 let isReloadingForUpdate = false;
 
 // Limpa todos os caches do PWA/Service Worker e recarrega buscando a versão mais recente da rede
-const forceHardReload = async () => {
+const forceHardReload = async (targetVersion = '') => {
   if (isReloadingForUpdate) return;
   isReloadingForUpdate = true;
+  if (typeof targetVersion === 'string' && targetVersion) {
+    try { sessionStorage.setItem(RELOAD_GUARD_KEY, targetVersion); } catch {}
+  }
   try {
     await AppStorage.flush?.();
   } catch {}
@@ -4059,6 +4109,8 @@ const forceHardReload = async () => {
 // Verifica direto na rede se o index.html publicado tem uma versão mais nova que a aberta no PWA
 const checkRemoteAppVersion = async () => {
   if (location.protocol === 'file:' || !navigator.onLine || isReloadingForUpdate) return;
+  // Não recarrega no meio de um salvamento ou com modal de edição aberto
+  if (AppStorage.isDirty?.() || dom.editModalEl?.classList.contains('show')) return;
   try {
     const res = await fetch(`./index.html?_vcheck=${Date.now()}`, {
       cache: 'no-store',
@@ -4069,8 +4121,11 @@ const checkRemoteAppVersion = async () => {
     const match = html.match(/<meta\s+name=["']app-version["']\s+content=["']([^"']+)["']/i);
     const remoteVersion = match?.[1]?.trim();
     if (remoteVersion && remoteVersion !== APP_VERSION) {
+      try {
+        if (sessionStorage.getItem(RELOAD_GUARD_KEY) === remoteVersion) return;
+      } catch {}
       notify.info(`Atualizando para a nova versão (v${remoteVersion})...`);
-      setTimeout(forceHardReload, 400);
+      setTimeout(() => forceHardReload(remoteVersion), 400);
     }
   } catch {
     /* Sem rede no momento */
@@ -4082,7 +4137,7 @@ const showAppVersion = () => {
   dom.appVersion.textContent = `v${APP_VERSION}`;
   dom.appVersion.hidden = false;
   // Clicar no selo de versão limpa o cache do PWA e recarrega a versão mais recente
-  dom.appVersion.addEventListener('click', forceHardReload);
+  dom.appVersion.addEventListener('click', () => forceHardReload());
 };
 
 const registerServiceWorker = async () => {
