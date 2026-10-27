@@ -76,6 +76,10 @@ firebase deploy --only firestore:rules
 
 Confira o projeto selecionado antes de publicar com `firebase use`. A publicação não altera os documentos de dados; ela atualiza somente as regras de acesso.
 
+#### Testar as regras sem tocar na produção
+
+Com Node.js 24.12+ e Java 21 instalados, rode `npm run test:rules:emulator`. O emulador carrega `firestore.rules` e usa um projeto `demo-`, sem conexão com os documentos reais. A integração contínua executa essa verificação em cada push e pull request.
+
 ---
 
 ## 4. Pegar a configuração do app Web

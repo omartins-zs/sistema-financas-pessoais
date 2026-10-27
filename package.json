@@ -3,6 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/github-pages/*.test.mjs"
+    "test": "node --test tests/github-pages/*.test.mjs",
+    "test:rules": "node --test tests/firebase/*.test.mjs",
+    "test:rules:emulator": "firebase emulators:exec --only firestore --project demo-financas-da-casa \"npm run test:rules\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.1.0",
+    "firebase-tools": "^15.34.1"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6",
+    "@opentelemetry/core": "^2.8.0",
+    "uuid": "^11.1.1"
   }
 }
