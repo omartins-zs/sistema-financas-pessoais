@@ -44,6 +44,18 @@ fi
 if [ -f "index.html" ]; then
     echo "Validando consistencia de versao (data/horario) e deploy do frontend..."
 
+    if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
+        echo "Rodando testes de regressao da PWA..."
+        npm test
+        TEST_STATUS=$?
+
+        if [ $TEST_STATUS -ne 0 ]; then
+            echo "[ERRO] Falha nos testes da PWA. Push abortado."
+            exit 1
+        fi
+        echo "Testes da PWA OK."
+    fi
+
     # Garante que index.html possui meta app-version
     if ! grep -q 'meta name="app-version"' index.html; then
         echo "[ERRO] Tag meta app-version nao encontrada em index.html!"
@@ -55,7 +67,7 @@ if [ -f "index.html" ]; then
     echo "Versao registrada para deploy no GitHub Pages: v$CURRENT_VERSION"
 
     # Avisa se houver arquivos modificados e não commitados no frontend
-    if ! git diff --quiet script.js cloud-sync.js app-modules.js style.css index.html 2>/dev/null; then
+    if ! git diff --quiet js cloud-sync.js app-modules.js style.css index.html 2>/dev/null; then
         echo "[AVISO] Atencao: ha alteracoes em arquivos do frontend que nao foram commitadas antes do push."
     fi
 

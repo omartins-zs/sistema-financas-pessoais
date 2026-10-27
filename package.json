@@ -1,0 +1,8 @@
+{
+  "name": "financas-da-casa-github-pages",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/github-pages/*.test.mjs"
+  }
+}

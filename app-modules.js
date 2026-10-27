@@ -2,8 +2,8 @@
  * ============================================================
  *  Finanças da Casa — Módulos avançados
  * ============================================================
- *  Estende o app existente (script.js) SEM reescrevê-lo.
- *  Reaproveita os globais já declarados em script.js:
+ *  Estende o app existente (js/00-core.js e demais partes) SEM reescrevê-lo.
+ *  Reaproveita os globais declarados pelos scripts clássicos carregados em ordem:
  *    allData, saveData, formatCurrency, formatValuePlain,
  *    parseValue, generateId, confirmAction, notify, dayjs,
  *    CATEGORIAS, PERSON_LABELS, STATUS_LABELS, MESES,
@@ -1881,7 +1881,7 @@
     refreshAlerts();
   };
 
-  // Hook chamado por render() em script.js após cada atualização de dados
+  // Hook chamado por render() em js/60-render.js após cada atualização de dados
   window.AppModules = {
     onDataRender() { refreshAlerts(); if (activeTab !== 'mes') refreshActiveView(); },
     activate,

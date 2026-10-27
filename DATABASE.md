@@ -171,7 +171,7 @@ Usado em lançamentos de categoria **Cartão de crédito**.
 - Itens **`recurring: true`** aparecem também em **Contas fixas → Recorrentes no cartão**
 - O **`value`** do lançamento = soma de todos os `card_items`
 
-Lógica: [`script.js`](script.js) — `normalizeEntry`, `addCardItem`, `syncCardEntryFromItems`.
+Lógica: [`js/30-entries.js`](js/30-entries.js) — `normalizeEntry`, `addCardItem`, `syncCardEntryFromItems`.
 
 ---
 
@@ -296,7 +296,7 @@ Dados dos módulos extras ([`app-modules.js`](app-modules.js)). Todos ficam dent
 ```
 Usuário edita dado
        ↓
-script.js / app-modules.js  →  allData (memória)
+js/*.js / app-modules.js  →  allData (memória)
        ↓
 AppStorage.save(allData)
        ↓
@@ -356,6 +356,6 @@ entry (lançamento)
 |---------|--------|
 | [`cloud-sync.js`](cloud-sync.js) | Camada AppStorage (local + Firebase) |
 | [`firebase-config.js`](firebase-config.js) | Credenciais Firebase |
-| [`script.js`](script.js) | Lançamentos mensais, `card_items`, import/export |
+| [`js/`](js/) | Scripts do app separados por área funcional e carregados em ordem |
 | [`app-modules.js`](app-modules.js) | Módulos em `__app` |
 | [`FIREBASE.md`](FIREBASE.md) | Passo a passo para ativar a nuvem |

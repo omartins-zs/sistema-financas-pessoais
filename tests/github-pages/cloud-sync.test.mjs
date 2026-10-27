@@ -33,6 +33,97 @@ const createAppStorage = (meta = {}) => {
   return vm.runInContext('AppStorage', context);
 };
 
+const createTransactionalStorage = async (initialRemote) => {
+  const localValues = new Map();
+  let currentRemote = initialRemote;
+  let transactionAttempts = 0;
+  const docRef = {
+    id: 'household',
+    collection: () => ({ doc: () => ({ set: async () => {} }) })
+  };
+  const db = {
+    enablePersistence: async () => {},
+    collection: () => ({ doc: () => docRef }),
+    runTransaction: async (callback) => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        let pendingWrite;
+        const snapshotValue = currentRemote;
+        const transaction = {
+          get: async () => ({
+            exists: Boolean(snapshotValue),
+            data: () => ({ data: JSON.stringify(snapshotValue) })
+          }),
+          set: (_ref, value) => { pendingWrite = value; }
+        };
+        const result = await callback(transaction);
+        transactionAttempts += 1;
+
+        if (attempt === 0) {
+          currentRemote = {
+            ...currentRemote,
+            '2026-12': [{ id: 'remote-new', description: 'Incluída durante conflito', _updatedAt: Date.now() }]
+          };
+          continue;
+        }
+
+        currentRemote = JSON.parse(pendingWrite.data);
+        return result;
+      }
+    }
+  };
+  const auth = {
+    currentUser: { uid: 'household', email: 'familia@example.test' },
+    setPersistence: async () => {},
+    onAuthStateChanged: (callback) => callback({ uid: 'household', email: 'familia@example.test' })
+  };
+  const firebase = {
+    initializeApp: () => {},
+    auth: () => auth,
+    firestore: () => db
+  };
+  firebase.auth.Auth = { Persistence: { LOCAL: 'local' } };
+  firebase.firestore.FieldValue = { serverTimestamp: () => 'server-time' };
+
+  const toast = {
+    classList: { add: () => {}, remove: () => {} },
+    setAttribute: () => {},
+    hidden: true
+  };
+  const context = vm.createContext({
+    FIREBASE_ENABLED: true,
+    firebaseConfig: {},
+    firebase,
+    document: {
+      getElementById: () => null,
+      createElement: () => toast,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      body: { classList: { toggle: () => {} }, appendChild: () => {} }
+    },
+    localStorage: {
+      getItem: (key) => localValues.get(key) ?? null,
+      setItem: (key, value) => localValues.set(key, String(value))
+    },
+    window: { addEventListener: () => {} },
+    navigator: { onLine: true, userAgent: '' },
+    console: { warn: () => {}, error: () => {}, log: () => {} },
+    setTimeout,
+    clearTimeout
+  });
+
+  vm.runInContext(source, context, { filename: 'cloud-sync.js' });
+  const storage = vm.runInContext('AppStorage', context);
+  storage.init(() => {}, () => {});
+  await new Promise((resolve) => setImmediate(resolve));
+
+  return {
+    storage,
+    getRemote: () => currentRemote,
+    getTransactionAttempts: () => transactionAttempts
+  };
+};
+
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 test('merge mantém lançamentos de meses diferentes nos dois aparelhos', () => {
@@ -104,4 +195,22 @@ test('merge une aportes distintos e preserva a edição mais recente do mesmo ap
 
   assert.equal(meta.nome, 'Reserva');
   assert.deepEqual(aportes, { 'aporte-1': 50, 'aporte-2': 75, 'aporte-3': 25 });
+});
+
+test('transação relê o Firestore em conflito e preserva o mês remoto novo e a edição local', async () => {
+  const harness = await createTransactionalStorage({
+    '2026-10': [{ id: 'remote-old', description: 'Outubro', _updatedAt: Date.now() - 10_000 }]
+  });
+
+  harness.storage.save({
+    '2026-11': [{ id: 'local-new', description: 'Novembro', _updatedAt: Date.now() }]
+  });
+  const saved = await harness.storage.flush();
+  const result = plain(harness.getRemote());
+
+  assert.equal(saved, true);
+  assert.equal(harness.getTransactionAttempts(), 2);
+  assert.equal(result['2026-10'][0].id, 'remote-old');
+  assert.equal(result['2026-11'][0].id, 'local-new');
+  assert.equal(result['2026-12'][0].id, 'remote-new');
 });

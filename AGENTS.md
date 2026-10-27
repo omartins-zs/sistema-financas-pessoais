@@ -61,6 +61,7 @@ Executa antes de enviar ao GitHub:
    - `./vendor/bin/pint --test` (Validação estrita de estilo)
    - `./vendor/bin/phpstan analyse --level=5 --memory-limit=1G`
 2. **Ambiente Web / PWA (`github-pages`):**
+   - Executa `npm test` para verificar merge, ordem de carregamento, cache PWA, sintaxe e regras do Firestore
    - Valida integridade do `firebase-config.js` e metadados de versão
 
 ---
@@ -79,3 +80,8 @@ Para nunca perder dados preenchidos pelo usuário:
    - Manter resolução com base em timestamps (`_updatedAt`) e mapa de exclusões (`_deleted`) para que nenhuma aba ou dispositivo sobrescreva alterações de outro.
 5. **Versionamento PWA com Data e Horário (`YYYYMMDD-HHMM`):**
    - O hook `.githooks/pre-commit` atualiza automaticamente a versão no `index.html` (`meta[name="app-version"]` e todas as query strings `?v=`) para o formato de data e horário atual (ex.: `20261024-1245`), garantindo que o Service Worker e os navegadores/celulares baixem a versão mais recente e nunca fiquem presos em cache antigo.
+
+6. **Organização dos scripts da PWA:**
+   - A lógica de tela fica em `js/`, dividida por área funcional.
+   - Os arquivos são scripts clássicos e a ordem de carregamento em `index.html` é intencional: eles compartilham declarações globais legadas. Atualize em conjunto o HTML, o shell do `sw.js`, os testes e os hooks ao adicionar ou mover arquivos.
+   - Não adicione `<script type="module">` isoladamente antes de migrar explicitamente os consumidores dos globais e cobrir a inicialização com testes.

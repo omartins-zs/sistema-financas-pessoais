@@ -78,7 +78,7 @@ Não é API pura nem microserviços — são **dois modos de deploy** do mesmo s
 | Tecnologia | Versão / Uso |
 |------------|----------------|
 | HTML5 + CSS3 | Estrutura e layout responsivo |
-| JavaScript (ES6+) | Lógica da aplicação (`script.js`, `app-modules.js`) |
+| JavaScript (ES6+) | Lógica da aplicação (`js/`, `app-modules.js`) |
 | Bootstrap | 5.3.3 (CDN) |
 | Bootstrap Icons | 1.11.3 |
 | Chart.js | 4.4.7 — gráficos do mês, dashboard e anual |
@@ -389,7 +389,7 @@ Acesse: **http://localhost:8080**
 
 ```
 ├── index.html              # Página principal (e a versão do app, no <meta app-version>)
-├── script.js               # Core: CRUD, cartões, import/export
+├── js/                     # Scripts da PWA separados por área funcional
 ├── app-modules.js          # Módulos: Dashboard, Metas, Cartões…
 ├── cloud-sync.js           # LocalStorage + Firebase
 ├── firebase-config.js      # Config Firebase (opcional)

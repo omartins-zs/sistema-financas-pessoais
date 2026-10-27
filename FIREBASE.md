@@ -35,7 +35,7 @@ Seguindo os passos abaixo você ativa **login** e **sincronização na nuvem**, 
 
 ### Regras de segurança
 
-Na aba **Regras** do Firestore, cole isto e clique em **Publicar**:
+Na aba **Regras** do Firestore, substitua as regras pelo conteúdo do arquivo [`firestore.rules`](firestore.rules) e clique em **Publicar**:
 
 ```
 rules_version = '2';

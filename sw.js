@@ -14,7 +14,7 @@
  * ============================================================
  */
 
-const SW_BUILD_VERSION = '20261027-1216';
+const SW_BUILD_VERSION = '20261027-1228';
 const VERSION = new URLSearchParams(self.location.search).get('v') || SW_BUILD_VERSION;
 const CACHE = `financas-${VERSION}`;
 
@@ -26,7 +26,19 @@ const SHELL = [
   './modules.css',
   './firebase-config.js',
   './cloud-sync.js',
-  './script.js',
+  './js/00-core.js',
+  './js/10-theme-persistence.js',
+  './js/11-history-audit.js',
+  './js/20-navigation-dashboard.js',
+  './js/30-entries.js',
+  './js/40-exports.js',
+  './js/41-backups-recovery.js',
+  './js/50-import-parsers.js',
+  './js/51-import-workflows.js',
+  './js/60-render.js',
+  './js/61-card-reordering.js',
+  './js/70-events.js',
+  './js/80-bootstrap-pwa.js',
   './app-modules.js',
   './manifest.webmanifest',
   './logo.png',

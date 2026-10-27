@@ -35,7 +35,7 @@ if [ -f "index.html" ]; then
     echo "Verificando integridade e atualizando versao do frontend..."
 
     # Garante que não existem marcadores de conflito git esquecidos
-    if grep -En "^(<<<<<<<|=======|>>>>>>>)" script.js cloud-sync.js app-modules.js index.html 2>/dev/null; then
+    if grep -En "^(<<<<<<<|=======|>>>>>>>)" js/*.js cloud-sync.js app-modules.js index.html 2>/dev/null; then
         echo "[ERRO] Marcadores de conflito git detectados! Resolva os conflitos antes de commitar."
         exit 1
     fi
