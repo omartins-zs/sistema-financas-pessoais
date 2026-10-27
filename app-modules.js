@@ -1777,15 +1777,38 @@
   const activate = (tab) => {
     activeTab = tab;
     document.querySelectorAll('.app-tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === tab));
+    const moreButton = document.querySelector('[data-tabs-more]');
+    const moreMenu = document.getElementById('appTabsMoreMenu');
+    const isSecondaryTab = !PRIMARY_TAB_IDS.has(tab);
+    moreButton?.classList.toggle('is-active', isSecondaryTab);
+    moreButton?.setAttribute('aria-expanded', 'false');
+    if (moreMenu) moreMenu.hidden = true;
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('is-active', v.id === `view-${tab}`));
     if (tab !== 'mes') refreshActiveView();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const fecharMenuMais = () => {
+    const menu = document.getElementById('appTabsMoreMenu');
+    const button = document.querySelector('[data-tabs-more]');
+    if (menu) menu.hidden = true;
+    button?.setAttribute('aria-expanded', 'false');
+  };
+
   // Delegação de eventos para todos os botões dos módulos
   const handleModuleClick = async (e) => {
+    const moreButton = e.target.closest('[data-tabs-more]');
+    if (moreButton) {
+      const menu = document.getElementById('appTabsMoreMenu');
+      const opening = Boolean(menu?.hidden);
+      if (menu) menu.hidden = !opening;
+      moreButton.setAttribute('aria-expanded', String(opening));
+      return;
+    }
+    if (!e.target.closest('.app-tabs')) fecharMenuMais();
+
     const tab = e.target.closest('.app-tab');
-    if (tab) { activate(tab.dataset.tab); return; }
+    if (tab?.dataset.tab) { activate(tab.dataset.tab); return; }
 
     const btn = e.target.closest('[data-mod]');
     if (btn) {
@@ -1827,6 +1850,12 @@
     }
   };
 
+  const handleModuleMenuKeydown = (e) => {
+    if (e.key !== 'Escape' || document.getElementById('appTabsMoreMenu')?.hidden) return;
+    fecharMenuMais();
+    document.querySelector('[data-tabs-more]')?.focus();
+  };
+
   // Filtros de relatório valem na hora: nada de clicar em "Aplicar" e esquecer
   const handleRelatorioFilter = (e) => {
     const alvo = e.target;
@@ -1863,18 +1892,28 @@
     ['relatorios', 'funnel', 'Relatórios'],
     ['historico', 'clock-history', 'Histórico']
   ];
+  const PRIMARY_TAB_IDS = new Set(['mes', 'dashboard', 'anual', 'investimentos']);
+
+  const renderTabButton = ([id, icon, label], extraClass = '') =>
+    `<button type="button" class="app-tab ${extraClass} ${id === 'mes' ? 'is-active' : ''}" data-tab="${id}"><i class="bi bi-${icon}" aria-hidden="true"></i><span class="app-tab__label">${label}</span></button>`;
 
   const buildTabs = () => {
     const nav = document.getElementById('appTabsScroll');
     if (!nav) return;
-    nav.innerHTML = TABS.map(([id, icon, label]) =>
-      `<button type="button" class="app-tab ${id === 'mes' ? 'is-active' : ''}" data-tab="${id}"><i class="bi bi-${icon}"></i> ${label}</button>`
-    ).join('');
+    const mais = TABS.filter(([id]) => !PRIMARY_TAB_IDS.has(id));
+    nav.innerHTML = `${TABS.map((tab) => renderTabButton(tab, PRIMARY_TAB_IDS.has(tab[0]) ? 'app-tab--primary' : 'app-tab--secondary')).join('')}
+      <button type="button" class="app-tabs__more" data-tabs-more aria-expanded="false" aria-controls="appTabsMoreMenu" aria-label="Mais módulos">
+        <i class="bi bi-three-dots" aria-hidden="true"></i><span>Mais</span>
+      </button>
+      <div class="app-tabs__more-menu" id="appTabsMoreMenu" role="group" aria-label="Outros módulos" hidden>
+        ${mais.map((tab) => renderTabButton(tab, 'app-tab--menu')).join('')}
+      </div>`;
   };
 
   const init = () => {
     buildTabs();
     document.addEventListener('click', handleModuleClick);
+    document.addEventListener('keydown', handleModuleMenuKeydown);
     document.addEventListener('input', handleRelatorioFilter);
     document.addEventListener('change', handleRelatorioFilter);
     document.addEventListener('keydown', handleRelatorioKeydown);

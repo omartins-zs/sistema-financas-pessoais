@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -56,14 +57,102 @@ test('inicialização da PWA não inventa nem reescreve lançamentos financeiros
   assert.doesNotMatch(bootstrap, /reconciliarDadosRecentes|Caixinha Turbo/);
 });
 
-test('a tela de backups e logs fica acessível pela barra principal', async () => {
+test('atualização da PWA espera formulários e salvamentos antes de recarregar', async () => {
+  const bootstrap = await read('js/80-bootstrap-pwa.js');
+  const serviceWorker = await read('sw.js');
+  const installHandler = serviceWorker.split("self.addEventListener('install'")[1]
+    ?.split("self.addEventListener('activate'")[0] ?? '';
+
+  assert.match(bootstrap, /const hasUnsavedFormDraft =/);
+  assert.match(bootstrap, /\.modal\.show, \.card-item--editing/);
+  assert.match(bootstrap, /AppStorage\.flush\?\./);
+  assert.match(bootstrap, /AppStorage\.isDirty\?\./);
+  assert.match(bootstrap, /controllerchange/);
+  assert.match(bootstrap, /SKIP_WAITING/);
+  assert.doesNotMatch(installHandler, /skipWaiting\(/);
+  assert.match(serviceWorker, /event\.data\?\.type === 'SKIP_WAITING'/);
+});
+
+test('a atualização aguarda um rascunho, salva e só então recarrega', async () => {
+  const bootstrap = await read('js/80-bootstrap-pwa.js');
+  const description = { value: 'Conta de luz' };
+  let reloads = 0;
+  let flushes = 0;
+  let skipWaitingMessages = 0;
+  const context = {
+    AppStorage: {
+      async flush() { flushes += 1; return true; },
+      isDirty() { return false; }
+    },
+    document: {
+      querySelector(selector) {
+        return selector === 'meta[name="app-version"]' ? { content: 'v1' } : null;
+      },
+      querySelectorAll() { return []; },
+      addEventListener() {}
+    },
+    dom: {
+      inputDescription: description,
+      inputValue: { value: '' },
+      inputDueDay: { value: '' },
+      inputObservation: { value: '' }
+    },
+    location: { protocol: 'https:' },
+    navigator: { onLine: true },
+    notify: { info() {} },
+    sessionStorage: { setItem() {} },
+    window: {
+      Swal: { isVisible: () => false },
+      location: { reload() { reloads += 1; } }
+    },
+    setTimeout() { return 1; },
+    setInterval() { return 1; },
+    clearInterval() {}
+  };
+
+  runInNewContext(`${bootstrap}\nglobalThis.__pwaTest = { markUpdatePending, attemptPendingUpdate, updateState };`, context);
+  const worker = {
+    state: 'installed',
+    postMessage(message) {
+      if (message.type === 'SKIP_WAITING') skipWaitingMessages += 1;
+    }
+  };
+
+  context.__pwaTest.markUpdatePending({ worker });
+  await context.__pwaTest.attemptPendingUpdate();
+  assert.equal(flushes, 0, 'não tenta salvar/substituir enquanto há rascunho aberto');
+  assert.equal(skipWaitingMessages, 0);
+  assert.equal(reloads, 0);
+
+  description.value = '';
+  await context.__pwaTest.attemptPendingUpdate();
+  assert.equal(skipWaitingMessages, 1, 'pede ativação depois de liberar o formulário');
+  assert.equal(reloads, 0, 'espera a nova versão assumir o controle');
+
+  worker.state = 'activated';
+  context.__pwaTest.updateState.controllerChanged = true;
+  await context.__pwaTest.attemptPendingUpdate();
+  assert.equal(flushes, 3);
+  assert.equal(reloads, 1, 'recarrega após confirmação de gravação e controle novo');
+});
+
+test('histórico e backups usam uma única entrada de navegação', async () => {
   const html = await read('index.html');
+  const modules = await read('app-modules.js');
   const recovery = await read('js/41-backups-recovery.js');
   const events = await read('js/70-events.js');
+  const moduleStyles = await read('modules.css');
 
-  assert.match(html, /id="btnBackups"[^>]*aria-label="Backups e logs de salvamento"/);
+  assert.match(html, /id="appTabsScroll"/);
+  assert.match(html, /id="btnHistory"[^>]*aria-label="Histórico completo, logs e backups"/);
+  assert.doesNotMatch(html, /id="btnBackups"/);
+  assert.match(modules, /\['historico', 'clock-history', 'Histórico'\]/);
+  assert.match(modules, /data-tabs-more/);
   assert.match(recovery, /window\.abrirBackupsLogs\s*=\s*abrirBackupsLogs/);
-  assert.match(events, /getElementById\('btnBackups'\).*window\.HistoricoPage\?\.openTab\('backups'\)/);
+  assert.match(recovery, /data-history-tab="backups"/);
+  assert.match(events, /getElementById\('btnHistory'\).*HistoricoPage\?\.openTab\('alteracoes'\)/);
+  assert.match(moduleStyles, /\.app-tabs__more-menu:not\(\[hidden\]\)/);
+  assert.match(moduleStyles, /\.app-main \{ padding-bottom:/);
 });
 
 test('histórico completo reúne alterações, logs paginados e tem uma tela dedicada', async () => {

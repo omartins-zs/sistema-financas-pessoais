@@ -14,7 +14,7 @@
  * ============================================================
  */
 
-const SW_BUILD_VERSION = '20261027-1640';
+const SW_BUILD_VERSION = '20261027-1719';
 const VERSION = new URLSearchParams(self.location.search).get('v') || SW_BUILD_VERSION;
 const CACHE = `financas-${VERSION}`;
 
@@ -52,7 +52,8 @@ self.addEventListener('install', (event) => {
     // Um a um: com addAll, um único arquivo falhando derrubaria a instalação inteira.
     await Promise.all(SHELL.map((url) =>
       cache.add(new Request(url, { cache: 'reload' })).catch(() => {})));
-    await self.skipWaiting(); // assume o lugar da versão anterior sem esperar
+    // Se já há uma versão ativa, aguarda o app salvar e encerrar formulários antes de ativar.
+    // A página envia SKIP_WAITING somente quando a atualização for segura.
   })());
 });
 
