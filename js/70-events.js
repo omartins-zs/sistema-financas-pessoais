@@ -181,7 +181,7 @@ const bindEvents = () => {
 const onCategoryChange = () => {
   const person = personFromCardCategory(dom.inputCategory.value);
   if (person) dom.inputPerson.value = person;
-  if (dom.inputType.value === 'investimento') {
+  if (dom.inputType.value === 'investimento' || dom.inputType.value === 'resgate') {
     dom.inputCategory.value = catPapel('investimentos');
   }
 };
@@ -189,20 +189,24 @@ const onCategoryChange = () => {
 const onEditCategoryChange = () => {
   const person = personFromCardCategory(dom.editCategory.value);
   if (person) dom.editPerson.value = person;
-  if (dom.editType.value === 'investimento') {
+  if (dom.editType.value === 'investimento' || dom.editType.value === 'resgate') {
     dom.editCategory.value = catPapel('investimentos');
   }
 };
 
 const onTypeChange = () => {
-  if (dom.inputType.value === 'investimento') {
+  if (dom.inputType.value === 'investimento' || dom.inputType.value === 'resgate') {
     dom.inputCategory.value = catPapel('investimentos');
+  }
+  if (dom.inputType.value === 'resgate') {
+    dom.inputStatus.value = 'pago';
+    dom.inputDueDay.value = '';
   }
   toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'), true);
 };
 
 const onEditTypeChange = () => {
-  if (dom.editType.value === 'investimento') {
+  if (dom.editType.value === 'investimento' || dom.editType.value === 'resgate') {
     dom.editCategory.value = catPapel('investimentos');
   }
   toggleInvestimentoField(dom.editType, dom.editCategory, dom.editInvestimento, null, true);

@@ -99,7 +99,8 @@ const STATUS_ICONS = {
 const TYPE_LABELS = {
   entrada: 'Entrada',
   despesa: 'Despesa',
-  investimento: 'Investimento'
+  investimento: 'Aporte em investimento',
+  resgate: 'Resgate de investimento'
 };
 
 const PERSON_LABELS = {

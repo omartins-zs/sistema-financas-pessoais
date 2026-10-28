@@ -48,7 +48,7 @@ const novoRegistroHistorico = (dados) => {
   return registro;
 };
 
-const resumoLancamento = (e) => `“${e.description}” (${formatCurrency(Number(e.value) || 0)})`;
+const resumoLancamento = (e) => `${e?.type === 'resgate' ? 'resgate de ' : ''}“${e.description}” (${formatCurrency(Number(e.value) || 0)})`;
 
 const detalheAlteracaoLancamento = (antes, depois) => {
   const mudancas = [];
@@ -67,6 +67,9 @@ const detalheAlteracaoLancamento = (antes, depois) => {
   }
   if (antes?.category !== depois?.category) {
     mudancas.push(`cat. ${antes?.category || '—'} → ${depois?.category || '—'}`);
+  }
+  if (antes?.type !== depois?.type) {
+    mudancas.push(`${TYPE_LABELS[antes?.type] || antes?.type || '—'} → ${TYPE_LABELS[depois?.type] || depois?.type || '—'}`);
   }
   if ((antes?.person || '') !== (depois?.person || '')) {
     mudancas.push(`tag ${PERSON_LABELS[antes?.person] || '—'} → ${PERSON_LABELS[depois?.person] || '—'}`);

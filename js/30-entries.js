@@ -23,30 +23,63 @@ const getInvestimentoLabelById = (id) => {
   return inv ? investimentoLabel(inv) : '';
 };
 
+const resumoMovimentosInvestimento = (investimentoId, ignorarLancamentoId = '') => {
+  const resumo = { aportado: 0, resgatado: 0, liquido: 0 };
+  if (!investimentoId) return resumo;
+
+  Object.keys(allData).filter((mes) => /^\d{4}-\d{2}$/.test(mes)).forEach((mes) => {
+    (allData[mes] || []).forEach((entry) => {
+      if (!entry || entry.id === ignorarLancamentoId || entry.investimento_id !== investimentoId) return;
+      const valor = Math.abs(Number(entry.value) || 0);
+      if (entry.type === 'investimento') resumo.aportado += valor;
+      else if (entry.type === 'resgate') resumo.resgatado += valor;
+    });
+  });
+
+  resumo.aportado = Math.round(resumo.aportado * 100) / 100;
+  resumo.resgatado = Math.round(resumo.resgatado * 100) / 100;
+  resumo.liquido = Math.round((resumo.aportado - resumo.resgatado) * 100) / 100;
+  return resumo;
+};
+
+const saldoDisponivelInvestimento = (investimentoId, ignorarLancamentoId = '') => {
+  const investimento = getInvestimentosCarteira().find((item) => item.id === investimentoId);
+  if (!investimento) return 0;
+  const { liquido } = resumoMovimentosInvestimento(investimentoId, ignorarLancamentoId);
+  const saldo = liquido + (Number(investimento.rendimento) || 0);
+  return Math.max(0, Math.round(saldo * 100) / 100);
+};
+
 const populateInvestimentoSelects = () => {
   const lista = getInvestimentosCarteira();
-  const opts = [
-    lista.length
-      ? '<option value="">Sem categoria (só conta neste mês)</option>'
-      : '<option value="">Nenhuma categoria criada ainda — crie na aba Investimentos</option>',
-    ...lista.map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(investimentoLabel(i))}</option>`)
-  ].join('');
   [dom.inputInvestimento, dom.editInvestimento].forEach((sel) => {
     if (!sel) return;
+    const typeSel = sel === dom.inputInvestimento ? dom.inputType : dom.editType;
+    const exigirCategoria = typeSel?.value === 'resgate';
+    const opts = [
+      exigirCategoria
+        ? '<option value="">Selecione a categoria do investimento</option>'
+        : lista.length
+          ? '<option value="">Sem categoria (só conta neste mês)</option>'
+          : '<option value="">Nenhuma categoria criada ainda — crie na aba Investimentos</option>',
+    ...lista.map((i) => `<option value="${escapeAttr(i.id)}">${escapeHtml(investimentoLabel(i))}</option>`)
+    ].join('');
     const atual = sel.value;
     sel.innerHTML = opts;
+    sel.required = exigirCategoria;
     if ([...sel.options].some((o) => o.value === atual)) sel.value = atual;
   });
 };
 
 // A categoria ocupa o MESMO lugar na tela: normal (Mercado, Luz…) ou, quando o Tipo é
-// Investimento, a lista de categorias da carteira — nunca os dois ao mesmo tempo.
+// Aporte/resgate usam a lista da carteira — nunca junto com a categoria comum.
 const toggleInvestimentoField = (typeSel, categorySel, investSel, manageBtn, autoFoco = false) => {
   if (!typeSel || !categorySel || !investSel) return;
-  const mostrar = typeSel.value === 'investimento';
+  const mostrar = typeSel.value === 'investimento' || typeSel.value === 'resgate';
   const jaEstavaEscondido = investSel.hidden;
   categorySel.hidden = mostrar;
   investSel.hidden = !mostrar;
+  investSel.required = typeSel.value === 'resgate';
   if (manageBtn) manageBtn.hidden = mostrar;
 
   if (mostrar) {
@@ -67,7 +100,9 @@ const toggleInvestimentoField = (typeSel, categorySel, investSel, manageBtn, aut
 const onInvestimentoSelectChange = (sel, descInput) => {
   if (!sel || !sel.value) return;
   if (descInput && !descInput.value.trim()) {
-    descInput.value = getInvestimentoLabelById(sel.value);
+    const typeSel = sel === dom.inputInvestimento ? dom.inputType : dom.editType;
+    const label = getInvestimentoLabelById(sel.value);
+    descInput.value = typeSel?.value === 'resgate' ? `Resgate — ${label}` : label;
   }
 };
 
@@ -82,7 +117,7 @@ const buildEntryFromForm = (formData) => normalizeEntry({
   due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
   observation: formData.observation.trim(),
   card_items: formData.card_items ?? [],
-  ...(formData.type === 'investimento' && formData.investimento_id
+  ...(['investimento', 'resgate'].includes(formData.type) && formData.investimento_id
     ? { investimento_id: formData.investimento_id } : {}),
   ...(formData.fitid ? { fitid: formData.fitid } : {}),
   ...(formData._updatedAt ? { _updatedAt: formData._updatedAt } : {})
@@ -92,6 +127,50 @@ const validateEntry = (entry) => {
   if (!entry.description) { notify.error('Informe uma descrição.'); return false; }
   if (!entry.person) { notify.error('Selecione quem paga ou recebe (Gabriel, Barbara ou Casa).'); return false; }
   if (entry.value <= 0) { notify.error('Informe um valor maior que zero.'); return false; }
+  if (entry.type === 'resgate') {
+    if (!entry.investimento_id) {
+      notify.error('Selecione de qual investimento será feito o resgate.');
+      return false;
+    }
+    const investimento = getInvestimentosCarteira().find((item) => item.id === entry.investimento_id);
+    if (!investimento) {
+      notify.error('A categoria deste investimento não existe mais. Atualize a tela e selecione outra.');
+      return false;
+    }
+    const disponivel = saldoDisponivelInvestimento(entry.investimento_id, entry.id);
+    if (entry.value > disponivel + 0.004) {
+      notify.error(`O resgate excede o saldo disponível de ${formatCurrency(disponivel)}.`);
+      return false;
+    }
+  }
+  return true;
+};
+
+const registrarResgateInvestimento = ({ investimentoId, valor, pessoa, observacao = '' }) => {
+  const investimento = getInvestimentosCarteira().find((item) => item.id === investimentoId);
+  if (!investimento) {
+    notify.error('Selecione uma categoria de investimento válida.');
+    return false;
+  }
+
+  const entry = normalizeEntry({
+    id: generateId(),
+    description: `Resgate — ${investimentoLabel(investimento)}`,
+    category: catPapel('investimentos'),
+    type: 'resgate',
+    person: pessoa,
+    value: Number(valor) || 0,
+    status: 'pago',
+    due_day: null,
+    observation: String(observacao || '').trim(),
+    card_items: [],
+    investimento_id: investimento.id
+  });
+  if (!validateEntry(entry)) return false;
+
+  setCurrentEntries([...getCurrentEntries(), entry], `resgatou ${formatCurrency(entry.value)} de “${investimentoLabel(investimento)}”`);
+  render();
+  notify.success(`Resgate registrado em ${getMonthLabel()}.`);
   return true;
 };
 
@@ -187,6 +266,8 @@ const duplicateEntry = (id) => {
     _updatedAt: Date.now()
   });
 
+  if (!validateEntry(duplicated)) return;
+
   setCurrentEntries([...entries, duplicated], `duplicou ${resumoLancamento(duplicated)}`);
   notify.success('Lançamento duplicado!');
   render();
@@ -235,24 +316,35 @@ const copyPreviousMonth = async () => {
 
   const currentEntries = getCurrentEntries();
 
-  const newEntries = prevEntries.filter(
+  // Resgates são eventos avulsos; copiar o mês anterior não deve repetir a retirada.
+  const copiaveis = prevEntries.filter((entry) => entry.type !== 'resgate');
+  const resgatesIgnorados = prevEntries.length - copiaveis.length;
+  const newEntries = copiaveis.filter(
     (prev) => !isEntryDuplicate(prev, currentEntries)
   );
 
-  const skipped = prevEntries.length - newEntries.length;
+  const skipped = copiaveis.length - newEntries.length;
 
   if (!newEntries.length) {
-    notify.info(
-      skipped === prevEntries.length
-        ? 'Todos os lançamentos do mês anterior já existem neste mês.'
-        : 'Não há lançamentos novos para copiar.'
-    );
+    if (resgatesIgnorados && !copiaveis.length) {
+      notify.info('O mês anterior só tem resgates, que não são copiados automaticamente.');
+    } else {
+      notify.info(
+        skipped === copiaveis.length
+          ? 'Todos os lançamentos do mês anterior já existem neste mês.'
+          : 'Não há lançamentos novos para copiar.'
+      );
+      if (resgatesIgnorados) notify.info(`${resgatesIgnorados} resgate(s) não foram copiados por serem movimentações avulsas.`);
+    }
     return;
   }
 
   let confirmText = `Adicionar ${newEntries.length} lançamento(s) novo(s)? O status virá como "Não pago".`;
   if (skipped > 0) {
     confirmText += ` ${skipped} já existente(s) serão ignorado(s).`;
+  }
+  if (resgatesIgnorados > 0) {
+    confirmText += ` ${resgatesIgnorados} resgate(s) avulso(s) não serão repetidos.`;
   }
 
   const needsConfirm = currentEntries.length > 0 || skipped > 0;

@@ -914,6 +914,9 @@
 .inv-tl__desc { font-size: 0.86rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .inv-tl__acc { font-size: 0.72rem; color: var(--app-text-muted); }
 .inv-tl__val { flex: 0 0 auto; font-size: 0.92rem; color: var(--app-income); font-variant-numeric: tabular-nums; }
+.inv-tl__val--resgate { color: var(--app-expense); }
+.inv-row--resgate td { color: var(--app-expense); }
+.inv-row--liquido td { font-weight: 700; }
 @keyframes invFade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
 

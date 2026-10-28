@@ -31,6 +31,7 @@ const resetAddForm = () => {
   dom.inputStatus.value = 'nao_pago';
   dom.inputPerson.value = '';
   maskAdd.typedValue = 0;
+  toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'));
   dom.inputDescription.focus();
 };
 
@@ -237,15 +238,16 @@ const calculateSummary = (entries) =>
     (acc, { type, value, status, person }) => {
       if (type === 'entrada') acc.income += value;
       else if (type === 'investimento') acc.investment += value;
+      else if (type === 'resgate') acc.investment -= value;
       else acc.expense += value;
 
-      if (type !== 'entrada') {
+      if (type !== 'entrada' && type !== 'resgate') {
         if (status === 'pago') acc.paid += value;
         else if (status === 'reservado') acc.reserved += value;
         else acc.unpaid += value;
       }
 
-      if (status === 'pago') {
+      if (status === 'pago' && type !== 'resgate') {
         if (person === 'gabriel') {
           if (type === 'entrada') acc.gabrielIncome += value;
           else acc.gabrielExpense += value;
@@ -277,7 +279,7 @@ const splitEntries = (entries) => ({
     .filter((e) => e.type === 'despesa')
     .sort(sortByPersonThenDescription),
   investment: entries
-    .filter((e) => e.type === 'investimento')
+    .filter((e) => e.type === 'investimento' || e.type === 'resgate')
     .sort(sortByPersonThenDescription)
 });
 

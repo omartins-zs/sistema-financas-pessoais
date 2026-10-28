@@ -11,6 +11,10 @@ const getExportContext = () => {
   return { entries, income, expense, investment, summary, afterExpenses, surplus, monthLabel: getMonthLabel() };
 };
 
+const getExportInvestmentName = (entry) => getInvestimentoLabelById(entry.investimento_id);
+const getExportMovementValue = (entry) =>
+  entry.type === 'resgate' ? `− ${formatCurrency(entry.value)}` : formatCurrency(entry.value);
+
 const exportJSON = () => {
   downloadBlob(
     new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' }),
@@ -28,7 +32,7 @@ const exportCSV = () => {
     'RESUMO',
     `Entradas (lucro);${formatValuePlain(summary.income)}`,
     `Despesas;${formatValuePlain(summary.expense)}`,
-    `Investimentos (reserva);${formatValuePlain(summary.investment)}`,
+    `Investimentos líquidos (aportes - resgates);${formatValuePlain(summary.investment)}`,
     // `Restou;${formatValuePlain(afterExpenses)}`,
     `Sobra;${formatValuePlain(surplus)}`,
     `Pago;${formatValuePlain(summary.paid)}`,
@@ -36,21 +40,21 @@ const exportCSV = () => {
     `Não pago;${formatValuePlain(summary.unpaid)}`,
     '',
     'ENTRADAS E RENDAS',
-    'Descrição;Tag;Categoria;Valor;Status;Observação',
+    'Descrição;Tipo;Tag;Categoria;Valor;Status;Observação;Investimento',
     ...income.map((e) =>
-      [e.description, PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+      [e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? '', ''].join(';')
     ),
     '',
     'DESPESAS E LANÇAMENTOS',
-    'Descrição;Tag;Categoria;Valor;Status;Observação',
+    'Descrição;Tipo;Tag;Categoria;Valor;Status;Observação;Investimento',
     ...expense.map((e) =>
-      [e.description, PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+      [e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? '', ''].join(';')
     ),
     '',
-    'INVESTIMENTOS (RESERVA)',
-    'Descrição;Tag;Categoria;Valor;Status;Observação',
+    'INVESTIMENTOS E RESGATES',
+    'Descrição;Tipo;Tag;Categoria;Valor;Status;Observação;Investimento',
     ...investment.map((e) =>
-      [e.description, PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? ''].join(';')
+      [e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '', e.category, formatValuePlain(e.value), STATUS_LABELS[e.status], e.observation ?? '', getExportInvestmentName(e)].join(';')
     )
   ];
 
@@ -73,7 +77,7 @@ const exportExcel = () => {
     ['Resumo', 'Valor (R$)'],
     ['Entradas (lucro)', summary.income],
     ['Despesas', summary.expense],
-    ['Investimentos (reserva)', summary.investment],
+    ['Investimentos líquidos (aportes − resgates)', summary.investment],
     // ['Restou', afterExpenses],
     ['Sobra', surplus],
     ['Pago', summary.paid],
@@ -83,28 +87,28 @@ const exportExcel = () => {
 
   const incomeSheet = XLSX.utils.aoa_to_sheet([
     ['ENTRADAS E RENDAS'],
-    ['Descrição', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ['Descrição', 'Tipo', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
     ...income.map((e) => [
-      e.description, PERSON_LABELS[e.person] ?? '', e.category, e.value,
+      e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '', e.category, e.value,
       STATUS_LABELS[e.status], e.observation ?? ''
     ])
   ]);
 
   const expenseSheet = XLSX.utils.aoa_to_sheet([
     ['DESPESAS E LANÇAMENTOS'],
-    ['Descrição', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ['Descrição', 'Tipo', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
     ...expense.map((e) => [
-      e.description, PERSON_LABELS[e.person] ?? '', e.category, e.value,
+      e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '', e.category, e.value,
       STATUS_LABELS[e.status], e.observation ?? ''
     ])
   ]);
 
   const investmentSheet = XLSX.utils.aoa_to_sheet([
-    ['INVESTIMENTOS (RESERVA)'],
-    ['Descrição', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação'],
+    ['INVESTIMENTOS E RESGATES'],
+    ['Descrição', 'Tipo', 'Tag', 'Categoria', 'Valor (R$)', 'Status', 'Observação', 'Investimento'],
     ...investment.map((e) => [
-      e.description, PERSON_LABELS[e.person] ?? '', e.category, e.value,
-      STATUS_LABELS[e.status], e.observation ?? ''
+      e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '', e.category, e.value,
+      STATUS_LABELS[e.status], e.observation ?? '', getExportInvestmentName(e)
     ])
   ]);
 
@@ -134,7 +138,7 @@ const exportPDF = () => {
     body: [
       ['Entradas (lucro)', formatCurrency(summary.income)],
       ['Despesas', formatCurrency(summary.expense)],
-      ['Investimentos (reserva)', formatCurrency(summary.investment)],
+      ['Investimentos líquidos (aportes − resgates)', formatCurrency(summary.investment)],
       // ['Restou', formatCurrency(afterExpenses)],
       ['Sobra', formatCurrency(surplus)],
       ['Pago', formatCurrency(summary.paid)],
@@ -191,14 +195,14 @@ const exportPDF = () => {
   if (investment.length) {
     doc.setFontSize(12);
     doc.setTextColor(139, 92, 246);
-    doc.text('Investimentos (reserva)', 14, startY);
+    doc.text('Investimentos e resgates', 14, startY);
 
     doc.autoTable({
       startY: startY + 4,
-      head: [['Descrição', 'Tag', 'Categoria', 'Valor', 'Status']],
+      head: [['Descrição', 'Movimento', 'Tag', 'Investimento', 'Valor', 'Status']],
       body: investment.map((e) => [
-        e.description, PERSON_LABELS[e.person] ?? '—', e.category,
-        formatCurrency(e.value), STATUS_LABELS[e.status]
+        e.description, TYPE_LABELS[e.type], PERSON_LABELS[e.person] ?? '—', getExportInvestmentName(e) || 'Sem categoria',
+        getExportMovementValue(e), STATUS_LABELS[e.status]
       ]),
       theme: 'striped',
       headStyles: { fillColor: [139, 92, 246] },
@@ -231,7 +235,9 @@ const handleExport = (format) => {
 const TYPE_MAP = {
   entrada: 'entrada', entradas: 'entrada', '+': 'entrada',
   despesa: 'despesa', despesas: 'despesa', '-': 'despesa',
-  investimento: 'investimento', investimentos: 'investimento', reserva: 'investimento'
+  investimento: 'investimento', investimentos: 'investimento', reserva: 'investimento',
+  aporte: 'investimento', aportes: 'investimento',
+  resgate: 'resgate', resgates: 'resgate', saque: 'resgate'
 };
 
 const STATUS_MAP = {
@@ -252,7 +258,9 @@ const mapTipo = (raw) => {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   if (TYPE_MAP[key]) return TYPE_MAP[key];
   if (key.startsWith('entr')) return 'entrada';
+  if (key.startsWith('resgat') || key.startsWith('saque')) return 'resgate';
   if (key.startsWith('invest') || key.startsWith('reserv')) return 'investimento';
+  if (key.startsWith('aport')) return 'investimento';
   if (key.startsWith('desp')) return 'despesa';
   return null;
 };
@@ -271,13 +279,17 @@ const rowToEntry = (row) => {
   const status = mapStatus(row.status);
   const observation = String(row.observacao ?? row.observation ?? '').trim();
   const person = mapPerson(row.tag ?? row.pessoa ?? row.responsavel ?? row.responsável);
+  const investimentoNome = String(row.investimento ?? row.investimentocategoria ?? '').trim();
+  const investimento = investimentoNome
+    ? getInvestimentosCarteira().find((item) => investimentoLabel(item).toLowerCase() === investimentoNome.toLowerCase())
+    : null;
 
-  if (!desc || !type || value <= 0) return null;
+  if (!desc || !type || value <= 0 || (type === 'resgate' && !investimento)) return null;
 
   return normalizeEntry({
     id: generateId(),
     description: desc,
-    category: type === 'investimento'
+    category: ['investimento', 'resgate'].includes(type)
       ? catPapel('investimentos')
       : (CATEGORIAS.includes(category) ? category : catPapel('outros')),
     type,
@@ -285,7 +297,8 @@ const rowToEntry = (row) => {
     value,
     status,
     observation,
-    card_items: []
+    card_items: [],
+    ...(['investimento', 'resgate'].includes(type) && investimento ? { investimento_id: investimento.id } : {})
   });
 };
 
@@ -313,6 +326,7 @@ const parseSheetRows = (rows) => {
         else if (h.includes('status')) row.status = cells[i];
         else if (h === 'tag' || h.includes('pessoa') || h.includes('respons')) row.tag = cells[i];
         else if (h.includes('observ')) row.observacao = cells[i];
+        else if (h === 'investimento' || h.includes('categoria de investimento')) row.investimento = cells[i];
       });
       return rowToEntry(row);
     })

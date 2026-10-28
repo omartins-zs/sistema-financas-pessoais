@@ -981,6 +981,7 @@ body {
 .value-income { color: var(--app-income); font-weight: 700; }
 .value-expense { color: var(--app-expense); font-weight: 700; }
 .value-investment { color: var(--app-investment); font-weight: 700; }
+.value-resgate { color: var(--app-income); }
 
 .category-tag {
   display: inline-block;
@@ -2303,6 +2304,10 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   font-weight: 700;
   vertical-align: middle;
   white-space: nowrap;
+}
+.invest-link-tag--resgate {
+  background: color-mix(in srgb, var(--app-income) 14%, var(--app-surface-2));
+  color: var(--app-income);
 }
 
 /* ---- Histórico de alterações ---- */

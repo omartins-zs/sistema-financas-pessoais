@@ -186,8 +186,13 @@ const renderCreditCardRows = (entry, valueClass) => {
 
 const investLinkTag = (entry) => {
   const label = entry.investimento_id ? getInvestimentoLabelById(entry.investimento_id) : '';
-  return label ? ` <span class="invest-link-tag" title="Soma na carteira (aba Investimentos)"><i class="bi bi-graph-up-arrow"></i> ${escapeHtml(label)}</span>` : '';
+  if (!label) return '';
+  const resgate = entry.type === 'resgate';
+  return ` <span class="invest-link-tag${resgate ? ' invest-link-tag--resgate' : ''}" title="${resgate ? 'Reduz o saldo na aba Investimentos' : 'Soma na carteira (aba Investimentos)'}"><i class="bi bi-${resgate ? 'box-arrow-in-down' : 'graph-up-arrow'}"></i> ${resgate ? 'Resgate · ' : ''}${escapeHtml(label)}</span>`;
 };
+
+const formatEntryValue = (entry) =>
+  entry.type === 'resgate' ? `− ${formatCurrency(entry.value)}` : formatCurrency(entry.value);
 
 const carteiraStatusBadge = () =>
   '<span class="badge text-bg-light border carteira-badge" title="Cadastrado direto na aba Investimentos — edite ou exclua por lá">' +
@@ -209,7 +214,7 @@ const renderEntryRow = (entry, valueClass) => {
       <td class="cell-description">${escapeHtml(entry.description)}</td>
       <td><span class="text-muted">—</span></td>
       <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
-      <td class="${valueClass}">${formatCurrency(entry.value)}</td>
+      <td class="${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</td>
       <td>${carteiraStatusBadge()}</td>
       <td>${renderDueDay(entry.due_day)}</td>
       <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
@@ -222,7 +227,7 @@ const renderEntryRow = (entry, valueClass) => {
     <td class="cell-description">${escapeHtml(entry.description)}${investLinkTag(entry)}</td>
     <td>${renderPersonTag(entry.person)}</td>
     <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
-    <td class="${valueClass}">${formatCurrency(entry.value)}</td>
+    <td class="${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</td>
     <td>${createStatusPicker(entry)}</td>
     <td>${renderDueDay(entry.due_day)}</td>
     <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
@@ -241,7 +246,7 @@ const renderEntryCard = (entry, valueClass) => {
     <div class="entry-card entry-card--carteira" data-id="${entry.id}">
       <div class="entry-card__header">
         <span class="entry-card__title">${escapeHtml(entry.description)}</span>
-        <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
+        <span class="entry-card__value ${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</span>
       </div>
       <div class="entry-card__meta">
         <span class="category-tag">${escapeHtml(entry.category)}</span>
@@ -266,7 +271,7 @@ const renderEntryCard = (entry, valueClass) => {
           <i class="bi bi-chevron-${expanded ? 'up' : 'down'}"></i>
         </button>
         <span class="entry-card__title">${escapeHtml(entry.description)}${investLinkTag(entry)}</span>
-        <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
+        <span class="entry-card__value ${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</span>
       </div>
       <div class="entry-card__meta">
         ${renderPersonTag(entry.person)}
@@ -287,7 +292,7 @@ const renderEntryCard = (entry, valueClass) => {
     <div class="entry-card" data-id="${entry.id}">
       <div class="entry-card__header">
         <span class="entry-card__title">${escapeHtml(entry.description)}${investLinkTag(entry)}</span>
-        <span class="entry-card__value ${valueClass}">${formatCurrency(entry.value)}</span>
+        <span class="entry-card__value ${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</span>
       </div>
       <div class="entry-card__meta">
         ${renderPersonTag(entry.person)}
