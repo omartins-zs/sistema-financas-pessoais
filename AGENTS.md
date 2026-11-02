@@ -66,7 +66,27 @@ Executa antes de enviar ao GitHub:
 
 ---
 
-## 💾 4. Regras Críticas de Persistência (Branch `github-pages`)
+## ✅ 4. Ciclo Obrigatório: Testes → Commit → Push
+
+Vale para **toda** alteração, por menor que seja (ajuste visual, correção, refatoração, regra, documentação), nas duas branches.
+
+1. **Testar a cada mudança:**
+   - Depois de cada ajuste, rode a bateria de testes antes de seguir para o próximo passo:
+     - `github-pages`: `npm test` (e `node --check <arquivo>` nos scripts alterados)
+     - `master`: `php artisan test`, `./vendor/bin/pint --test` e `./vendor/bin/phpstan analyse --level=5 --memory-limit=1G`
+   - Funcionalidade nova ou comportamento alterado **ganha teste automatizado** (em `tests/github-pages/` na PWA), cobrindo também os casos de borda.
+   - Mudança de tela também é conferida no navegador, em largura de computador e de celular.
+   - Teste falhando = parar e corrigir. **Nunca** commitar ou enviar com teste vermelho, nem pular hooks (`--no-verify`).
+2. **No final de toda tarefa, sempre:**
+   - Rodar os testes completos mais uma vez (o pre-commit troca a versão; confirme que tudo continua alinhado).
+   - **Commitar** no padrão da seção 2 (Gitmoji + Conventional Commits em português).
+   - **Fazer push** para a branch atual no GitHub (`git push origin <branch>`). Na `github-pages` o push é o deploy: sem ele a versão nova não chega aos celulares.
+   - Informar o resultado: commit, versão gerada e quantos testes passaram.
+3. Se o push for recusado (branch remota à frente, conflito), sincronize com `git pull --ff-only` ou resolva o conflito, teste de novo e só então envie. Nunca use `push --force`.
+
+---
+
+## 💾 5. Regras Críticas de Persistência (Branch `github-pages`)
 
 Para nunca perder dados preenchidos pelo usuário:
 
@@ -80,6 +100,7 @@ Para nunca perder dados preenchidos pelo usuário:
    - Manter resolução com base em timestamps (`_updatedAt`) e mapa de exclusões (`_deleted`) para que nenhuma aba ou dispositivo sobrescreva alterações de outro.
 5. **Versionamento PWA com Data e Horário (`YYYYMMDD-HHMM`):**
    - O hook `.githooks/pre-commit` atualiza automaticamente a versão no `index.html` (`meta[name="app-version"]` e todas as query strings `?v=`) para o formato de data e horário atual (ex.: `20261024-1245`), garantindo que o Service Worker e os navegadores/celulares baixem a versão mais recente e nunca fiquem presos em cache antigo.
+   - Na tela, o selo da versão aparece sempre no **padrão brasileiro: `dd/mm/aaaa hh:mm`** (ex.: `v24/10/2026 12:45`), via `formatAppVersion()` em `js/80-bootstrap-pwa.js`. O formato interno `YYYYMMDD-HHMM` não muda (é o que vai no `?v=`).
 
 6. **Organização dos scripts da PWA:**
    - A lógica de tela fica em `js/`, dividida por área funcional.
