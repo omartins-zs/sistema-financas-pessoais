@@ -116,6 +116,7 @@ const buildEntryFromForm = (formData) => normalizeEntry({
   status: formData.status,
   due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
   observation: formData.observation.trim(),
+  recurring: formData.recurring === true,
   card_items: formData.card_items ?? [],
   ...(['investimento', 'resgate'].includes(formData.type) && formData.investimento_id
     ? { investimento_id: formData.investimento_id } : {}),
@@ -235,6 +236,7 @@ const handleEditEntry = (e) => {
     status: dom.editStatus.value,
     due_day: dom.editDueDay.value || null,
     observation: dom.editObservation.value,
+    recurring: entries[index].recurring === true,
     card_items: entries[index].card_items ?? [],
     investimento_id: dom.editInvestimento?.value || '',
     fitid: entries[index].fitid,
@@ -301,6 +303,19 @@ const changeStatus = (id, newStatus) => {
   render();
 };
 
+// Marca/desmarca uma despesa como recorrente (gasto fixo). Os recorrentes do mês
+// são puxados na aba "Contas fixas". Mesmo padrão do changeStatus: clona para
+// objetos novos, nunca muta o array vivo antes do diff (ver AGENTS.md).
+const toggleEntryRecurring = (id) => {
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === id);
+  if (index === -1) return;
+
+  const nextEntries = entries.map((e, i) => (i === index ? { ...e, recurring: !(e.recurring === true) } : e));
+  setCurrentEntries(nextEntries);
+  render();
+};
+
 // ============================================
 // Ações do mês
 // ============================================
@@ -359,7 +374,7 @@ const copyPreviousMonth = async () => {
   }
 
   const now = Date.now();
-  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation, card_items, investimento_id }) => normalizeEntry({
+  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation, recurring, card_items, investimento_id }) => normalizeEntry({
     id: generateId(),
     description,
     category,
@@ -369,6 +384,7 @@ const copyPreviousMonth = async () => {
     status: 'nao_pago',
     due_day: due_day ?? null,
     observation: observation ?? '',
+    recurring: recurring === true,
     card_items: Array.isArray(card_items) ? card_items.map((item) => ({ ...item, id: generateId() })) : [],
     ...(type === 'investimento' && investimento_id ? { investimento_id } : {}),
     _updatedAt: now

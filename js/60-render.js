@@ -21,8 +21,9 @@ const createStatusPicker = (entry) => {
   return `<div class="status-picker status-picker--${entry.status}" role="group" aria-label="Status de ${escapeHtml(entry.description)}">${buttons}</div>`;
 };
 
-const createActionButtons = (id) => `
+const createActionButtons = (id, prefix = '') => `
   <div class="row-actions">
+    ${prefix}
     <button type="button" class="row-action row-action--duplicate" data-id="${id}" data-action="duplicate" title="Duplicar lançamento" aria-label="Duplicar lançamento">
       <i class="bi bi-copy"></i>
     </button>
@@ -33,6 +34,21 @@ const createActionButtons = (id) => `
       <i class="bi bi-trash-fill"></i>
     </button>
   </div>`;
+
+// Botão de recorrência para despesas comuns (mesmo espírito do item de cartão):
+// marca o lançamento como gasto fixo, puxado depois na aba "Contas fixas".
+const isRecurringEligible = (entry) => entry.type === 'despesa' && !entry.__carteiraId && !isCreditCardEntry(entry);
+
+const renderEntryRecurringToggle = (entry) => {
+  const recurring = entry.recurring === true;
+  return `<button type="button" class="row-action row-action--recurring${recurring ? ' is-active' : ''}" data-id="${entry.id}" data-action="toggle-entry-recurring" title="${recurring ? 'Remover de gastos fixos' : 'Marcar como gasto fixo (recorrente)'}" aria-pressed="${recurring}" aria-label="Gasto fixo recorrente">
+      <i class="bi bi-arrow-repeat"></i>
+    </button>`;
+};
+
+const recurringTag = (entry) => (entry.recurring === true
+  ? '<span class="entry-recurring-tag" title="Gasto fixo recorrente"><i class="bi bi-arrow-repeat"></i> Fixo</span>'
+  : '');
 
 const renderDueDay = (due_day) => due_day
   ? `<span class="badge text-bg-light border" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>dia ${due_day}</span>`
@@ -222,16 +238,17 @@ const renderEntryRow = (entry, valueClass) => {
     </tr>`;
   }
 
+  const eligivelRec = isRecurringEligible(entry);
   return `
-  <tr data-id="${entry.id}">
-    <td class="cell-description">${escapeHtml(entry.description)}${investLinkTag(entry)}</td>
+  <tr data-id="${entry.id}"${entry.recurring === true ? ' class="entry-row--recurring"' : ''}>
+    <td class="cell-description">${escapeHtml(entry.description)}${recurringTag(entry)}${investLinkTag(entry)}</td>
     <td>${renderPersonTag(entry.person)}</td>
     <td><span class="category-tag">${escapeHtml(entry.category)}</span></td>
     <td class="${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</td>
     <td>${createStatusPicker(entry)}</td>
     <td>${renderDueDay(entry.due_day)}</td>
     <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
-    <td class="text-end">${createActionButtons(entry.id)}</td>
+    <td class="text-end">${createActionButtons(entry.id, eligivelRec ? renderEntryRecurringToggle(entry) : '')}</td>
   </tr>`;
 };
 
@@ -288,10 +305,11 @@ const renderEntryCard = (entry, valueClass) => {
     </div>`;
   }
 
+  const eligivelRec = isRecurringEligible(entry);
   return `
-    <div class="entry-card" data-id="${entry.id}">
+    <div class="entry-card${entry.recurring === true ? ' entry-card--recurring' : ''}" data-id="${entry.id}">
       <div class="entry-card__header">
-        <span class="entry-card__title">${escapeHtml(entry.description)}${investLinkTag(entry)}</span>
+        <span class="entry-card__title">${escapeHtml(entry.description)}${recurringTag(entry)}${investLinkTag(entry)}</span>
         <span class="entry-card__value ${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</span>
       </div>
       <div class="entry-card__meta">
@@ -301,7 +319,7 @@ const renderEntryCard = (entry, valueClass) => {
       ${obs}
       <div class="entry-card__footer">
         ${createStatusPicker(entry)}
-        ${createActionButtons(entry.id)}
+        ${createActionButtons(entry.id, eligivelRec ? renderEntryRecurringToggle(entry) : '')}
       </div>
     </div>`;
 };

@@ -64,6 +64,11 @@ const handleListClick = (e) => {
     return;
   }
 
+  if (action === 'toggle-entry-recurring') {
+    toggleEntryRecurring(id);
+    return;
+  }
+
   if (action === 'duplicate') duplicateEntry(id);
   if (action === 'edit') openEditModal(id);
   if (action === 'delete') deleteEntry(id);

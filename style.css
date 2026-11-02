@@ -561,6 +561,38 @@ body {
   box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
 }
 
+/* Botão de recorrência (gasto fixo) nas linhas de despesa */
+.row-action--recurring {
+  background: var(--app-surface-2);
+  color: var(--app-text-faint);
+  box-shadow: inset 0 0 0 1px var(--app-border);
+}
+
+.row-action--recurring:hover,
+.row-action--recurring.is-active {
+  background: color-mix(in srgb, var(--app-reserved) 16%, transparent);
+  color: var(--app-reserved);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-reserved) 40%, transparent);
+}
+
+.entry-recurring-tag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--app-reserved) 18%, var(--app-surface-2));
+  color: var(--app-reserved);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.entry-row--recurring td,
+.entry-card--recurring {
+  background: color-mix(in srgb, var(--app-reserved) 6%, transparent);
+}
+
 .entry-card__footer .row-actions {
   flex-shrink: 0;
 }

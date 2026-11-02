@@ -804,6 +804,117 @@
   };
 
   // ==========================================================
+  // MÓDULO: CARRO (quitação do financiamento)
+  // ----------------------------------------------------------
+  //  Uma seção dedicada ao carro: guarda o valor total e cada
+  //  pagamento (dia/mês + valor), abatendo do total. Segue o
+  //  padrão de Reservas/Metas (item único em coll('carro') com
+  //  array aninhado de pagamentos), mas contando para baixo.
+  // ==========================================================
+  const carroAtivo = () => coll('carro')[0] || null;
+  const carroPago = (c) => sum(c?.pagamentos || [], (p) => Number(p.valor) || 0);
+  const carroSaldo = (c) => Math.round(((Number(c?.valorTotal) || 0) - carroPago(c)) * 100) / 100;
+
+  const Carro = {
+    fields: (c = {}) => [
+      { name: 'nome', label: 'Carro', type: 'text', required: true, value: c.nome, placeholder: 'Ex: Onix 2024, HB20', wide: true },
+      { name: 'valorTotal', label: 'Valor total do carro (R$)', type: 'money', required: true, value: c.valorTotal ? formatValuePlain(c.valorTotal) : '' },
+      { name: 'dataInicio', label: 'Data de início (opcional)', type: 'date', value: c.dataInicio }
+    ],
+    async add() {
+      const v = await formModal({ title: 'Configurar carro', icon: 'car-front-fill', fields: this.fields(), confirmText: 'Salvar' });
+      if (!v) return;
+      upsert('carro', { id: generateId(), nome: v.nome, valorTotal: v.valorTotal, dataInicio: v.dataInicio || '', pagamentos: [] });
+      notify.success('Carro configurado! Agora registre os pagamentos mês a mês.');
+    },
+    async edit(id) {
+      const c = coll('carro').find((x) => x.id === id);
+      if (!c) return;
+      const v = await formModal({ title: 'Editar carro', icon: 'car-front-fill', fields: this.fields(c) });
+      if (!v) return;
+      upsert('carro', { ...c, nome: v.nome, valorTotal: v.valorTotal, dataInicio: v.dataInicio || '' });
+      notify.success('Carro atualizado!');
+    },
+    async pagamento(id) {
+      const c = coll('carro').find((x) => x.id === id);
+      if (!c) return;
+      const saldo = carroSaldo(c);
+      const v = await formModal({
+        title: `Pagamento — ${c.nome}`, icon: 'cash-coin', confirmText: 'Registrar pagamento',
+        fields: [
+          { name: 'valor', label: `Valor do pagamento (falta ${formatCurrency(Math.max(0, saldo))})`, type: 'money', required: true, wide: true },
+          { name: 'data', label: 'Data do pagamento', type: 'date', value: today().format('YYYY-MM-DD') }
+        ]
+      });
+      if (!v) return;
+      const pagamentos = [...(c.pagamentos || []), { id: generateId(), valor: v.valor, data: v.data || today().format('YYYY-MM-DD') }];
+      upsert('carro', { ...c, pagamentos });
+      notify.success('Pagamento registrado!');
+    },
+    async excluirPagamento(id, pagId) {
+      const c = coll('carro').find((x) => x.id === id);
+      if (!c) return;
+      const alvo = (c.pagamentos || []).find((p) => p.id === pagId);
+      if (!alvo) return;
+      const ok = await confirmAction({ title: 'Excluir pagamento?', text: `${formatCurrency(alvo.valor)} em ${fmtDate(alvo.data)} será removido.`, icon: 'warning', confirmText: 'Sim, excluir' });
+      if (!ok) return;
+      upsert('carro', { ...c, pagamentos: (c.pagamentos || []).filter((p) => p.id !== pagId) });
+      notify.info('Pagamento excluído.');
+    },
+    card(c) {
+      const pago = carroPago(c);
+      const saldo = carroSaldo(c);
+      const quitado = saldo <= 0;
+      const pagamentos = [...(c.pagamentos || [])].sort((a, b) => (a.data < b.data ? 1 : -1));
+      const lista = pagamentos.length
+        ? `<ul class="carro-pags">${pagamentos.map((p) => `
+            <li class="carro-pags__item">
+              <span class="carro-pags__date"><i class="bi bi-calendar-event"></i> ${fmtDate(p.data)}</span>
+              <strong class="carro-pags__val">− ${formatCurrency(p.valor)}</strong>
+              <button class="mod-btn mod-btn--danger" data-mod="carro" data-act="pag-del" data-id="${c.id}" data-pag-id="${p.id}" title="Excluir pagamento"><i class="bi bi-trash-fill"></i></button>
+            </li>`).join('')}</ul>`
+        : '<p class="mod-card__sub mb-0">Nenhum pagamento registrado ainda.</p>';
+      return `
+        <article class="mod-card carro-card">
+          <div class="mod-card__top align-items-start">
+            <div>
+              <h3 class="mod-card__title">${escapeHtml(c.nome)}</h3>
+              <span class="mod-card__sub">${c.dataInicio ? 'Início em ' + fmtDate(c.dataInicio) + ' · ' : ''}${pagamentos.length} pagamento(s)</span>
+            </div>
+            <span class="mod-badge mod-badge--${quitado ? 'green' : 'blue'}">${quitado ? 'Quitado' : formatCurrency(saldo) + ' a pagar'}</span>
+          </div>
+          <div class="inv-card__grid">
+            <div><span>Valor total</span><strong>${formatCurrency(Number(c.valorTotal) || 0)}</strong></div>
+            <div><span>Já pago</span><strong style="color:var(--app-income)">${formatCurrency(pago)}</strong></div>
+            <div><span>Falta pagar</span><strong style="color:${quitado ? 'var(--app-income)' : 'var(--app-expense)'}">${formatCurrency(Math.max(0, saldo))}</strong></div>
+          </div>
+          <div class="mt-2">${progressBar(pago, Number(c.valorTotal) || 0, 'var(--app-income)')}</div>
+          <div class="carro-pags-wrap mt-3">
+            <p class="carro-pags__title"><i class="bi bi-receipt"></i> Pagamentos</p>
+            ${lista}
+          </div>
+          <button class="btn btn-primary w-100 mt-3" data-mod="carro" data-act="pag" data-id="${c.id}" ${quitado ? 'disabled' : ''}>
+            <i class="bi bi-plus-lg"></i> Registrar pagamento
+          </button>
+          <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-sm btn-outline-secondary flex-fill" data-mod="carro" data-act="edit" data-id="${c.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
+            <button class="btn btn-sm btn-outline-danger flex-fill" data-mod="carro" data-act="del" data-id="${c.id}"><i class="bi bi-trash-fill"></i> Excluir carro</button>
+          </div>
+        </article>`;
+    },
+    render(c) {
+      const carro = carroAtivo();
+      c.innerHTML = `
+        <div class="view-header">
+          <div><h2 class="h4"><i class="bi bi-car-front-fill app-icon"></i> Carro</h2>
+          <p class="view-header__hint">Valor total do carro e os pagamentos abatendo mês a mês</p></div>
+          ${carro ? '' : '<button class="btn btn-primary" data-mod="carro" data-act="add"><i class="bi bi-plus-lg"></i> Configurar carro</button>'}
+        </div>
+        ${carro ? `<div class="mod-grid mod-grid--single">${this.card(carro)}</div>` : emptyBlock('car-front-fill', 'Nenhum carro configurado. Clique em "Configurar carro" e informe o valor total.')}`;
+    }
+  };
+
+  // ==========================================================
   // Detecção de assinaturas recorrentes (últimos N meses)
   // ==========================================================
   // categorias com papel (nomes podem ter sido renomeados)
@@ -954,6 +1065,50 @@
     });
   };
 
+  // Despesas comuns marcadas como recorrentes (gasto fixo) num dado mês — "puxa"
+  // os lançamentos do Mês a mês para a aba Contas fixas.
+  const recurringEntriesForMonth = (monthKey) => {
+    const out = [];
+    (allData[monthKey] || []).forEach((entry) => {
+      if (!entry || entry.type !== 'despesa' || entry.recurring !== true) return;
+      if (typeof isCreditCardEntry === 'function' && isCreditCardEntry(entry)) return;
+      out.push({
+        id: entry.id,
+        nome: entry.description || '—',
+        valor: Number(entry.value) || 0,
+        categoria: entry.category || '',
+        person: entry.person || '',
+        status: entry.status || ''
+      });
+    });
+    return out.sort((a, b) => {
+      const pa = PERSON_ORDER[a.person] ?? 99;
+      const pb = PERSON_ORDER[b.person] ?? 99;
+      if (pa !== pb) return pa - pb;
+      return String(a.nome).localeCompare(String(b.nome), 'pt-BR');
+    });
+  };
+
+  const recurringEntriesMonth = () => recurringEntriesForMonth(getMonthKey(currentDate));
+
+  // Total de gastos recorrentes de um mês: despesas marcadas como fixas + itens
+  // recorrentes nos cartões daquele mês.
+  const recurringTotalForMonth = (monthKey) => {
+    const despesas = sum(recurringEntriesForMonth(monthKey), (e) => e.valor);
+    let cartao = 0;
+    (allData[monthKey] || []).forEach((entry) => {
+      const cat = String(entry.category ?? '').toLowerCase();
+      if (!cat.includes('cartão') && !cat.includes('cartao')) return;
+      (entry.card_items || []).forEach((item) => {
+        if (!item.recurring) return;
+        const desc = String(item.description ?? '').trim();
+        if (/^cart[aã]o$/i.test(desc) || /^fatura/i.test(desc)) return;
+        cartao += Number(item.value) || 0;
+      });
+    });
+    return Math.round((despesas + cartao) * 100) / 100;
+  };
+
   const Assinaturas = {
     _suggestions: [],
     fields: (a = {}) => [
@@ -1046,6 +1201,55 @@
           <ul class="mod-card-recurring__list">${rows}</ul>
         </div>`;
     },
+    // Despesas comuns marcadas como "fixo" no mês atual (puxadas do Mês a mês)
+    renderRecurringEntriesMonth() {
+      const items = recurringEntriesMonth();
+      if (!items.length) {
+        return `<div class="mod-card-recurring mod-card-recurring--empty">
+          <p class="mod-card-recurring__title"><i class="bi bi-arrow-repeat"></i> Gastos fixos do mês — ${MESES[currentDate.month()]}</p>
+          <p class="mod-suggest__hint mb-0">Nenhuma despesa marcada como fixa neste mês. No Mês a mês, clique no <i class="bi bi-arrow-repeat"></i> de um lançamento de despesa para marcá-lo como gasto fixo.</p>
+        </div>`;
+      }
+      const total = sum(items, (i) => i.valor);
+      const rows = items.map((item) => `
+        <li class="card-recurring-row">
+          <div class="card-recurring-row__body">
+            <strong>${escapeHtml(item.nome)}</strong>
+            <span class="card-recurring-row__meta">${escapeHtml(item.categoria)}${item.person ? ' · ' + escapeHtml(PERSON_LABELS[item.person] || '') : ''}${item.status ? ' · ' + escapeHtml(STATUS_LABELS[item.status] || '') : ''}</span>
+          </div>
+          <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
+        </li>`).join('');
+      return `
+        <div class="mod-card-recurring">
+          <div class="mod-card-recurring__head">
+            <p class="mod-card-recurring__title"><i class="bi bi-arrow-repeat"></i> Gastos fixos do mês — ${MESES[currentDate.month()]}</p>
+            <span class="mod-badge mod-badge--blue">${formatCurrency(total)}</span>
+          </div>
+          <ul class="mod-card-recurring__list">${rows}</ul>
+        </div>`;
+    },
+    // Tendência do gasto fixo nos últimos 6 meses (despesas fixas + recorrentes de cartão)
+    renderTendencia() {
+      const meses = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = currentDate.subtract(i, 'month');
+        meses.push({ key: d.format('YYYY-MM'), label: `${MESES[d.month()].slice(0, 3)}/${String(d.year()).slice(2)}`, total: recurringTotalForMonth(d.format('YYYY-MM')) });
+      }
+      if (!meses.some((m) => m.total > 0)) return '';
+      const mesAtual = getMonthKey(currentDate);
+      const linhas = meses.map((m) => `<tr class="${m.key === mesAtual ? 'inv-row--atual' : ''}">
+        <td>${m.label}</td>
+        <td class="num"><strong>${m.total ? formatCurrency(m.total) : '<span class="inv-zero">—</span>'}</strong></td>
+      </tr>`).join('');
+      return `
+        <div class="chart-box mt-4">
+          <h3 class="chart-box__title"><i class="bi bi-graph-up"></i> Gasto fixo mês a mês (6 meses)</h3>
+          <div class="mod-table-wrap"><table class="mod-table">
+            <thead><tr><th>Mês</th><th class="num">Gasto fixo</th></tr></thead>
+            <tbody>${linhas}</tbody>
+          </table></div>
+        </div>`;
+    },
     render(c) {
       const list = coll('assinaturas');
       const ativas = list.filter((a) => a.status !== 'cancelada');
@@ -1065,20 +1269,29 @@
           ${actionBtns('assinaturas', a.id)}
         </div>`;
       }).join('');
+      // Gasto fixo do mês = despesas marcadas como fixas + recorrentes de cartão + assinaturas ativas
+      const fixoEntries = sum(recurringEntriesMonth(), (e) => e.valor);
+      const fixoCartao = sum(recurringCardItemsMonth(), (i) => i.valor || 0);
+      const totalFixoMes = Math.round((fixoEntries + fixoCartao + totalMes) * 100) / 100;
+
       c.innerHTML = `
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-arrow-repeat app-icon"></i> Contas fixas</h2>
-          <p class="view-header__hint">Serviços recorrentes</p></div>
+          <p class="view-header__hint">Seu gasto fixo/essencial do mês — despesas marcadas como fixas, recorrentes do cartão e serviços cadastrados</p></div>
           <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova conta fixa</button>
         </div>
-        ${this.renderSuggestions()}
+        <div class="mod-summary">
+          <div class="mod-summary__item"><span>Gasto fixo do mês</span><strong style="color:var(--app-expense)">${formatCurrency(totalFixoMes)}</strong><small>Projeção anual ${formatCurrency(totalFixoMes * 12)}</small></div>
+          <div class="mod-summary__item"><span>Despesas fixas (lançamentos)</span><strong>${formatCurrency(fixoEntries)}</strong></div>
+          <div class="mod-summary__item"><span>Recorrentes no cartão</span><strong>${formatCurrency(fixoCartao)}</strong></div>
+          <div class="mod-summary__item"><span>Serviços cadastrados (ativos)</span><strong>${formatCurrency(totalMes)}</strong><small>${ativas.length} conta(s)</small></div>
+        </div>
+        ${this.renderRecurringEntriesMonth()}
         ${this.renderCardRecurringMonth()}
-        ${list.length ? `<div class="mod-summary">
-          <div class="mod-summary__item"><span>Gasto mensal (ativas)</span><strong style="color:var(--app-expense)">${formatCurrency(totalMes)}</strong></div>
-          <div class="mod-summary__item"><span>Gasto anual</span><strong>${formatCurrency(totalMes * 12)}</strong></div>
-          <div class="mod-summary__item"><span>Contas ativas</span><strong>${ativas.length}</strong></div>
-        </div>` : ''}
-        ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhuma conta fixa cadastrada.')}`;
+        ${this.renderTendencia()}
+        <h3 class="h5 mt-4 mb-2"><i class="bi bi-list-check"></i> Serviços cadastrados</h3>
+        ${this.renderSuggestions()}
+        ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhum serviço fixo cadastrado. Use o botão acima ou as sugestões.')}`;
     }
   };
 
@@ -1819,7 +2032,7 @@
   // ==========================================================
   const MODULES = {
     metas: Metas, reservas: Reservas, cartoes: Cartoes,
-    investimentos: Investimentos, patrimonio: Patrimonio,
+    investimentos: Investimentos, patrimonio: Patrimonio, carro: Carro,
     assinaturas: Assinaturas, dashboard: Dashboard, anual: Anual, relatorios: Relatorios, passeios: Passeios
   };
 
@@ -1885,6 +2098,8 @@
       else if (act === 'dep') await M.mov(id, 'deposito');
       else if (act === 'saq') await M.mov(id, 'saque');
       else if (act === 'resgatar') await M.resgatar(id);
+      else if (act === 'pag') await M.pagamento(id);
+      else if (act === 'pag-del') await M.excluirPagamento(id, btn.dataset.pagId);
       else if (act === 'visit') await M.marcarVisitado(id);
       else if (act === 'unvisit') await M.desmarcarVisitado(id);
       else if (act === 'saldo') await M.saldo(id);
@@ -1949,6 +2164,7 @@
     ['passeios', 'geo-alt', 'Passeios'],
     ['metas', 'bullseye', 'Metas'],
     ['reservas', 'safe2', 'Reservas'],
+    ['carro', 'car-front-fill', 'Carro'],
     ['cartoes', 'credit-card-2-front', 'Cartões'],
     ['patrimonio', 'houses', 'Patrimônio'],
     ['assinaturas', 'arrow-repeat', 'Contas fixas'],
