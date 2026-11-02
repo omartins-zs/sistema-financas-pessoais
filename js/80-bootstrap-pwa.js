@@ -70,7 +70,7 @@ const updateState = {
 const hasUnsavedFormDraft = () => {
   const fields = [dom.inputDescription, dom.inputValue, dom.inputDueDay, dom.inputObservation];
   if (fields.some((field) => String(field?.value || '').trim())) return true;
-  return [...document.querySelectorAll('.card-item-desc, .card-item-val')]
+  return [...document.querySelectorAll('.card-item-desc, .card-item-val, .terceiro-desc, .terceiro-pessoa, .terceiro-val')]
     .some((field) => String(field.value || '').trim());
 };
 

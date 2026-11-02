@@ -91,21 +91,12 @@ const renderCardItemRow = (entry, item, sortable = false) => {
     </li>`;
   }
 
-  const terceiros = cardItemTerceiros(item);
-  const terceirosInfo = terceiros > 0
-    ? `<span class="card-item__terceiros">
-        <span class="card-item__terceiros-tag"><i class="bi bi-people-fill"></i> Terceiros ${formatCurrency(terceiros)}${item.terceirosNome ? ` · ${escapeHtml(item.terceirosNome)}` : ''}</span>
-        <span class="card-item__terceiros-seu">seu: ${formatCurrency((Number(item.value) || 0) - terceiros)}</span>
-      </span>`
-    : '';
-
   return `
-    <li class="card-item${recurring ? ' card-item--recurring' : ''}${terceiros > 0 ? ' card-item--terceiros' : ''}" data-item-id="${item.id}">
+    <li class="card-item${recurring ? ' card-item--recurring' : ''}" data-item-id="${item.id}">
       ${dragHandle}
       <span class="card-item__desc">
         ${escapeHtml(item.description)}
         ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
-        ${terceirosInfo}
       </span>
       <strong class="card-item__value">${formatCurrency(item.value)}</strong>
       <div class="card-item__actions">
@@ -114,9 +105,6 @@ const renderCardItemRow = (entry, item, sortable = false) => {
         </button>
         <button type="button" class="card-item__edit" data-action="edit-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Editar" aria-label="Editar item">
           <i class="bi bi-pencil"></i>
-        </button>
-        <button type="button" class="card-item__terceiros-btn${terceiros > 0 ? ' is-active' : ''}" data-action="edit-card-terceiros" data-id="${entry.id}" data-item-id="${item.id}" title="${terceiros > 0 ? 'Editar valor de terceiros' : 'Parte de outras pessoas (terceiros)'}" aria-label="Valor de terceiros">
-          <i class="bi bi-people"></i>
         </button>
         ${isDefault ? '' : `<button type="button" class="card-item__recurring${recurring ? ' is-active' : ''}" data-action="toggle-card-recurring" data-id="${entry.id}" data-item-id="${item.id}" title="${recurring ? 'Remover recorrência' : 'Marcar como recorrente'}" aria-label="Recorrente">
           <i class="bi bi-arrow-repeat"></i>
@@ -140,7 +128,76 @@ const saveCardItemFromRow = (entryId, itemId, row) => {
   updateCardItem(entryId, itemId, description, value, recurring);
 };
 
-const renderCardItemsPanel = (entry, items) => {
+// Nomes já usados em valores de terceiros (todos os meses), para sugerir no "De quem"
+const pessoasTerceirosConhecidas = () => {
+  const nomes = new Map();
+  Object.keys(allData).filter((k) => /^\d{4}-\d{2}$/.test(k)).forEach((k) => {
+    (allData[k] || []).forEach((e) => {
+      if (!isCreditCardEntry(e)) return;
+      getCardTerceiros(e).forEach((t) => {
+        if (t.pessoa) nomes.set(t.pessoa.toLocaleLowerCase('pt-BR'), t.pessoa);
+      });
+    });
+  });
+  return [...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+};
+
+const renderTerceiroRow = (entry, t) => `
+  <li class="terceiro-row" data-terceiro-id="${escapeAttr(t.id)}">
+    <div class="terceiro-row__body">
+      <strong class="terceiro-row__desc">${escapeHtml(t.descricao || '—')}</strong>
+      <span class="terceiro-row__pessoa"><i class="bi bi-person-fill"></i> ${escapeHtml(t.pessoa || 'Sem nome')}</span>
+    </div>
+    <strong class="terceiro-row__valor">${formatCurrency(Number(t.valor) || 0)}</strong>
+    <div class="card-item__actions">
+      <button type="button" class="card-item__edit" data-action="edit-card-terceiro" data-id="${entry.id}" data-terceiro-id="${escapeAttr(t.id)}" title="Editar" aria-label="Editar valor de terceiros">
+        <i class="bi bi-pencil"></i>
+      </button>
+      <button type="button" class="card-item__remove" data-action="remove-card-terceiro" data-id="${entry.id}" data-terceiro-id="${escapeAttr(t.id)}" title="Remover" aria-label="Remover valor de terceiros">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+  </li>`;
+
+// Seção "Valores de terceiros": o que é · de quem · valor (cartão emprestado, conta dividida)
+const renderTerceirosSection = (entry, items, ctx) => {
+  const lista = getCardTerceiros(entry);
+  const totalTerceiros = sumCardTerceiros(entry);
+  const porPessoa = terceirosPorPessoa(entry);
+  const idItens = `terc-itens-${ctx}-${entry.id}`;
+  const idPessoas = `terc-pessoas-${ctx}-${entry.id}`;
+  const descricoesItens = [...new Set(items.filter((i) => !isDefaultCardItem(i)).map((i) => String(i.description ?? '').trim()).filter(Boolean))];
+
+  return `
+    <section class="card-terceiros" aria-label="Valores de terceiros">
+      <div class="card-terceiros__head">
+        <p class="card-items-panel__title card-items-panel__title--terceiros"><i class="bi bi-people-fill"></i> Valores de terceiros</p>
+        ${totalTerceiros > 0 ? `<span class="card-items-badge card-items-badge--terceiros">${formatCurrency(totalTerceiros)}</span>` : ''}
+      </div>
+      <ul class="card-terceiros__list">
+        ${lista.length ? lista.map((t) => renderTerceiroRow(entry, t)).join('') : '<li class="card-item card-item--empty">Nenhum valor de terceiros nesta fatura</li>'}
+      </ul>
+      ${porPessoa.length > 1 ? `<p class="card-terceiros__pessoas">Por pessoa: ${porPessoa.map((p) => `<span class="card-terceiros__chip">${escapeHtml(p.pessoa)} <strong>${formatCurrency(p.valor)}</strong></span>`).join('')}</p>` : ''}
+      <div class="terceiro-add">
+        <input type="text" class="form-control form-control-sm terceiro-desc" placeholder="O que é (ex: Outback)" maxlength="60" list="${idItens}" aria-label="O que é">
+        <input type="text" class="form-control form-control-sm terceiro-pessoa" placeholder="De quem (ex: Pai)" maxlength="40" list="${idPessoas}" aria-label="De quem é">
+        <input type="text" class="form-control form-control-sm terceiro-val" placeholder="0,00" inputmode="decimal" aria-label="Valor de terceiros">
+        <button type="button" class="btn btn-sm btn-primary" data-action="add-card-terceiro" data-id="${entry.id}">
+          <i class="bi bi-plus-lg"></i> Adicionar
+        </button>
+      </div>
+      <datalist id="${idItens}">${descricoesItens.map((d) => `<option value="${escapeAttr(d)}">`).join('')}</datalist>
+      <datalist id="${idPessoas}">${pessoasTerceirosConhecidas().map((p) => `<option value="${escapeAttr(p)}">`).join('')}</datalist>
+      <p class="card-item-add__hint">Enter adiciona · Só para controle: nas despesas do mês a fatura continua com o valor cheio</p>
+      ${totalTerceiros > 0 ? `<div class="card-terceiros-sum">
+        <div><span>Total da fatura</span><strong>${formatCurrency(Number(entry.value) || 0)}</strong></div>
+        <div class="card-terceiros-sum__terceiros"><span><i class="bi bi-people-fill"></i> Terceiros</span><strong>− ${formatCurrency(totalTerceiros)}</strong></div>
+        <div class="card-terceiros-sum__final"><span>Total sem terceiros</span><strong>${formatCurrency(totalSemTerceiros(entry))}</strong></div>
+      </div>` : ''}
+    </section>`;
+};
+
+const renderCardItemsPanel = (entry, items, ctx = 'tabela') => {
   const regular = items.filter((item) => !item.recurring);
   const recurring = items.filter((item) => item.recurring);
   const regularHtml = regular.length
@@ -152,14 +209,6 @@ const renderCardItemsPanel = (entry, items) => {
 
   const itemsSum = sumCardItems(items);
   const recurringSum = sumCardItems(recurring);
-  const terceirosSum = sumCardTerceiros(items);
-  const terceirosHtml = terceirosSum > 0
-    ? `<div class="card-terceiros-sum">
-        <div><span>Total da fatura</span><strong>${formatCurrency(entry.value)}</strong></div>
-        <div class="card-terceiros-sum__terceiros"><span><i class="bi bi-people-fill"></i> Terceiros</span><strong>− ${formatCurrency(terceirosSum)}</strong></div>
-        <div class="card-terceiros-sum__final"><span>Total sem terceiros</span><strong>${formatCurrency(Math.round(((Number(entry.value) || 0) - terceirosSum) * 100) / 100)}</strong></div>
-      </div>`
-    : '';
 
   return `
     <div class="card-items-panel" data-card-id="${entry.id}">
@@ -172,7 +221,6 @@ const renderCardItemsPanel = (entry, items) => {
         · Recorrentes: <strong>${formatCurrency(recurringSum)}</strong>
         · Total da fatura: <strong>${formatCurrency(entry.value)}</strong>
       </p>
-      ${terceirosHtml}
       <div class="card-item-add">
         <input type="text" class="form-control form-control-sm card-item-desc" placeholder="Ex: Gasolina" aria-label="Descrição do item">
         <input type="text" class="form-control form-control-sm card-item-val" placeholder="0,00" inputmode="decimal" aria-label="Valor do item">
@@ -190,14 +238,23 @@ const renderCardItemsPanel = (entry, items) => {
         </div>
       </div>
       <p class="card-item-add__hint">Enter adiciona · Copie e cole itens entre faturas · Arraste <i class="bi bi-grip-vertical"></i> para reordenar (ou ↑ ↓ com o handle focado)</p>
+      ${renderTerceirosSection(entry, items, ctx)}
     </div>`;
 };
 
 const terceirosBadge = (entry) => {
-  const total = sumCardTerceiros(entry.card_items ?? []);
+  const total = sumCardTerceiros(entry);
   if (!total) return '';
-  const seu = Math.round(((Number(entry.value) || 0) - total) * 100) / 100;
-  return `<span class="card-items-badge card-items-badge--terceiros" title="Sem terceiros: ${escapeAttr(formatCurrency(seu))}"><i class="bi bi-people-fill"></i> ${formatCurrency(total)} terceiros</span>`;
+  const pessoas = terceirosPorPessoa(entry).map((p) => `${p.pessoa} ${formatCurrency(p.valor)}`).join(' · ');
+  return `<span class="card-items-badge card-items-badge--terceiros" title="${escapeAttr(pessoas)}"><i class="bi bi-people-fill"></i> ${formatCurrency(total)} terceiros</span>`;
+};
+
+// Valor do cartão com os dois números: fatura cheia e o que fica sem terceiros
+const cardValorComTerceiros = (entry) => {
+  const terceiros = sumCardTerceiros(entry);
+  if (!terceiros) return formatCurrency(Number(entry.value) || 0);
+  return `<span class="card-value-total">${formatCurrency(Number(entry.value) || 0)}</span>
+    <small class="card-value-sem-terceiros" title="Fatura menos ${escapeAttr(formatCurrency(terceiros))} de terceiros">sem terceiros ${formatCurrency(totalSemTerceiros(entry))}</small>`;
 };
 
 const renderCreditCardRows = (entry, valueClass) => {
@@ -218,14 +275,14 @@ const renderCreditCardRows = (entry, valueClass) => {
       </td>
       <td>${renderPersonTag(entry.person)}</td>
       <td><span class="category-tag category-tag--card">${escapeHtml(entry.category)}</span></td>
-      <td class="${valueClass}">${formatCurrency(entry.value)}</td>
+      <td class="${valueClass}">${cardValorComTerceiros(entry)}</td>
       <td>${createStatusPicker(entry)}</td>
       <td>${renderDueDay(entry.due_day)}</td>
       <td class="cell-obs" title="${escapeHtml(entry.observation ?? '')}">${escapeHtml(entry.observation || '—')}</td>
       <td class="text-end">${createActionButtons(entry.id)}</td>
     </tr>
     <tr class="card-details-row ${expanded ? '' : 'd-none'}" data-parent-id="${entry.id}">
-      <td colspan="8" class="card-details-cell">${renderCardItemsPanel(entry, items)}</td>
+      <td colspan="8" class="card-details-cell">${renderCardItemsPanel(entry, items, 'tabela')}</td>
     </tr>`;
 };
 
@@ -317,7 +374,7 @@ const renderEntryCard = (entry, valueClass) => {
           <i class="bi bi-chevron-${expanded ? 'up' : 'down'}"></i>
         </button>
         <span class="entry-card__title">${escapeHtml(entry.description)}${investLinkTag(entry)}</span>
-        <span class="entry-card__value ${valueClass}${entry.type === 'resgate' ? ' value-resgate' : ''}">${formatEntryValue(entry)}</span>
+        <span class="entry-card__value ${valueClass}">${cardValorComTerceiros(entry)}</span>
       </div>
       <div class="entry-card__meta">
         ${renderPersonTag(entry.person)}
@@ -327,7 +384,7 @@ const renderEntryCard = (entry, valueClass) => {
         ${terceirosBadge(entry)}
       </div>
       ${obs}
-      <div class="card-details-mobile ${expanded ? '' : 'd-none'}">${renderCardItemsPanel(entry, items)}</div>
+      <div class="card-details-mobile ${expanded ? '' : 'd-none'}">${renderCardItemsPanel(entry, items, 'mobile')}</div>
       <div class="entry-card__footer">
         ${createStatusPicker(entry)}
         ${createActionButtons(entry.id)}
@@ -483,5 +540,17 @@ const render = () => {
     const itemId = pendingCardItemFocusId;
     pendingCardItemFocusId = null;
     requestAnimationFrame(() => focusCardItemHandle(itemId));
+  }
+
+  // Depois de adicionar um valor de terceiros, volta o cursor para a próxima linha
+  // (no painel visível: tabela no computador, card no celular)
+  if (pendingTerceiroFocusEntryId) {
+    const focusId = pendingTerceiroFocusEntryId;
+    pendingTerceiroFocusEntryId = null;
+    requestAnimationFrame(() => {
+      const paineis = [...document.querySelectorAll(`.card-items-panel[data-card-id="${focusId}"]`)];
+      const visivel = paineis.find((p) => p.offsetParent !== null) || paineis[0];
+      visivel?.querySelector('.terceiro-desc')?.focus();
+    });
   }
 };

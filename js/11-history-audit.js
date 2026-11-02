@@ -74,6 +74,11 @@ const detalheAlteracaoLancamento = (antes, depois) => {
   if ((antes?.person || '') !== (depois?.person || '')) {
     mudancas.push(`tag ${PERSON_LABELS[antes?.person] || '—'} → ${PERSON_LABELS[depois?.person] || '—'}`);
   }
+  const terceirosA = sumCardTerceiros(antes);
+  const terceirosD = sumCardTerceiros(depois);
+  if (Math.abs(terceirosA - terceirosD) >= 0.005) {
+    mudancas.push(`terceiros ${formatCurrency(terceirosA)} → ${formatCurrency(terceirosD)}`);
+  }
   return `“${depois?.description || ''}” (${mudancas.join(' · ')})`;
 };
 
@@ -440,8 +445,6 @@ const updateCardItem = (entryId, itemId, description, value, recurring) => {
       value,
       recurring: wasDefault ? false : recurring === true
     };
-    // Valor diminuiu: a parte de terceiros não pode passar do novo valor do item
-    if (Number(next.terceiros) > value) next.terceiros = value;
 
     if (wasDefault && /^cart[aã]o$/i.test(description.trim())) {
       next.isDefault = true;
@@ -495,69 +498,128 @@ const toggleCardItemRecurring = (entryId, itemId) => {
   render();
 };
 
-// Quanto de um item da fatura é de outras pessoas (e de quem). Valor 0 limpa.
-const editCardItemTerceiros = async (entryId, itemId) => {
-  const item = getCardItemFromEntry(entryId, itemId);
-  if (!item) return;
-  const total = Number(item.value) || 0;
+// ============================================
+// Valores de terceiros da fatura
+// ============================================
+
+let pendingTerceiroFocusEntryId = null;
+
+const resumoTerceiro = (t) =>
+  `${t.pessoa || 'Sem nome'} ${formatCurrency(Number(t.valor) || 0)}${t.descricao ? ` (${t.descricao})` : ''}`;
+
+// Valida uma linha nova/editada contra a fatura; devolve a mensagem de erro ou ''
+const erroTerceiro = (entry, linha, ignorarId = '') => {
+  if (!(Number(linha.valor) > 0)) return 'Informe o valor de terceiros.';
+  if (!linha.pessoa) return 'Informe de quem é o valor.';
+  const outros = getCardTerceiros(entry)
+    .filter((t) => t.id !== ignorarId)
+    .reduce((acc, t) => acc + (Number(t.valor) || 0), 0);
+  const total = Number(entry.value) || 0;
+  if (outros + Number(linha.valor) > total + 0.004) {
+    return `Os valores de terceiros (${formatCurrency(arredondaCentavos(outros + Number(linha.valor)))}) passariam do total da fatura (${formatCurrency(total)}).`;
+  }
+  return '';
+};
+
+// Aplica uma mudança na lista de terceiros de um cartão (migrando o formato antigo
+// antes) e grava com histórico. Clona antes de mexer, nunca muta o array vivo.
+const salvarTerceirosDoCartao = (entryId, transformar, acao) => {
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return false;
+
+  const base = migrarTerceirosDosItens(cloneDados(entries[index]));
+  const lista = transformar(getCardTerceiros(base).map((t) => ({ ...t })));
+  if (!lista) return false;
+
+  const nextEntries = entries.map((e, i) => (i === index ? { ...base, terceiros: lista } : e));
+  expandedCardEntries.add(entryId);
+  setCurrentEntries(nextEntries, acao);
+  render();
+  return true;
+};
+
+const addCardTerceiro = (entryId, { descricao, pessoa, valor }) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  if (!entry) return false;
+  const linha = { id: generateId(), descricao: String(descricao || '').trim(), pessoa: String(pessoa || '').trim(), valor: arredondaCentavos(valor) };
+  const erro = erroTerceiro(entry, linha);
+  if (erro) { notify.error(erro); return false; }
+
+  pendingTerceiroFocusEntryId = entryId;
+  const ok = salvarTerceirosDoCartao(entryId, (lista) => [...lista, linha],
+    `terceiros em “${entry.description}”: adicionou ${resumoTerceiro(linha)}`);
+  if (ok) notify.success(`${linha.pessoa}: ${formatCurrency(linha.valor)} de terceiros.`);
+  return ok;
+};
+
+const submitCardTerceiroAdd = (panel, entryId) => {
+  if (!panel || !entryId) return;
+  const ok = addCardTerceiro(entryId, {
+    descricao: panel.querySelector('.terceiro-desc')?.value,
+    pessoa: panel.querySelector('.terceiro-pessoa')?.value,
+    valor: parseValue(panel.querySelector('.terceiro-val')?.value ?? '0')
+  });
+  if (ok) {
+    panel.querySelectorAll('.terceiro-desc, .terceiro-pessoa, .terceiro-val').forEach((el) => { el.value = ''; });
+  }
+};
+
+const editCardTerceiro = async (entryId, terceiroId) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  const atual = entry && getCardTerceiros(entry).find((t) => t.id === terceiroId);
+  if (!atual) return;
   let mask = null;
 
   const { value: res, isConfirmed } = await Swal.fire({
-    title: 'Valor de terceiros',
-    html: `<p class="terceiros-modal__info">${escapeHtml(item.description)} · ${formatCurrency(total)}</p>
+    title: '<span class="fm-title"><i class="bi bi-people-fill"></i> Valor de terceiros</span>',
+    html: `<p class="terceiros-modal__info">${escapeHtml(entry.description)} · fatura ${formatCurrency(Number(entry.value) || 0)}</p>
       <div class="fm-grid">
-        <div class="fm-field"><label for="terceirosValor">Parte de outras pessoas (R$)</label>
-          <input id="terceirosValor" type="text" class="fm-input" inputmode="decimal" placeholder="0,00"></div>
-        <div class="fm-field"><label for="terceirosNome">De quem? (opcional)</label>
-          <input id="terceirosNome" type="text" class="fm-input" maxlength="40" placeholder="Ex: Mãe, João" value="${escapeAttr(item.terceirosNome || '')}"></div>
-      </div>
-      <p class="terceiros-modal__hint">Só para controle: a fatura continua contando ${formatCurrency(total)} nas despesas do mês. Deixe 0 para remover.</p>`,
+        <div class="fm-field fm-wide"><label for="terceiroDesc">O que é</label>
+          <input id="terceiroDesc" type="text" class="fm-input" maxlength="60" placeholder="Ex: Outback" value="${escapeAttr(atual.descricao)}"></div>
+        <div class="fm-field"><label for="terceiroPessoa">De quem</label>
+          <input id="terceiroPessoa" type="text" class="fm-input" maxlength="40" placeholder="Ex: Pai" value="${escapeAttr(atual.pessoa)}"></div>
+        <div class="fm-field"><label for="terceiroValor">Valor (R$)</label>
+          <input id="terceiroValor" type="text" class="fm-input" inputmode="decimal" placeholder="0,00"></div>
+      </div>`,
     width: 560,
     showCancelButton: true,
-    confirmButtonText: 'Salvar',
+    confirmButtonText: '<i class="bi bi-check-lg"></i> Salvar',
     cancelButtonText: 'Cancelar',
     confirmButtonColor: '#4f6ef7',
     cancelButtonColor: '#94a3b8',
     reverseButtons: true,
     focusConfirm: false,
     didOpen: () => {
-      mask = IMask(document.getElementById('terceirosValor'), moneyMaskOptions);
-      mask.typedValue = cardItemTerceiros(item);
-      document.getElementById('terceirosValor').select();
+      mask = IMask(document.getElementById('terceiroValor'), moneyMaskOptions);
+      mask.typedValue = Number(atual.valor) || 0;
     },
     preConfirm: () => {
-      const valor = getMaskValue(mask);
-      if (valor > total) {
-        Swal.showValidationMessage(`A parte de terceiros não pode passar de ${formatCurrency(total)}.`);
-        return false;
-      }
-      return { valor, nome: document.getElementById('terceirosNome').value.trim() };
+      const linha = {
+        id: atual.id,
+        descricao: document.getElementById('terceiroDesc').value.trim(),
+        pessoa: document.getElementById('terceiroPessoa').value.trim(),
+        valor: arredondaCentavos(getMaskValue(mask))
+      };
+      const erro = erroTerceiro(entry, linha, atual.id);
+      if (erro) { Swal.showValidationMessage(erro); return false; }
+      return linha;
     }
   });
   if (!isConfirmed || !res) return;
 
-  const entries = getCurrentEntries();
-  const index = entries.findIndex((e) => e.id === entryId);
-  if (index === -1) return;
+  const ok = salvarTerceirosDoCartao(entryId, (lista) => lista.map((t) => (t.id === terceiroId ? res : t)),
+    `terceiros em “${entry.description}”: ${resumoTerceiro(atual)} → ${resumoTerceiro(res)}`);
+  if (ok) notify.success('Valor de terceiros atualizado.');
+};
 
-  const items = (entries[index].card_items ?? []).map((it) => {
-    if (it.id !== itemId) return it;
-    const next = { ...it };
-    if (res.valor > 0) {
-      next.terceiros = res.valor;
-      next.terceirosNome = res.nome;
-    } else {
-      delete next.terceiros;
-      delete next.terceirosNome;
-    }
-    return next;
-  });
-
-  const nextEntries = entries.map((e, i) => (i === index ? { ...e, card_items: items } : e));
-  expandedCardEntries.add(entryId);
-  setCurrentEntries(nextEntries);
-  notify.success(res.valor > 0 ? `Terceiros: ${formatCurrency(res.valor)} — seu: ${formatCurrency(total - res.valor)}.` : 'Valor de terceiros removido.');
-  render();
+const removeCardTerceiro = (entryId, terceiroId) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  const alvo = entry && getCardTerceiros(entry).find((t) => t.id === terceiroId);
+  if (!alvo) return;
+  const ok = salvarTerceirosDoCartao(entryId, (lista) => lista.filter((t) => t.id !== terceiroId),
+    `terceiros em “${entry.description}”: removeu ${resumoTerceiro(alvo)}`);
+  if (ok) notify.info('Valor de terceiros removido (dá para desfazer no Histórico).');
 };
 
 const canDeleteCardItem = (item, items = []) =>

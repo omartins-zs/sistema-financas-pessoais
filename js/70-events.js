@@ -49,8 +49,18 @@ const handleListClick = (e) => {
     return;
   }
 
-  if (action === 'edit-card-terceiros') {
-    editCardItemTerceiros(id, itemId);
+  if (action === 'add-card-terceiro') {
+    submitCardTerceiroAdd(btn.closest('.card-items-panel'), id);
+    return;
+  }
+
+  if (action === 'edit-card-terceiro') {
+    editCardTerceiro(id, btn.dataset.terceiroId);
+    return;
+  }
+
+  if (action === 'remove-card-terceiro') {
+    removeCardTerceiro(id, btn.dataset.terceiroId);
     return;
   }
 
@@ -107,6 +117,12 @@ const handleCardItemKeydown = (e) => {
   if (dragHandle && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
     e.preventDefault();
     moveCardItemBy(entryId, dragHandle.dataset.itemId, e.key === 'ArrowUp' ? -1 : 1);
+    return;
+  }
+
+  if (e.key === 'Enter' && !e.shiftKey && e.target.matches('.terceiro-desc, .terceiro-pessoa, .terceiro-val')) {
+    e.preventDefault();
+    submitCardTerceiroAdd(panel, entryId);
     return;
   }
 

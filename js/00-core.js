@@ -314,12 +314,64 @@ const createDefaultCardItem = (entry) => ({
 const sumCardItems = (items = []) =>
   Math.round(items.reduce((acc, item) => acc + (Number(item.value) || 0), 0) * 100) / 100;
 
-// Parte de cada item que é de outras pessoas (cartão emprestado / compra dividida).
+// ---- Valores de terceiros da fatura (cartão emprestado / conta dividida) ----
+// Lista no próprio lançamento do cartão: [{ id, descricao, pessoa, valor }].
+// Ex.: Outback R$ 1.000 → "Outback · Pai · 300" e "Outback · Irmão · 300".
 // Só informativo: o valor do lançamento continua sendo a fatura cheia.
-const cardItemTerceiros = (item) => Math.min(Math.max(Number(item?.terceiros) || 0, 0), Number(item?.value) || 0);
+const arredondaCentavos = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
-const sumCardTerceiros = (items = []) =>
-  Math.round(items.reduce((acc, item) => acc + cardItemTerceiros(item), 0) * 100) / 100;
+const normalizarTerceiro = (t) => ({
+  id: String(t?.id || generateId()),
+  descricao: String(t?.descricao ?? '').trim(),
+  pessoa: String(t?.pessoa ?? '').trim(),
+  valor: arredondaCentavos(Math.max(Number(t?.valor) || 0, 0))
+});
+
+// Formato antigo (um valor por item: item.terceiros / item.terceirosNome) vira linha
+// da lista. Id determinístico: dois aparelhos migrando a mesma fatura geram a mesma linha.
+const migrarTerceirosDosItens = (entry) => {
+  const items = Array.isArray(entry?.card_items) ? entry.card_items : [];
+  const legado = (item) => item && ('terceiros' in item || 'terceirosNome' in item);
+  if (!items.some(legado)) return entry;
+
+  const lista = Array.isArray(entry.terceiros) ? [...entry.terceiros] : [];
+  const ids = new Set(lista.map((t) => t?.id));
+  const limpos = items.map((item) => {
+    if (!legado(item)) return item;
+    const { terceiros, terceirosNome, ...resto } = item;
+    const valor = Math.min(Math.max(Number(terceiros) || 0, 0), Number(item.value) || 0);
+    const id = `${item.id}-terceiros`;
+    if (valor > 0 && !ids.has(id)) {
+      lista.push({ id, descricao: String(item.description ?? '').trim(), pessoa: String(terceirosNome ?? '').trim(), valor: arredondaCentavos(valor) });
+    }
+    return resto;
+  });
+  return { ...entry, card_items: limpos, terceiros: lista };
+};
+
+const getCardTerceiros = (entry) => {
+  const lista = migrarTerceirosDosItens(entry)?.terceiros;
+  return Array.isArray(lista) ? lista.filter((t) => Number(t?.valor) > 0) : [];
+};
+
+const sumCardTerceiros = (entry) =>
+  arredondaCentavos(getCardTerceiros(entry).reduce((acc, t) => acc + (Number(t.valor) || 0), 0));
+
+const totalSemTerceiros = (entry) => arredondaCentavos((Number(entry?.value) || 0) - sumCardTerceiros(entry));
+
+// Quanto cada pessoa deve na fatura (maior primeiro)
+const terceirosPorPessoa = (entry) => {
+  const mapa = new Map();
+  getCardTerceiros(entry).forEach((t) => {
+    const nome = t.pessoa || 'Sem nome';
+    const chave = nome.toLocaleLowerCase('pt-BR');
+    const atual = mapa.get(chave) || { pessoa: nome, valor: 0 };
+    atual.valor = arredondaCentavos(atual.valor + (Number(t.valor) || 0));
+    mapa.set(chave, atual);
+  });
+  return [...mapa.values()].sort((a, b) => b.valor - a.valor);
+};
+// ---- fim: valores de terceiros ----
 
 const syncCardEntryFromItems = (entry) => {
   if (!isCreditCardEntry(entry) || !entry.card_items?.length) return entry;
@@ -376,6 +428,12 @@ const normalizeEntry = (entry) => {
   }
 
   if (!isCreditCardEntry(normalized)) return normalized;
+
+  const comTerceiros = migrarTerceirosDosItens(normalized);
+  normalized.card_items = comTerceiros.card_items;
+  if (Array.isArray(comTerceiros.terceiros)) {
+    normalized.terceiros = comTerceiros.terceiros.map(normalizarTerceiro).filter((t) => t.valor > 0);
+  }
 
   if (normalized.card_items.length === 0) {
     normalized.card_items = [createDefaultCardItem(normalized)];
