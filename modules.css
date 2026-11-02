@@ -718,21 +718,6 @@
   color: var(--app-text-muted);
 }
 
-.cf-services-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  margin-bottom: 0.25rem;
-}
-
-.cf-services-head__total {
-  font-weight: 700;
-  color: var(--app-text-muted);
-}
-
 /* Estado vazio dos módulos */
 .mod-empty {
   text-align: center;
@@ -880,20 +865,30 @@
 .fm-field { display: flex; flex-direction: column; gap: 0.25rem; }
 .fm-field.fm-wide { grid-column: 1 / -1; }
 .fm-field label { font-size: 0.8rem; font-weight: 600; color: var(--app-text-muted); }
+/* Campos dos formulários dos módulos: fundo e borda próprios para aparecerem sobre o
+   modal nos dois temas (no escuro o modal é --app-surface; o campo é --app-surface-2) */
 .fm-input {
   width: 100%;
+  min-height: 2.6rem;
   padding: 0.5rem 0.7rem;
-  background: var(--app-surface-2); border: none;
+  border: 1px solid var(--app-input-border);
   border-radius: var(--app-radius-sm);
-  background: var(--app-surface);
+  background: var(--app-surface-2);
   color: var(--app-text);
   font-size: 0.95rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.fm-input::placeholder { color: var(--app-text-faint); opacity: 1; }
+.fm-input:hover { border-color: color-mix(in srgb, var(--app-primary) 45%, var(--app-input-border)); }
 .fm-input:focus {
   outline: none;
   border-color: var(--app-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-primary) 20%, transparent);
 }
+select.fm-input { cursor: pointer; }
+/* Dentro de painéis que já usam --app-surface-2 (ex.: filtros dos Relatórios) o campo
+   inverte para --app-surface, senão some no fundo */
+.mod-filters .fm-input { background: var(--app-surface); }
 
 @media (max-width: 575px) {
   .view-header { align-items: flex-start; }

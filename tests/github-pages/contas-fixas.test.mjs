@@ -111,18 +111,131 @@ test('colapsos começam abertos e lembram o que foi fechado neste aparelho', asy
   assert.equal(Object.keys(JSON.parse(storage.financas_casa_contas_fixas_colapsos)).length, 2, 'ignora outros <details>');
 });
 
-test('tela de contas fixas: colapsos por seção e pessoa, total sem serviços e cards no fim', async () => {
+test('tela de contas fixas: colapsos por seção e pessoa, sem a lista de serviços cadastrados', async () => {
   const modules = await read('app-modules.js');
-  const render = slice(modules, 'const Assinaturas = {', '// MÓDULO: DASHBOARD');
+  const render = slice(modules, '// Gasto fixo do mês = despesas marcadas como fixas (inclui as manuais)', '// MÓDULO: DASHBOARD');
+  const tela = slice(modules, 'const Assinaturas = {', '// MÓDULO: DASHBOARD');
 
-  assert.match(render, /<details class="mod-card-recurring cf-sec/);
-  assert.match(render, /<details class="cf-pessoa"/);
+  assert.match(tela, /<details class="mod-card-recurring cf-sec/);
+  assert.match(tela, /<details class="cf-pessoa"/);
   assert.match(render, /const totalFixoMes = Math\.round\(\(fixoEntries \+ fixoCartao\) \* 100\) \/ 100;/, 'serviços fora do total');
-  const ordem = ['renderRecurringEntriesMonth()', 'renderCardRecurringMonth()', 'renderTendencia()', 'renderSuggestions()', 'Serviços cadastrados</h3>', '<div class="mod-grid">${cards}</div>'];
+  assert.match(render, /data-mod="assinaturas" data-act="add"[^>]*>.*Nova conta fixa/, 'botão Nova conta fixa continua');
+  assert.doesNotMatch(render, /coll\('assinaturas'\)|Serviços cadastrados|mod-grid/, 'cards dos serviços saíram da tela');
+
+  const ordem = ['renderRecurringEntriesMonth()', 'renderCardRecurringMonth()', 'renderTendencia()', 'renderSuggestions()'];
   const posicoes = ordem.map((m) => render.lastIndexOf(m));
   posicoes.forEach((p, i) => assert.notEqual(p, -1, `faltou na tela: ${ordem[i]}`));
-  assert.deepEqual(posicoes, [...posicoes].sort((a, b) => a - b), 'ordem: fixos, cartão, mês a mês, sugestões e cards no fim');
+  assert.deepEqual(posicoes, [...posicoes].sort((a, b) => a - b), 'ordem: fixos, cartão, mês a mês e sugestões');
   assert.match(modules, /addEventListener\('toggle', handleContasFixasToggle, true\)/);
+
+  const resto = modules.replace(tela, '');
+  assert.doesNotMatch(resto, /coll\('assinaturas'\)/, 'serviços escondidos não geram vencimento no Dashboard nem alerta');
+});
+
+// Lançamentos (30-entries.js) + criação de conta fixa manual (app-modules.js)
+const loadContaManual = async (meses) => {
+  const entriesJs = await read('js/30-entries.js');
+  const modules = await read('app-modules.js');
+  const manual = slice(modules, 'const categoriasContaFixa =', 'const Assinaturas = {');
+  const registros = [];
+  const avisos = [];
+  let seq = 0;
+  const context = {
+    allData: { __app: {}, ...meses },
+    currentDate: { key: '2026-11' },
+    getMonthKey: (d) => d.key,
+    dayjs: () => ({ subtract: () => ({ key: '2026-10' }) }),
+    getCurrentEntries: () => context.allData['2026-11'] || [],
+    setCurrentEntries: (next, acao) => { registros.push(acao); context.allData['2026-11'] = next; },
+    generateId: () => `novo-${++seq}`,
+    normalizeEntry: (e) => e,
+    isEntryDuplicate: (e, lista) => lista.some((x) => x.description === e.description && x.value === e.value && x.person === e.person),
+    render: () => {},
+    notify: { success: (m) => avisos.push(m), error: (m) => avisos.push(`ERRO: ${m}`), info: (m) => avisos.push(m) },
+    formatCurrency: (v) => `R$ ${Number(v).toFixed(2)}`,
+    getMonthLabel: () => 'novembro de 2026',
+    resumoLancamento: (e) => `“${e.description}”`,
+    catPapel: (p) => ({ outros: 'Outros', cartaoGabriel: 'Cartão de crédito Gabriel', cartaoBabi: 'Cartão de crédito Babi', cartao: 'Cartão de crédito', investimentos: 'Investimentos' })[p],
+    CATEGORIAS: ['Aluguel', 'Internet', 'Cartão de crédito Gabriel', 'Investimentos', 'Outros']
+  };
+  runInNewContext(`${entriesJs}\n${manual}
+globalThis.__t = { criarContaFixaManual, categoriasContaFixa, copyPreviousMonth, buildEntryFromForm };`, context);
+  return { t: context.__t, context, registros, avisos };
+};
+
+test('nova conta fixa vira lançamento do mês, fixo e com a tag Manual', async () => {
+  const { t, context, registros, avisos } = await loadContaManual({});
+
+  assert.deepEqual(plain(t.categoriasContaFixa()), ['Aluguel', 'Internet', 'Outros'], 'sem cartão e investimentos');
+
+  assert.equal(t.criarContaFixaManual({ descricao: ' Aluguel ', pessoa: 'casa', categoria: 'Aluguel', valor: 1800, vencimento: 45, status: 'nao_pago', observacao: '' }), true);
+  const [entry] = context.allData['2026-11'];
+  assert.equal(entry.description, 'Aluguel');
+  assert.equal(entry.type, 'despesa');
+  assert.equal(entry.recurring, true, 'já entra como gasto fixo');
+  assert.equal(entry.manual, true, 'tag Manual');
+  assert.equal(entry.due_day, 31, 'vencimento acima de 31 vira 31');
+  assert.match(registros.at(-1), /conta fixa manual: adicionou “Aluguel”/, 'vai para o Histórico');
+
+  assert.equal(t.criarContaFixaManual({ descricao: 'Aluguel', pessoa: 'casa', categoria: 'Aluguel', valor: 1800 }), false, 'mesma conta duas vezes no mês');
+  assert.match(avisos.at(-1), /já está lançada/);
+  assert.equal(t.criarContaFixaManual({ descricao: 'Internet', pessoa: '', categoria: 'Internet', valor: 100 }), false, 'sem pessoa não lança');
+  assert.equal(context.allData['2026-11'].length, 1);
+
+  const semVencimento = t.buildEntryFromForm({ description: 'X', category: 'Outros', type: 'despesa', person: 'gabriel', value: 1, status: 'pago', due_day: null, observation: '' });
+  assert.equal('manual' in semVencimento, false, 'lançamento comum não ganha a tag');
+});
+
+test('copiar mês leva as contas fixas manuais com as tags Fixo e Manual', async () => {
+  const { t, context } = await loadContaManual({
+    '2026-10': [
+      { id: 'a', description: 'Aluguel', category: 'Aluguel', type: 'despesa', person: 'casa', value: 1800, status: 'pago', recurring: true, manual: true, card_items: [] },
+      { id: 'b', description: 'Mercado', category: 'Outros', type: 'despesa', person: 'casa', value: 900, status: 'pago', card_items: [] }
+    ]
+  });
+  await t.copyPreviousMonth();
+  const copiados = context.allData['2026-11'];
+  assert.equal(copiados.length, 2);
+  const aluguel = copiados.find((e) => e.description === 'Aluguel');
+  assert.equal(aluguel.manual, true);
+  assert.equal(aluguel.recurring, true);
+  assert.equal(aluguel.status, 'nao_pago', 'mês novo começa como não pago');
+  assert.equal('manual' in copiados.find((e) => e.description === 'Mercado'), false);
+
+  const entriesJs = await read('js/30-entries.js');
+  assert.match(entriesJs, /manual: entries\[index\]\.manual === true/, 'editar no Mês a mês não perde a tag');
+});
+
+test('sugestões ignoram o que já é fixo no mês e marcam o lançamento existente', async () => {
+  const modules = await read('app-modules.js');
+  const trecho = slice(modules, 'const subscriptionSkipCategories =', 'MÓDULO: CONTAS FIXAS');
+  const mes = (i) => ({ format: () => ['2026-11', '2026-10', '2026-09'][i] });
+  const despesa = (id, description, person, value, extra = {}) => ({ id, description, category: 'Outros', type: 'despesa', person, value, status: 'nao_pago', ...extra });
+  const context = {
+    allData: {
+      '2026-11': [despesa('n-dina', 'Dina', 'barbara', 125), despesa('n-mei', 'MEI Babi', 'barbara', 86.05, { recurring: true })],
+      '2026-10': [despesa('o-dina', 'Dina', 'barbara', 125), despesa('o-mei', 'MEI Babi', 'barbara', 86.05), despesa('o-unha', 'Unhas de gel', 'barbara', 160, { due_day: 5 })],
+      '2026-09': [despesa('s-unha', 'Unhas de gel', 'barbara', 160, { due_day: 5 }), despesa('s-viagem', 'Viagem', 'gabriel', 900)]
+    },
+    currentDate: { subtract: (i) => mes(i) },
+    PERSON_LABELS,
+    MESES: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+    catPapel: (p) => p,
+    isCreditCardEntry: () => false,
+    sum: (arr, f) => arr.reduce((a, x) => a + (f ? f(x) : x), 0)
+  };
+  runInNewContext(`${trecho}\nglobalThis.__t = { detectSubscriptionCandidates };`, context);
+  const sugestoes = plain(context.__t.detectSubscriptionCandidates(3));
+
+  assert.deepEqual(sugestoes.map((s) => [s.nome, s.idMesAtual]), [
+    ['Unhas de gel (Barbara)', ''],
+    ['Dina (Barbara)', 'n-dina']
+  ], 'MEI já é fixo em novembro; Viagem só apareceu uma vez');
+  const unha = sugestoes[0];
+  assert.equal(unha.descricao, 'Unhas de gel');
+  assert.equal(unha.person, 'barbara');
+  assert.equal(unha.vencimentoDia, 5);
+  assert.equal(unha.categoria, 'Outros');
 });
 
 test('carro: falta pagar, saldo depois de cada pagamento, previsão e quitado', async () => {
@@ -167,6 +280,31 @@ test('carro: falta pagar, saldo depois de cada pagamento, previsão e quitado', 
   assert.match(quitado, /carro-card--quitado/);
   assert.match(quitado, /Carro quitado/);
   assert.match(quitado, /data-act="pag" data-id="c1" disabled/);
+});
+
+test('campos de formulário têm fundo e borda próprios nos dois temas', async () => {
+  const style = await read('style.css');
+  const modules = await read('modules.css');
+  // seletor no começo da linha (não pega ".x .cat-manager__name {")
+  const regra = (css, seletor) => {
+    const i = css.search(new RegExp(`(^|\\n)${seletor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{`));
+    assert.notEqual(i, -1, `regra não encontrada: ${seletor}`);
+    return css.slice(i, css.indexOf('}', i));
+  };
+
+  const fm = regra(modules, '.fm-input');
+  assert.match(fm, /border: 1px solid var\(--app-input-border\)/, 'campo dos modais com borda');
+  assert.doesNotMatch(fm, /border: none/);
+  assert.match(fm, /background: var\(--app-surface-2\)/, 'fundo diferente do modal (--app-surface)');
+  assert.match(modules, /\.mod-filters \.fm-input \{ background: var\(--app-surface\); \}/, 'filtros dos Relatórios não somem no painel');
+
+  const temas = style.slice(0, style.indexOf('[data-theme="dark"] {') + 600);
+  assert.equal((temas.match(/--app-input-border:/g) || []).length, 2, 'cor de borda dos campos nos temas claro e escuro');
+  assert.match(temas, /color-scheme: light;/);
+  assert.match(temas, /color-scheme: dark;/, 'seta do select e calendário claros no tema escuro');
+  for (const seletor of ['.cat-manager__name', '.history-search']) {
+    assert.match(regra(style, seletor), /var\(--app-input-border\)/, `${seletor} usa a borda de campo`);
+  }
 });
 
 test('versão aparece no padrão BR (dia/mês/ano e horário) sem mudar o formato interno', async () => {

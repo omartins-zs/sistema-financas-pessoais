@@ -4,6 +4,7 @@
 
 :root,
 [data-theme="light"] {
+  color-scheme: light;
   --app-primary: #4f6ef7;
   --app-primary-dark: #3b5de7;
   --app-primary-soft: #eef2ff;
@@ -11,6 +12,8 @@
   --app-surface: #ffffff;
   --app-surface-2: #f8fafc;
   --app-border: #e2e8f0;
+  /* borda própria dos campos de formulário: mais forte que a dos cards para o campo aparecer */
+  --app-input-border: #b6c2d2;
   --app-text: #1e293b;
   --app-text-muted: #64748b;
   --app-text-faint: #94a3b8;
@@ -45,6 +48,8 @@
 }
 
 [data-theme="dark"] {
+  /* controles nativos (seta do select, calendário do date, barras) no tom escuro */
+  color-scheme: dark;
   --app-primary: #6b8aff;
   --app-primary-dark: #4f6ef7;
   --app-primary-soft: #1e2a4a;
@@ -52,6 +57,7 @@
   --app-surface: #1e293b;
   --app-surface-2: #334155;
   --app-border: #475569;
+  --app-input-border: #52627a;
   --app-text: #f1f5f9;
   --app-text-muted: #cbd5e1;
   --app-text-faint: #94a3b8;
@@ -588,6 +594,20 @@ body {
   white-space: nowrap;
 }
 
+/* Conta fixa cadastrada pela aba Contas fixas */
+.cf-manual-tag {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--app-primary) 18%, var(--app-surface-2));
+  color: var(--app-primary);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .entry-row--recurring td,
 .entry-card--recurring {
   background: color-mix(in srgb, var(--app-reserved) 6%, transparent);
@@ -730,7 +750,7 @@ body {
 .form-select,
 .input-group-text {
   background: var(--app-surface-2);
-  border-color: var(--app-border);
+  border-color: var(--app-input-border);
   color: var(--app-text);
 }
 
@@ -2453,7 +2473,7 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
 .cat-manager__name {
   width: 100%;
   padding: 0.35rem 0.55rem;
-  border: 1px solid var(--app-border);
+  border: 1px solid var(--app-input-border);
   border-radius: 8px;
   background: var(--app-surface);
   color: var(--app-text);
@@ -2631,9 +2651,9 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
 .history-panel__heading p { max-width: 760px; font-size: 0.82rem; }
 
 .history-filters { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(170px, 0.4fr) minmax(150px, 0.35fr); gap: 0.55rem; margin-bottom: 0.75rem; }
-.history-search { display: flex; align-items: center; gap: 0.55rem; min-width: 0; padding: 0 0.75rem; border: 1px solid var(--app-border); border-radius: 0.7rem; background: var(--app-surface); color: var(--app-text-faint); }
+.history-search { display: flex; align-items: center; gap: 0.55rem; min-width: 0; padding: 0 0.75rem; border: 1px solid var(--app-input-border); border-radius: 0.7rem; background: var(--app-surface); color: var(--app-text-faint); }
 .history-search input { width: 100%; height: 40px; border: 0; outline: 0; background: transparent; color: var(--app-text); font: inherit; font-size: 0.84rem; }
-.history-filters select { min-width: 0; height: 42px; padding: 0 0.65rem; border: 1px solid var(--app-border); border-radius: 0.7rem; background: var(--app-surface); color: var(--app-text); font: inherit; font-size: 0.82rem; }
+.history-filters select { min-width: 0; height: 42px; padding: 0 0.65rem; border: 1px solid var(--app-input-border); border-radius: 0.7rem; background: var(--app-surface); color: var(--app-text); font: inherit; font-size: 0.82rem; }
 .audit-event__count { margin: 0.4rem 0 0.6rem; color: var(--app-text-faint); font-size: 0.76rem; }
 .audit-events { display: grid; gap: 0.55rem; }
 

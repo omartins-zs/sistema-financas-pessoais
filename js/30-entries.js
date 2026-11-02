@@ -117,6 +117,8 @@ const buildEntryFromForm = (formData) => normalizeEntry({
   due_day: formData.due_day ? parseInt(formData.due_day, 10) : null,
   observation: formData.observation.trim(),
   recurring: formData.recurring === true,
+  // conta fixa cadastrada pela aba Contas fixas (tag "Manual")
+  ...(formData.manual === true ? { manual: true } : {}),
   card_items: formData.card_items ?? [],
   ...(['investimento', 'resgate'].includes(formData.type) && formData.investimento_id
     ? { investimento_id: formData.investimento_id } : {}),
@@ -237,6 +239,7 @@ const handleEditEntry = (e) => {
     due_day: dom.editDueDay.value || null,
     observation: dom.editObservation.value,
     recurring: entries[index].recurring === true,
+    manual: entries[index].manual === true,
     card_items: entries[index].card_items ?? [],
     investimento_id: dom.editInvestimento?.value || '',
     fitid: entries[index].fitid,
@@ -374,7 +377,7 @@ const copyPreviousMonth = async () => {
   }
 
   const now = Date.now();
-  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation, recurring, card_items, investimento_id }) => normalizeEntry({
+  const copied = newEntries.map(({ description, category, type, person, value, due_day, observation, recurring, manual, card_items, investimento_id }) => normalizeEntry({
     id: generateId(),
     description,
     category,
@@ -385,6 +388,7 @@ const copyPreviousMonth = async () => {
     due_day: due_day ?? null,
     observation: observation ?? '',
     recurring: recurring === true,
+    ...(manual === true ? { manual: true } : {}),
     card_items: Array.isArray(card_items) ? card_items.map((item) => ({ ...item, id: generateId() })) : [],
     ...(type === 'investimento' && investimento_id ? { investimento_id } : {}),
     _updatedAt: now

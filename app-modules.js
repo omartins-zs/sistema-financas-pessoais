@@ -982,13 +982,8 @@
     return base;
   };
 
-  const subscriptionAlreadyRegistered = (name) => {
-    const key = normalizeSubName(name).toLowerCase();
-    return coll('assinaturas').some((a) => {
-      const existing = normalizeSubName(a.nome).toLowerCase();
-      return existing === key || existing.includes(key) || key.includes(existing);
-    });
-  };
+  // Mesma despesa em meses diferentes: nome sem "(parcela…)" + pessoa
+  const subscriptionKey = (entry) => `${normalizeSubName(entry.description).toLowerCase()}|${entry.person || '_'}`;
 
   const valuesAreSimilar = (values) => {
     if (!values.length) return false;
@@ -1015,39 +1010,42 @@
     return `${MESES[Number(m) - 1].slice(0, 3)}/${y}`;
   };
 
-  const inferPaymentForm = (category) => {
-    const c = String(category || '').toLowerCase();
-    if (c.includes('internet') || c.includes('luz') || c.includes('água') || c.includes('agua')) return 'Boleto';
-    return 'Cartão';
-  };
-
+  // Despesas que se repetem nos últimos meses e ainda não estão marcadas como fixas
+  // no mês aberto. Se já existem no mês aberto, guarda o lançamento (idMesAtual) para
+  // a sugestão só marcá-lo como fixo, sem criar outro.
   const detectSubscriptionCandidates = (months = 3) => {
     const monthKeys = getRecentMonthKeys(months);
+    const mesAtual = monthKeys[0];
+    const elegivel = (entry) => entry && entry.type === 'despesa'
+      && !subscriptionSkipCategories().has(entry.category)
+      && !(typeof isCreditCardEntry === 'function' && isCreditCardEntry(entry))
+      && !isOneOffExpense(entry.description)
+      && Boolean(normalizeSubName(entry.description));
+
+    const jaFixas = new Set((allData[mesAtual] || []).filter((e) => elegivel(e) && e.recurring === true).map(subscriptionKey));
     const buckets = new Map();
 
     monthKeys.forEach((monthKey) => {
       (allData[monthKey] || []).forEach((entry) => {
-        if (entry.type !== 'despesa') return;
-        if (subscriptionSkipCategories().has(entry.category)) return;
-        if (typeof isCreditCardEntry === 'function' && isCreditCardEntry(entry)) return;
-        if (isOneOffExpense(entry.description)) return;
+        if (!elegivel(entry)) return;
+        const bucketKey = subscriptionKey(entry);
+        if (jaFixas.has(bucketKey)) return;
 
-        const displayName = subscriptionDisplayName(entry);
-        if (!displayName) return;
-        if (subscriptionAlreadyRegistered(displayName)) return;
-
-        const bucketKey = `${normalizeSubName(entry.description).toLowerCase()}|${entry.person || '_'}`;
         if (!buckets.has(bucketKey)) {
           buckets.set(bucketKey, {
-            nome: displayName,
+            nome: subscriptionDisplayName(entry),
+            descricao: normalizeSubName(entry.description),
+            person: entry.person || '',
             months: new Set(),
             values: [],
             dueDays: [],
-            category: entry.category
+            category: entry.category,
+            idMesAtual: ''
           });
         }
 
         const bucket = buckets.get(bucketKey);
+        if (monthKey === mesAtual && !bucket.idMesAtual) bucket.idMesAtual = entry.id;
         if (bucket.months.has(monthKey)) return;
         bucket.months.add(monthKey);
         bucket.values.push(Number(entry.value) || 0);
@@ -1063,12 +1061,15 @@
         const valor = Math.round((sum(b.values) / b.values.length) * 100) / 100;
         return {
           nome: b.nome,
+          descricao: b.descricao,
+          person: b.person,
+          categoria: b.category,
           valor,
           meses,
           mesesLabel: meses.map(monthKeyLabel).join(', '),
           ocorrencias: b.months.size,
           vencimentoDia: mostCommon(b.dueDays),
-          forma: inferPaymentForm(b.category)
+          idMesAtual: b.idMesAtual
         };
       })
       .sort((a, b) => b.ocorrencias - a.ocorrencias || b.valor - a.valor);
@@ -1153,7 +1154,8 @@
         valor: Number(entry.value) || 0,
         categoria: entry.category || '',
         person: entry.person || '',
-        status: entry.status || ''
+        status: entry.status || '',
+        manual: entry.manual === true
       });
     });
     return out.sort(byPersonThenName);
@@ -1172,46 +1174,72 @@
     return porPessoa;
   };
 
+  // Categorias que fazem sentido para uma conta fixa comum (cartão e investimento têm
+  // fluxo próprio e mudariam o tipo do lançamento)
+  const categoriasContaFixa = () => {
+    const fora = new Set([catPapel('cartaoGabriel'), catPapel('cartaoBabi'), catPapel('cartao'), catPapel('investimentos')]);
+    return CATEGORIAS.filter((c) => !fora.has(c));
+  };
+
+  // "Nova conta fixa" vira um lançamento de verdade no mês aberto: despesa marcada
+  // como fixa (⟳) e com a tag Manual. Uma fonte só: aparece no Mês a mês, entra no
+  // saldo e passa para o próximo mês pelo "Copiar mês".
+  const criarContaFixaManual = (v) => {
+    const dia = Number(v.vencimento);
+    const entry = buildEntryFromForm({
+      description: String(v.descricao || ''),
+      category: v.categoria || catPapel('outros'),
+      type: 'despesa',
+      person: v.pessoa || '',
+      value: Number(v.valor) || 0,
+      status: v.status || 'nao_pago',
+      due_day: dia >= 1 ? String(Math.min(31, Math.round(dia))) : null,
+      observation: String(v.observacao || ''),
+      recurring: true,
+      manual: true
+    });
+    if (!validateEntry(entry)) return false;
+    const atuais = getCurrentEntries();
+    if (isEntryDuplicate(entry, atuais)) {
+      notify.error(`“${entry.description}” já está lançada em ${getMonthLabel()} com esse valor.`);
+      return false;
+    }
+    setCurrentEntries([...atuais, entry], `conta fixa manual: adicionou ${resumoLancamento(entry)}`);
+    render();
+    notify.success(`Conta fixa lançada em ${getMonthLabel()}.`);
+    return true;
+  };
+
   const Assinaturas = {
     _suggestions: [],
     fields: (a = {}) => [
-      { name: 'nome', label: 'Serviço', type: 'text', required: true, value: a.nome, placeholder: 'Ex: Netflix, Spotify', wide: true },
+      { name: 'descricao', label: 'Conta', type: 'text', required: true, value: a.descricao, placeholder: 'Ex: Aluguel, Internet, Convênio', wide: true },
+      { name: 'pessoa', label: 'De quem', type: 'select', required: true, value: a.pessoa || '', options: [{ value: '', label: 'Quem paga?' }, ...Object.entries(PERSON_LABELS).map(([value, label]) => ({ value, label }))] },
+      { name: 'categoria', label: 'Categoria', type: 'select', value: categoriasContaFixa().includes(a.categoria) ? a.categoria : catPapel('outros'), options: categoriasContaFixa().map((c) => ({ value: c, label: c })) },
       { name: 'valor', label: 'Valor mensal (R$)', type: 'money', required: true, value: a.valor ? formatValuePlain(a.valor) : '' },
-      { name: 'vencimentoDia', label: 'Dia de vencimento', type: 'number', value: a.vencimentoDia, placeholder: '1-31' },
-      { name: 'forma', label: 'Forma de pagamento', type: 'select', value: a.forma || 'Cartão', options: ['Cartão', 'Débito', 'Pix', 'Boleto', 'Outro'].map((x) => ({ value: x, label: x })) },
-      { name: 'status', label: 'Status', type: 'select', value: a.status || 'ativa', options: [{ value: 'ativa', label: 'Ativa' }, { value: 'cancelada', label: 'Cancelada' }] }
+      { name: 'vencimento', label: 'Dia de vencimento (opcional)', type: 'number', value: a.vencimento ?? '', placeholder: '1-31' },
+      { name: 'status', label: `Status em ${MESES[currentDate.month()]}`, type: 'select', value: a.status || 'nao_pago', options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })) },
+      { name: 'observacao', label: 'Observação (opcional)', type: 'text', value: a.observacao || '', wide: true }
     ],
-    async add() {
-      const v = await formModal({ title: 'Nova conta fixa', icon: 'repeat', fields: this.fields() });
+    async add(prefill = {}) {
+      const v = await formModal({ title: `Nova conta fixa · ${getMonthLabel()}`, icon: 'arrow-repeat', fields: this.fields(prefill), confirmText: 'Lançar conta fixa' });
       if (!v) return;
-      upsert('assinaturas', { id: generateId(), ...v });
-      notify.success('Conta fixa cadastrada!');
+      criarContaFixaManual(v);
     },
-    async edit(id) {
-      const a = coll('assinaturas').find((x) => x.id === id);
-      if (!a) return;
-      const v = await formModal({ title: 'Editar conta fixa', icon: 'repeat', fields: this.fields(a) });
-      if (!v) return;
-      upsert('assinaturas', { ...a, ...v });
-      notify.success('Conta fixa atualizada!');
-    },
+    // Sugestão: se a despesa já está no mês aberto, só marca como fixa; senão abre o
+    // formulário preenchido para lançar como conta fixa manual
     async addFromSuggestion(idx) {
       const sug = (this._suggestions || [])[Number(idx)];
       if (!sug) return;
-      const v = await formModal({
-        title: 'Adicionar conta fixa sugerida',
-        icon: 'magic',
-        fields: this.fields({
-          nome: sug.nome,
-          valor: sug.valor,
-          vencimentoDia: sug.vencimentoDia,
-          forma: sug.forma
-        }),
-        confirmText: 'Cadastrar'
-      });
-      if (!v) return;
-      upsert('assinaturas', { id: generateId(), status: 'ativa', ...v });
-      notify.success(`"${sug.nome}" adicionada às contas fixas!`);
+      const atuais = getCurrentEntries();
+      const existente = sug.idMesAtual ? atuais.find((e) => e.id === sug.idMesAtual) : null;
+      if (existente) {
+        setCurrentEntries(atuais.map((e) => (e.id === existente.id ? { ...e, recurring: true } : e)), `marcou ${resumoLancamento(existente)} como gasto fixo`);
+        render();
+        notify.success(`“${existente.description}” marcada como gasto fixo.`);
+        return;
+      }
+      await this.add({ descricao: sug.descricao, pessoa: sug.person, categoria: sug.categoria, valor: sug.valor, vencimento: sug.vencimentoDia });
     },
     renderSuggestions() {
       this._suggestions = detectSubscriptionCandidates(3);
@@ -1219,17 +1247,17 @@
       if (!list.length) {
         return `<div class="mod-suggest mod-suggest--empty">
           <p class="mod-suggest__title"><i class="bi bi-search"></i> Análise dos últimos 3 meses</p>
-          <p class="mod-suggest__hint mb-0">Nenhuma despesa recorrente nova encontrada. Cadastre lançamentos em meses anteriores ou adicione manualmente.</p>
+          <p class="mod-suggest__hint mb-0">Nada novo para sugerir: as despesas que se repetem já estão marcadas como fixas neste mês.</p>
         </div>`;
       }
       const items = list.map((s, i) => `
         <div class="mod-suggest__item">
           <div class="mod-suggest__body">
             <strong>${escapeHtml(s.nome)}</strong>
-            <span class="mod-suggest__meta">${escapeHtml(s.mesesLabel)} · ${s.ocorrencias} de 3 meses · ~${formatCurrency(s.valor)}/mês</span>
+            <span class="mod-suggest__meta">${escapeHtml(s.mesesLabel)} · ${s.ocorrencias} de 3 meses · ~${formatCurrency(s.valor)}/mês${s.idMesAtual ? ' · já lançada este mês' : ''}</span>
           </div>
           <button type="button" class="btn btn-sm btn-outline-primary" data-mod="assinaturas" data-act="add-sug" data-idx="${i}">
-            <i class="bi bi-plus-lg"></i> Adicionar
+            ${s.idMesAtual ? '<i class="bi bi-arrow-repeat"></i> Marcar como fixa' : '<i class="bi bi-plus-lg"></i> Lançar como fixa'}
           </button>
         </div>`).join('');
       return `<div class="mod-suggest">
@@ -1237,7 +1265,7 @@
           <p class="mod-suggest__title"><i class="bi bi-stars"></i> Sugestões dos últimos 3 meses</p>
           <span class="mod-badge mod-badge--blue">${list.length} encontrada(s)</span>
         </div>
-        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido. Revise e adicione às contas fixas.</p>
+        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido, e ainda não estão marcadas como fixas neste mês.</p>
         <div class="mod-suggest__list">${items}</div>
       </div>`;
     },
@@ -1249,7 +1277,7 @@
       return `
         <li class="card-recurring-row">
           <div class="card-recurring-row__body">
-            <strong>${escapeHtml(item.nome)}</strong>
+            <strong>${escapeHtml(item.nome)}${item.manual ? ' <span class="cf-manual-tag" title="Cadastrada pela aba Contas fixas"><i class="bi bi-pencil-square"></i> Manual</span>' : ''}</strong>
             <span class="card-recurring-row__meta">${escapeHtml(meta)}${status}</span>
           </div>
           <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
@@ -1347,27 +1375,10 @@
           <p class="mod-suggest__hint mt-2 mb-0">Despesas marcadas como fixas + recorrentes do cartão de cada mês. Os serviços cadastrados não entram aqui.</p>
         </div>`;
     },
+    // Os antigos "serviços cadastrados" (allData.__app.assinaturas) continuam salvos e no
+    // backup, mas não aparecem mais: repetiam os lançamentos fixos do mês.
     render(c) {
-      const list = coll('assinaturas');
-      const ativas = list.filter((a) => a.status !== 'cancelada');
-      const totalMes = sum(ativas, (a) => a.valor || 0);
-      const cards = list.map((a) => {
-        const dias = a.vencimentoDia ? daysUntil(nextDueDate(a.vencimentoDia)) : null;
-        const proximo = dias !== null && dias <= 5;
-        const cancelada = a.status === 'cancelada';
-        return `<div class="mod-card">
-          <div class="mod-card__top">
-            <div><h3 class="mod-card__title">${escapeHtml(a.nome)}</h3>
-            <span class="mod-card__sub">${escapeHtml(a.forma || '')}${a.vencimentoDia ? ' · vence dia ' + a.vencimentoDia : ''}</span></div>
-            <span class="mod-badge mod-badge--${cancelada ? 'gray' : 'green'}">${cancelada ? 'Cancelada' : 'Ativa'}</span>
-          </div>
-          <div class="mod-card__row"><span>Mensal</span><strong>${formatCurrency(a.valor || 0)}</strong></div>
-          ${!cancelada && proximo ? `<div class="mod-badge mod-badge--amber"><i class="bi bi-bell-fill"></i> Vence em ${dias} dia(s)</div>` : ''}
-          ${actionBtns('assinaturas', a.id)}
-        </div>`;
-      }).join('');
-      // Gasto fixo do mês = despesas marcadas como fixas + recorrentes do cartão.
-      // Serviços cadastrados ficam à parte: podem repetir algo já lançado no mês.
+      // Gasto fixo do mês = despesas marcadas como fixas (inclui as manuais) + recorrentes do cartão
       const fixos = recurringEntriesMonth();
       const doCartao = recurringCardItemsMonth();
       const todos = [...fixos, ...doCartao];
@@ -1397,20 +1408,14 @@
         <div class="mod-summary">
           <div class="mod-summary__item"><span>Gasto fixo do mês</span><strong style="color:var(--app-expense)">${formatCurrency(totalFixoMes)}</strong><small>Projeção anual ${formatCurrency(totalFixoMes * 12)}</small></div>
           <div class="mod-summary__item"><span>Já pago</span><strong style="color:var(--app-income)">${formatCurrency(pago)}</strong><small>Falta pagar ${formatCurrency(falta)}</small></div>
-          <div class="mod-summary__item"><span>Despesas fixas (lançamentos)</span><strong>${formatCurrency(fixoEntries)}</strong><small>${fixos.length} item(ns)</small></div>
+          <div class="mod-summary__item"><span>Despesas fixas (lançamentos)</span><strong>${formatCurrency(fixoEntries)}</strong><small>${fixos.length} item(ns)${fixos.some((i) => i.manual) ? ` · ${fixos.filter((i) => i.manual).length} manual(is)` : ''}</small></div>
           <div class="mod-summary__item"><span>Recorrentes no cartão</span><strong>${formatCurrency(fixoCartao)}</strong><small>${doCartao.length} item(ns)</small></div>
         </div>
         ${porPessoa ? `<div class="cf-people">${porPessoa}</div>` : ''}
         ${this.renderRecurringEntriesMonth()}
         ${this.renderCardRecurringMonth()}
         ${this.renderTendencia()}
-        <div class="mt-4">${this.renderSuggestions()}</div>
-        <div class="cf-services-head">
-          <h3 class="h5 mb-0"><i class="bi bi-list-check"></i> Serviços cadastrados</h3>
-          <span class="cf-services-head__total">${formatCurrency(totalMes)} / mês · ${ativas.length} ativo(s)</span>
-        </div>
-        <p class="mod-suggest__hint">Lista de referência das suas contas e assinaturas. Fica fora do gasto fixo do mês para não contar duas vezes o que já está lançado no Mês a mês.</p>
-        ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhum serviço fixo cadastrado. Use o botão acima ou as sugestões.')}`;
+        <div class="mt-4">${this.renderSuggestions()}</div>`;
     }
   };
 
@@ -1487,10 +1492,7 @@
           if (dias !== null && dias <= 7) out.push({ title: e.description, dias, icon: 'cash-coin', color: 'var(--app-expense)' });
         }
       });
-      coll('assinaturas').filter((a) => a.status !== 'cancelada' && a.vencimentoDia).forEach((a) => {
-        const dias = daysUntil(nextDueDate(a.vencimentoDia));
-        if (dias !== null && dias <= 7) out.push({ title: a.nome + ' (conta fixa)', dias, icon: 'arrow-repeat', color: 'var(--app-reserved)' });
-      });
+      // contas fixas já entram acima, como lançamentos do mês com dia de vencimento
       coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
         const dias = daysUntil(nextDueDate(k.vencimento));
         if (dias !== null && dias <= 7) out.push({ title: 'Fatura ' + k.nome, dias, icon: 'credit-card-2-front', color: 'var(--app-investment)' });
@@ -2118,10 +2120,6 @@
       if (m.status === 'concluida' || !m.dataAlvo) return;
       const dias = daysUntil(m.dataAlvo);
       if (dias !== null && dias < 0) out.push({ level: 'amber', icon: 'bullseye', title: `Meta atrasada: ${m.nome}`, desc: `Faltam ${formatCurrency((m.valorObjetivo || 0) - metaAtual(m))}` });
-    });
-    coll('assinaturas').filter((a) => a.status !== 'cancelada' && a.vencimentoDia).forEach((a) => {
-      const dias = daysUntil(nextDueDate(a.vencimentoDia));
-      if (dias !== null && dias <= 3) out.push({ level: 'blue', icon: 'arrow-repeat', title: `${a.nome} vence em ${dias}d`, desc: `Conta fixa · ${formatCurrency(a.valor || 0)}` });
     });
     coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
       const dias = daysUntil(nextDueDate(k.vencimento));
