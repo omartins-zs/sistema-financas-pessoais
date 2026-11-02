@@ -49,6 +49,11 @@ const handleListClick = (e) => {
     return;
   }
 
+  if (action === 'edit-card-terceiros') {
+    editCardItemTerceiros(id, itemId);
+    return;
+  }
+
   if (action === 'toggle-card-recurring') {
     toggleCardItemRecurring(id, itemId);
     return;

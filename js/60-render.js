@@ -91,12 +91,21 @@ const renderCardItemRow = (entry, item, sortable = false) => {
     </li>`;
   }
 
+  const terceiros = cardItemTerceiros(item);
+  const terceirosInfo = terceiros > 0
+    ? `<span class="card-item__terceiros">
+        <span class="card-item__terceiros-tag"><i class="bi bi-people-fill"></i> Terceiros ${formatCurrency(terceiros)}${item.terceirosNome ? ` · ${escapeHtml(item.terceirosNome)}` : ''}</span>
+        <span class="card-item__terceiros-seu">seu: ${formatCurrency((Number(item.value) || 0) - terceiros)}</span>
+      </span>`
+    : '';
+
   return `
-    <li class="card-item${recurring ? ' card-item--recurring' : ''}" data-item-id="${item.id}">
+    <li class="card-item${recurring ? ' card-item--recurring' : ''}${terceiros > 0 ? ' card-item--terceiros' : ''}" data-item-id="${item.id}">
       ${dragHandle}
       <span class="card-item__desc">
         ${escapeHtml(item.description)}
         ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
+        ${terceirosInfo}
       </span>
       <strong class="card-item__value">${formatCurrency(item.value)}</strong>
       <div class="card-item__actions">
@@ -105,6 +114,9 @@ const renderCardItemRow = (entry, item, sortable = false) => {
         </button>
         <button type="button" class="card-item__edit" data-action="edit-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Editar" aria-label="Editar item">
           <i class="bi bi-pencil"></i>
+        </button>
+        <button type="button" class="card-item__terceiros-btn${terceiros > 0 ? ' is-active' : ''}" data-action="edit-card-terceiros" data-id="${entry.id}" data-item-id="${item.id}" title="${terceiros > 0 ? 'Editar valor de terceiros' : 'Parte de outras pessoas (terceiros)'}" aria-label="Valor de terceiros">
+          <i class="bi bi-people"></i>
         </button>
         ${isDefault ? '' : `<button type="button" class="card-item__recurring${recurring ? ' is-active' : ''}" data-action="toggle-card-recurring" data-id="${entry.id}" data-item-id="${item.id}" title="${recurring ? 'Remover recorrência' : 'Marcar como recorrente'}" aria-label="Recorrente">
           <i class="bi bi-arrow-repeat"></i>
@@ -140,6 +152,14 @@ const renderCardItemsPanel = (entry, items) => {
 
   const itemsSum = sumCardItems(items);
   const recurringSum = sumCardItems(recurring);
+  const terceirosSum = sumCardTerceiros(items);
+  const terceirosHtml = terceirosSum > 0
+    ? `<div class="card-terceiros-sum">
+        <div><span>Total da fatura</span><strong>${formatCurrency(entry.value)}</strong></div>
+        <div class="card-terceiros-sum__terceiros"><span><i class="bi bi-people-fill"></i> Terceiros</span><strong>− ${formatCurrency(terceirosSum)}</strong></div>
+        <div class="card-terceiros-sum__final"><span>Total sem terceiros</span><strong>${formatCurrency(Math.round(((Number(entry.value) || 0) - terceirosSum) * 100) / 100)}</strong></div>
+      </div>`
+    : '';
 
   return `
     <div class="card-items-panel" data-card-id="${entry.id}">
@@ -152,6 +172,7 @@ const renderCardItemsPanel = (entry, items) => {
         · Recorrentes: <strong>${formatCurrency(recurringSum)}</strong>
         · Total da fatura: <strong>${formatCurrency(entry.value)}</strong>
       </p>
+      ${terceirosHtml}
       <div class="card-item-add">
         <input type="text" class="form-control form-control-sm card-item-desc" placeholder="Ex: Gasolina" aria-label="Descrição do item">
         <input type="text" class="form-control form-control-sm card-item-val" placeholder="0,00" inputmode="decimal" aria-label="Valor do item">
@@ -172,6 +193,13 @@ const renderCardItemsPanel = (entry, items) => {
     </div>`;
 };
 
+const terceirosBadge = (entry) => {
+  const total = sumCardTerceiros(entry.card_items ?? []);
+  if (!total) return '';
+  const seu = Math.round(((Number(entry.value) || 0) - total) * 100) / 100;
+  return `<span class="card-items-badge card-items-badge--terceiros" title="Sem terceiros: ${escapeAttr(formatCurrency(seu))}"><i class="bi bi-people-fill"></i> ${formatCurrency(total)} terceiros</span>`;
+};
+
 const renderCreditCardRows = (entry, valueClass) => {
   const expanded = expandedCardEntries.has(entry.id);
   const items = entry.card_items ?? [];
@@ -186,6 +214,7 @@ const renderCreditCardRows = (entry, valueClass) => {
         ${escapeHtml(entry.description)}
         ${items.length ? `<span class="card-items-badge">${items.length}</span>` : ''}
         ${recurringItems.length ? `<span class="card-items-badge card-items-badge--recurring" title="Itens recorrentes">${recurringItems.length} rec.</span>` : ''}
+        ${terceirosBadge(entry)}
       </td>
       <td>${renderPersonTag(entry.person)}</td>
       <td><span class="category-tag category-tag--card">${escapeHtml(entry.category)}</span></td>
@@ -295,6 +324,7 @@ const renderEntryCard = (entry, valueClass) => {
         <span class="category-tag category-tag--card">${escapeHtml(entry.category)}</span>${due}
         ${items.length ? `<span class="card-items-badge">${items.length} item(ns)</span>` : ''}
         ${recurringItems.length ? `<span class="card-items-badge card-items-badge--recurring">${recurringItems.length} rec.</span>` : ''}
+        ${terceirosBadge(entry)}
       </div>
       ${obs}
       <div class="card-details-mobile ${expanded ? '' : 'd-none'}">${renderCardItemsPanel(entry, items)}</div>

@@ -314,6 +314,13 @@ const createDefaultCardItem = (entry) => ({
 const sumCardItems = (items = []) =>
   Math.round(items.reduce((acc, item) => acc + (Number(item.value) || 0), 0) * 100) / 100;
 
+// Parte de cada item que é de outras pessoas (cartão emprestado / compra dividida).
+// Só informativo: o valor do lançamento continua sendo a fatura cheia.
+const cardItemTerceiros = (item) => Math.min(Math.max(Number(item?.terceiros) || 0, 0), Number(item?.value) || 0);
+
+const sumCardTerceiros = (items = []) =>
+  Math.round(items.reduce((acc, item) => acc + cardItemTerceiros(item), 0) * 100) / 100;
+
 const syncCardEntryFromItems = (entry) => {
   if (!isCreditCardEntry(entry) || !entry.card_items?.length) return entry;
   return { ...entry, value: sumCardItems(entry.card_items) };

@@ -2097,6 +2097,104 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   color: var(--app-reserved);
 }
 
+/* Valor de terceiros (cartão emprestado / compra dividida) */
+.card-item__terceiros-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-faint);
+}
+
+.card-item__terceiros-btn:hover,
+.card-item__terceiros-btn.is-active {
+  background: color-mix(in srgb, var(--app-investment) 14%, transparent);
+  color: var(--app-investment);
+}
+
+.card-item__terceiros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+}
+
+.card-item__terceiros-tag {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--app-investment) 16%, var(--app-surface-2));
+  color: var(--app-investment);
+}
+
+.card-item__terceiros-seu {
+  color: var(--app-text-muted);
+  font-weight: 600;
+}
+
+.card-items-badge--terceiros {
+  background: color-mix(in srgb, var(--app-investment) 16%, var(--app-surface-2));
+  color: var(--app-investment);
+}
+
+.card-terceiros-sum {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: var(--app-surface-2);
+}
+
+.card-terceiros-sum > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.card-terceiros-sum span {
+  font-size: 0.72rem;
+  color: var(--app-text-muted);
+}
+
+.card-terceiros-sum strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.card-terceiros-sum__terceiros strong {
+  color: var(--app-investment);
+}
+
+.card-terceiros-sum__final strong {
+  color: var(--app-income);
+}
+
+.terceiros-modal__info {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+}
+
+.terceiros-modal__hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--app-text-muted);
+}
+
+@media (max-width: 480px) {
+  .card-terceiros-sum {
+    grid-template-columns: 1fr;
+  }
+}
+
 .card-item-recurring-check {
   display: inline-flex;
   align-items: center;

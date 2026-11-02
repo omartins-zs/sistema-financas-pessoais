@@ -440,6 +440,8 @@ const updateCardItem = (entryId, itemId, description, value, recurring) => {
       value,
       recurring: wasDefault ? false : recurring === true
     };
+    // Valor diminuiu: a parte de terceiros não pode passar do novo valor do item
+    if (Number(next.terceiros) > value) next.terceiros = value;
 
     if (wasDefault && /^cart[aã]o$/i.test(description.trim())) {
       next.isDefault = true;
@@ -490,6 +492,71 @@ const toggleCardItemRecurring = (entryId, itemId) => {
   const nextEntries = entries.map((e, i) => (i === index ? { ...e, card_items: items } : e));
   expandedCardEntries.add(entryId);
   setCurrentEntries(nextEntries);
+  render();
+};
+
+// Quanto de um item da fatura é de outras pessoas (e de quem). Valor 0 limpa.
+const editCardItemTerceiros = async (entryId, itemId) => {
+  const item = getCardItemFromEntry(entryId, itemId);
+  if (!item) return;
+  const total = Number(item.value) || 0;
+  let mask = null;
+
+  const { value: res, isConfirmed } = await Swal.fire({
+    title: 'Valor de terceiros',
+    html: `<p class="terceiros-modal__info">${escapeHtml(item.description)} · ${formatCurrency(total)}</p>
+      <div class="fm-grid">
+        <div class="fm-field"><label for="terceirosValor">Parte de outras pessoas (R$)</label>
+          <input id="terceirosValor" type="text" class="fm-input" inputmode="decimal" placeholder="0,00"></div>
+        <div class="fm-field"><label for="terceirosNome">De quem? (opcional)</label>
+          <input id="terceirosNome" type="text" class="fm-input" maxlength="40" placeholder="Ex: Mãe, João" value="${escapeAttr(item.terceirosNome || '')}"></div>
+      </div>
+      <p class="terceiros-modal__hint">Só para controle: a fatura continua contando ${formatCurrency(total)} nas despesas do mês. Deixe 0 para remover.</p>`,
+    width: 560,
+    showCancelButton: true,
+    confirmButtonText: 'Salvar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#4f6ef7',
+    cancelButtonColor: '#94a3b8',
+    reverseButtons: true,
+    focusConfirm: false,
+    didOpen: () => {
+      mask = IMask(document.getElementById('terceirosValor'), moneyMaskOptions);
+      mask.typedValue = cardItemTerceiros(item);
+      document.getElementById('terceirosValor').select();
+    },
+    preConfirm: () => {
+      const valor = getMaskValue(mask);
+      if (valor > total) {
+        Swal.showValidationMessage(`A parte de terceiros não pode passar de ${formatCurrency(total)}.`);
+        return false;
+      }
+      return { valor, nome: document.getElementById('terceirosNome').value.trim() };
+    }
+  });
+  if (!isConfirmed || !res) return;
+
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return;
+
+  const items = (entries[index].card_items ?? []).map((it) => {
+    if (it.id !== itemId) return it;
+    const next = { ...it };
+    if (res.valor > 0) {
+      next.terceiros = res.valor;
+      next.terceirosNome = res.nome;
+    } else {
+      delete next.terceiros;
+      delete next.terceirosNome;
+    }
+    return next;
+  });
+
+  const nextEntries = entries.map((e, i) => (i === index ? { ...e, card_items: items } : e));
+  expandedCardEntries.add(entryId);
+  setCurrentEntries(nextEntries);
+  notify.success(res.valor > 0 ? `Terceiros: ${formatCurrency(res.valor)} — seu: ${formatCurrency(total - res.valor)}.` : 'Valor de terceiros removido.');
   render();
 };
 
