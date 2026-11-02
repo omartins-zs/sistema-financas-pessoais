@@ -862,44 +862,83 @@
       notify.info('Pagamento excluído.');
     },
     card(c) {
+      const total = Number(c.valorTotal) || 0;
       const pago = carroPago(c);
       const saldo = carroSaldo(c);
       const quitado = saldo <= 0;
-      const pagamentos = [...(c.pagamentos || [])].sort((a, b) => (a.data < b.data ? 1 : -1));
+      const percent = total > 0 ? Math.min(100, (pago / total) * 100) : 0;
+      const percentLabel = percent > 0 && percent < 1 ? '<1' : String(Math.floor(percent));
+
+      // Saldo que restou depois de cada pagamento (calculado em ordem de data, exibido do mais novo)
+      let restante = total;
+      const pagamentos = [...(c.pagamentos || [])]
+        .sort((a, b) => (a.data > b.data ? 1 : a.data < b.data ? -1 : 0))
+        .map((p) => {
+          restante = Math.round((restante - (Number(p.valor) || 0)) * 100) / 100;
+          return { ...p, restante };
+        })
+        .reverse();
+
+      const media = pagamentos.length ? pago / pagamentos.length : 0;
+      const faltamPagamentos = !quitado && media > 0 ? Math.ceil(saldo / media) : 0;
+      const ritmo = faltamPagamentos
+        ? `<p class="carro-ritmo"><i class="bi bi-speedometer2"></i> No ritmo atual (média de ${formatCurrency(media)} por pagamento) faltam cerca de <strong>${faltamPagamentos} pagamento${faltamPagamentos === 1 ? '' : 's'}</strong>.</p>`
+        : '';
+
       const lista = pagamentos.length
-        ? `<ul class="carro-pags">${pagamentos.map((p) => `
-            <li class="carro-pags__item">
-              <span class="carro-pags__date"><i class="bi bi-calendar-event"></i> ${fmtDate(p.data)}</span>
-              <strong class="carro-pags__val">− ${formatCurrency(p.valor)}</strong>
-              <button class="mod-btn mod-btn--danger" data-mod="carro" data-act="pag-del" data-id="${c.id}" data-pag-id="${p.id}" title="Excluir pagamento"><i class="bi bi-trash-fill"></i></button>
-            </li>`).join('')}</ul>`
-        : '<p class="mod-card__sub mb-0">Nenhum pagamento registrado ainda.</p>';
+        ? `<ul class="carro-pags">${pagamentos.map((p, i) => {
+            const d = dayjs(p.data);
+            return `
+            <li class="carro-pag">
+              <div class="carro-pag__date"><strong>${d.isValid() ? d.format('DD') : '—'}</strong><small>${d.isValid() ? `${MESES[d.month()].slice(0, 3)}/${String(d.year()).slice(2)}` : ''}</small></div>
+              <div class="carro-pag__body">
+                <strong class="carro-pag__val">− ${formatCurrency(Number(p.valor) || 0)}</strong>
+                <small>Pagamento ${pagamentos.length - i} · restou ${formatCurrency(Math.max(0, p.restante))}</small>
+              </div>
+              <button type="button" class="carro-icon-btn carro-icon-btn--danger" data-mod="carro" data-act="pag-del" data-id="${c.id}" data-pag-id="${p.id}" title="Excluir pagamento" aria-label="Excluir pagamento de ${escapeHtml(fmtDate(p.data))}"><i class="bi bi-x-lg"></i></button>
+            </li>`;
+          }).join('')}</ul>`
+        : '<p class="carro-vazio"><i class="bi bi-info-circle"></i> Nenhum pagamento ainda. Use "Registrar pagamento" a cada parcela.</p>';
+
       return `
-        <article class="mod-card carro-card">
-          <div class="mod-card__top align-items-start">
-            <div>
-              <h3 class="mod-card__title">${escapeHtml(c.nome)}</h3>
-              <span class="mod-card__sub">${c.dataInicio ? 'Início em ' + fmtDate(c.dataInicio) + ' · ' : ''}${pagamentos.length} pagamento(s)</span>
+        <article class="carro-card${quitado ? ' carro-card--quitado' : ''}">
+          <header class="carro-card__head">
+            <div class="carro-card__ident">
+              <span class="carro-card__icon"><i class="bi bi-car-front-fill"></i></span>
+              <div>
+                <h3 class="carro-card__nome">${escapeHtml(c.nome)}</h3>
+                <span class="carro-card__sub">${c.dataInicio ? `Desde ${fmtDate(c.dataInicio)} · ` : ''}${pagamentos.length} pagamento${pagamentos.length === 1 ? '' : 's'}</span>
+              </div>
             </div>
-            <span class="mod-badge mod-badge--${quitado ? 'green' : 'blue'}">${quitado ? 'Quitado' : formatCurrency(saldo) + ' a pagar'}</span>
+            <div class="carro-card__tools">
+              <button type="button" class="carro-icon-btn" data-mod="carro" data-act="edit" data-id="${c.id}" title="Editar carro" aria-label="Editar carro"><i class="bi bi-pencil"></i></button>
+              <button type="button" class="carro-icon-btn carro-icon-btn--danger" data-mod="carro" data-act="del" data-id="${c.id}" title="Excluir carro" aria-label="Excluir carro"><i class="bi bi-trash"></i></button>
+            </div>
+          </header>
+
+          <div class="carro-hero">
+            <span class="carro-hero__label">${quitado ? 'Carro quitado' : 'Falta pagar'}</span>
+            <strong class="carro-hero__valor">${quitado ? '<i class="bi bi-check-circle-fill"></i> R$ 0,00' : formatCurrency(saldo)}</strong>
+            <div class="carro-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(percent)}" aria-label="Quanto já foi pago">
+              <div class="carro-bar__fill" style="width:${percent}%"></div>
+            </div>
+            <span class="carro-hero__pct">${percentLabel}% pago</span>
           </div>
-          <div class="inv-card__grid">
-            <div><span>Valor total</span><strong>${formatCurrency(Number(c.valorTotal) || 0)}</strong></div>
-            <div><span>Já pago</span><strong style="color:var(--app-income)">${formatCurrency(pago)}</strong></div>
-            <div><span>Falta pagar</span><strong style="color:${quitado ? 'var(--app-income)' : 'var(--app-expense)'}">${formatCurrency(Math.max(0, saldo))}</strong></div>
+
+          <div class="carro-stats">
+            <div><span>Valor total</span><strong>${formatCurrency(total)}</strong></div>
+            <div><span>Já pago</span><strong class="carro-stats__pago">${formatCurrency(pago)}</strong></div>
           </div>
-          <div class="mt-2">${progressBar(pago, Number(c.valorTotal) || 0, 'var(--app-income)')}</div>
-          <div class="carro-pags-wrap mt-3">
-            <p class="carro-pags__title"><i class="bi bi-receipt"></i> Pagamentos</p>
-            ${lista}
-          </div>
-          <button class="btn btn-primary w-100 mt-3" data-mod="carro" data-act="pag" data-id="${c.id}" ${quitado ? 'disabled' : ''}>
+          ${ritmo}
+
+          <button type="button" class="btn btn-primary carro-card__cta" data-mod="carro" data-act="pag" data-id="${c.id}" ${quitado ? 'disabled' : ''}>
             <i class="bi bi-plus-lg"></i> Registrar pagamento
           </button>
-          <div class="d-flex gap-2 mt-2">
-            <button class="btn btn-sm btn-outline-secondary flex-fill" data-mod="carro" data-act="edit" data-id="${c.id}"><i class="bi bi-pencil-fill"></i> Editar</button>
-            <button class="btn btn-sm btn-outline-danger flex-fill" data-mod="carro" data-act="del" data-id="${c.id}"><i class="bi bi-trash-fill"></i> Excluir carro</button>
-          </div>
+
+          <section class="carro-hist" aria-label="Pagamentos">
+            <p class="carro-hist__title"><i class="bi bi-clock-history"></i> Histórico de pagamentos</p>
+            ${lista}
+          </section>
         </article>`;
     },
     render(c) {
@@ -910,7 +949,7 @@
           <p class="view-header__hint">Valor total do carro e os pagamentos abatendo mês a mês</p></div>
           ${carro ? '' : '<button class="btn btn-primary" data-mod="carro" data-act="add"><i class="bi bi-plus-lg"></i> Configurar carro</button>'}
         </div>
-        ${carro ? `<div class="mod-grid mod-grid--single">${this.card(carro)}</div>` : emptyBlock('car-front-fill', 'Nenhum carro configurado. Clique em "Configurar carro" e informe o valor total.')}`;
+        ${carro ? this.card(carro) : emptyBlock('car-front-fill', 'Nenhum carro configurado. Clique em "Configurar carro" e informe o valor total.')}`;
     }
   };
 
@@ -1040,9 +1079,18 @@
   // ==========================================================
   const PERSON_ORDER = { gabriel: 0, barbara: 1, casa: 2, familia: 3 };
 
-  const recurringCardItemsMonth = () => {
+  const byPersonThenName = (a, b) => {
+    const pa = PERSON_ORDER[a.person] ?? 99;
+    const pb = PERSON_ORDER[b.person] ?? 99;
+    if (pa !== pb) return pa - pb;
+    return String(a.nome).localeCompare(String(b.nome), 'pt-BR');
+  };
+
+  // Itens marcados como recorrentes dentro das faturas de cartão de um mês.
+  // O status é o da fatura (o item está pago quando a fatura está paga).
+  const recurringCardItemsForMonth = (monthKey) => {
     const out = [];
-    (allData[getMonthKey(currentDate)] || []).forEach((entry) => {
+    (allData[monthKey] || []).forEach((entry) => {
       const cat = String(entry.category ?? '').toLowerCase();
       if (!cat.includes('cartão') && !cat.includes('cartao')) return;
       (entry.card_items || []).forEach((item) => {
@@ -1050,19 +1098,46 @@
         const desc = String(item.description ?? '').trim();
         if (/^cart[aã]o$/i.test(desc) || /^fatura/i.test(desc)) return;
         out.push({
+          id: item.id,
           nome: item.description,
-          valor: item.value || 0,
+          valor: Number(item.value) || 0,
           cartao: entry.description,
-          person: entry.person
+          person: entry.person || '',
+          status: entry.status || ''
         });
       });
     });
-    return out.sort((a, b) => {
-      const pa = PERSON_ORDER[a.person] ?? 99;
-      const pb = PERSON_ORDER[b.person] ?? 99;
-      if (pa !== pb) return pa - pb;
-      return String(a.nome).localeCompare(String(b.nome), 'pt-BR');
+    return out.sort(byPersonThenName);
+  };
+
+  const recurringCardItemsMonth = () => recurringCardItemsForMonth(getMonthKey(currentDate));
+
+  // Pessoas na ordem do app (Gabriel, Barbara, Casa, Família) e "Sem tag" por último
+  const personLabel = (person) => PERSON_LABELS[person] || 'Sem tag';
+
+  const groupByPerson = (items) => {
+    const grupos = new Map();
+    items.forEach((item) => {
+      const person = PERSON_LABELS[item.person] ? item.person : '';
+      if (!grupos.has(person)) grupos.set(person, { person, label: personLabel(person), itens: [], total: 0 });
+      const g = grupos.get(person);
+      g.itens.push(item);
+      g.total = Math.round((g.total + (Number(item.valor) || 0)) * 100) / 100;
     });
+    return [...grupos.values()].sort((a, b) => (PERSON_ORDER[a.person] ?? 99) - (PERSON_ORDER[b.person] ?? 99));
+  };
+
+  // Colapsos da aba Contas fixas: lembra o que ficou aberto/fechado (só neste aparelho)
+  const CF_STATE_KEY = 'financas_casa_contas_fixas_colapsos';
+  const cfEstado = (() => {
+    try { return JSON.parse(localStorage.getItem(CF_STATE_KEY) || '{}') || {}; } catch { return {}; }
+  })();
+  const cfAberto = (key, padrao = true) => (typeof cfEstado[key] === 'boolean' ? cfEstado[key] : padrao);
+  const handleContasFixasToggle = (e) => {
+    const d = e.target;
+    if (!d?.matches?.('details[data-cf-key]')) return;
+    cfEstado[d.dataset.cfKey] = d.open;
+    try { localStorage.setItem(CF_STATE_KEY, JSON.stringify(cfEstado)); } catch {}
   };
 
   // Despesas comuns marcadas como recorrentes (gasto fixo) num dado mês — "puxa"
@@ -1081,32 +1156,20 @@
         status: entry.status || ''
       });
     });
-    return out.sort((a, b) => {
-      const pa = PERSON_ORDER[a.person] ?? 99;
-      const pb = PERSON_ORDER[b.person] ?? 99;
-      if (pa !== pb) return pa - pb;
-      return String(a.nome).localeCompare(String(b.nome), 'pt-BR');
-    });
+    return out.sort(byPersonThenName);
   };
 
   const recurringEntriesMonth = () => recurringEntriesForMonth(getMonthKey(currentDate));
 
-  // Total de gastos recorrentes de um mês: despesas marcadas como fixas + itens
-  // recorrentes nos cartões daquele mês.
-  const recurringTotalForMonth = (monthKey) => {
-    const despesas = sum(recurringEntriesForMonth(monthKey), (e) => e.valor);
-    let cartao = 0;
-    (allData[monthKey] || []).forEach((entry) => {
-      const cat = String(entry.category ?? '').toLowerCase();
-      if (!cat.includes('cartão') && !cat.includes('cartao')) return;
-      (entry.card_items || []).forEach((item) => {
-        if (!item.recurring) return;
-        const desc = String(item.description ?? '').trim();
-        if (/^cart[aã]o$/i.test(desc) || /^fatura/i.test(desc)) return;
-        cartao += Number(item.value) || 0;
-      });
+  // Gasto fixo de um mês por pessoa = despesas marcadas como fixas + recorrentes do cartão.
+  // Serviços cadastrados ficam de fora: podem repetir algo que já é lançado no mês.
+  const fixedSpendByPersonForMonth = (monthKey) => {
+    const porPessoa = {};
+    [...recurringEntriesForMonth(monthKey), ...recurringCardItemsForMonth(monthKey)].forEach((item) => {
+      const person = PERSON_LABELS[item.person] ? item.person : '';
+      porPessoa[person] = Math.round(((porPessoa[person] || 0) + (Number(item.valor) || 0)) * 100) / 100;
     });
-    return Math.round((despesas + cartao) * 100) / 100;
+    return porPessoa;
   };
 
   const Assinaturas = {
@@ -1178,76 +1241,110 @@
         <div class="mod-suggest__list">${items}</div>
       </div>`;
     },
-    renderCardRecurringMonth() {
-      const items = recurringCardItemsMonth();
-      if (!items.length) return '';
-
-      const total = sum(items, (i) => i.valor || 0);
-      const rows = items.map((item) => `
+    // Linha de um gasto fixo (lançamento ou item de cartão) dentro do grupo da pessoa
+    cfRow(item, meta) {
+      const status = item.status && STATUS_LABELS[item.status]
+        ? `<span class="cf-status cf-status--${item.status}">${escapeHtml(STATUS_LABELS[item.status])}</span>`
+        : '';
+      return `
         <li class="card-recurring-row">
           <div class="card-recurring-row__body">
             <strong>${escapeHtml(item.nome)}</strong>
-            <span class="card-recurring-row__meta">${escapeHtml(item.cartao)} · ${escapeHtml(PERSON_LABELS[item.person] || '—')}</span>
+            <span class="card-recurring-row__meta">${escapeHtml(meta)}${status}</span>
           </div>
           <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
-        </li>`).join('');
-
+        </li>`;
+    },
+    // Subgrupo colapsável por pessoa: nome e quantidade à esquerda, total à direita
+    cfPessoa(secao, grupo, metaDe) {
+      const key = `p:${secao}:${grupo.person || 'sem'}`;
+      const n = grupo.itens.length;
       return `
-        <div class="mod-card-recurring">
-          <div class="mod-card-recurring__head">
-            <p class="mod-card-recurring__title"><i class="bi bi-credit-card-2-front"></i> Recorrentes no cartão — ${MESES[currentDate.month()]}</p>
-            <span class="mod-badge mod-badge--amber">${formatCurrency(total)}</span>
+        <details class="cf-pessoa" data-cf-key="${key}"${cfAberto(key) ? ' open' : ''}>
+          <summary class="cf-pessoa__sum">
+            <span class="cf-pessoa__nome">
+              ${grupo.person ? `<span class="person-tag person-tag--${grupo.person}">${escapeHtml(grupo.label)}</span>` : `<span class="person-tag">${escapeHtml(grupo.label)}</span>`}
+              <small>${n} ${n === 1 ? 'item' : 'itens'}</small>
+            </span>
+            <span class="cf-pessoa__right"><strong>${formatCurrency(grupo.total)}</strong><i class="bi bi-chevron-down cf-chev"></i></span>
+          </summary>
+          <ul class="mod-card-recurring__list cf-pessoa__list">${grupo.itens.map((item) => this.cfRow(item, metaDe(item))).join('')}</ul>
+        </details>`;
+    },
+    // Seção colapsável: título à esquerda, total à direita, grupos por pessoa dentro
+    cfSecao({ secao, icon, titulo, badge, itens, metaDe, vazio }) {
+      const key = `sec:${secao}`;
+      const total = Math.round(sum(itens, (i) => Number(i.valor) || 0) * 100) / 100;
+      const n = itens.length;
+      return `
+        <details class="mod-card-recurring cf-sec cf-sec--${secao}" data-cf-key="${key}"${cfAberto(key) ? ' open' : ''}>
+          <summary class="cf-sec__sum">
+            <span class="mod-card-recurring__title"><i class="bi bi-${icon}"></i> ${titulo} <small class="cf-sec__count">${n} ${n === 1 ? 'item' : 'itens'}</small></span>
+            <span class="cf-sec__right"><span class="mod-badge mod-badge--${badge}">${formatCurrency(total)}</span><i class="bi bi-chevron-down cf-chev"></i></span>
+          </summary>
+          <div class="cf-sec__body">
+            ${n ? groupByPerson(itens).map((g) => this.cfPessoa(secao, g, metaDe)).join('') : `<p class="mod-suggest__hint mb-0">${vazio}</p>`}
           </div>
-          <ul class="mod-card-recurring__list">${rows}</ul>
-        </div>`;
+        </details>`;
     },
     // Despesas comuns marcadas como "fixo" no mês atual (puxadas do Mês a mês)
     renderRecurringEntriesMonth() {
-      const items = recurringEntriesMonth();
-      if (!items.length) {
-        return `<div class="mod-card-recurring mod-card-recurring--empty">
-          <p class="mod-card-recurring__title"><i class="bi bi-arrow-repeat"></i> Gastos fixos do mês — ${MESES[currentDate.month()]}</p>
-          <p class="mod-suggest__hint mb-0">Nenhuma despesa marcada como fixa neste mês. No Mês a mês, clique no <i class="bi bi-arrow-repeat"></i> de um lançamento de despesa para marcá-lo como gasto fixo.</p>
-        </div>`;
-      }
-      const total = sum(items, (i) => i.valor);
-      const rows = items.map((item) => `
-        <li class="card-recurring-row">
-          <div class="card-recurring-row__body">
-            <strong>${escapeHtml(item.nome)}</strong>
-            <span class="card-recurring-row__meta">${escapeHtml(item.categoria)}${item.person ? ' · ' + escapeHtml(PERSON_LABELS[item.person] || '') : ''}${item.status ? ' · ' + escapeHtml(STATUS_LABELS[item.status] || '') : ''}</span>
-          </div>
-          <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
-        </li>`).join('');
-      return `
-        <div class="mod-card-recurring">
-          <div class="mod-card-recurring__head">
-            <p class="mod-card-recurring__title"><i class="bi bi-arrow-repeat"></i> Gastos fixos do mês — ${MESES[currentDate.month()]}</p>
-            <span class="mod-badge mod-badge--blue">${formatCurrency(total)}</span>
-          </div>
-          <ul class="mod-card-recurring__list">${rows}</ul>
-        </div>`;
+      return this.cfSecao({
+        secao: 'fixos',
+        icon: 'arrow-repeat',
+        titulo: `Gastos fixos de ${MESES[currentDate.month()]}`,
+        badge: 'blue',
+        itens: recurringEntriesMonth(),
+        metaDe: (item) => item.categoria || '—',
+        vazio: 'Nenhuma despesa marcada como fixa neste mês. No Mês a mês, clique no <i class="bi bi-arrow-repeat"></i> de um lançamento de despesa para marcá-lo como gasto fixo.'
+      });
     },
-    // Tendência do gasto fixo nos últimos 6 meses (despesas fixas + recorrentes de cartão)
+    renderCardRecurringMonth() {
+      return this.cfSecao({
+        secao: 'cartao',
+        icon: 'credit-card-2-front',
+        titulo: `Recorrentes no cartão — ${MESES[currentDate.month()]}`,
+        badge: 'amber',
+        itens: recurringCardItemsMonth(),
+        metaDe: (item) => item.cartao || 'Cartão',
+        vazio: 'Nenhum item recorrente nas faturas deste mês. Na fatura do cartão, use o <i class="bi bi-arrow-repeat"></i> de um item para marcá-lo como recorrente.'
+      });
+    },
+    // Gasto fixo dos últimos 6 meses, separado por pessoa (despesas fixas + recorrentes do cartão)
     renderTendencia() {
       const meses = [];
       for (let i = 5; i >= 0; i--) {
         const d = currentDate.subtract(i, 'month');
-        meses.push({ key: d.format('YYYY-MM'), label: `${MESES[d.month()].slice(0, 3)}/${String(d.year()).slice(2)}`, total: recurringTotalForMonth(d.format('YYYY-MM')) });
+        const key = d.format('YYYY-MM');
+        const porPessoa = fixedSpendByPersonForMonth(key);
+        meses.push({ key, label: `${MESES[d.month()].slice(0, 3)}/${String(d.year()).slice(2)}`, porPessoa, total: Math.round(sum(Object.values(porPessoa)) * 100) / 100 });
       }
       if (!meses.some((m) => m.total > 0)) return '';
+
+      const pessoas = [...new Set(meses.flatMap((m) => Object.keys(m.porPessoa).filter((p) => m.porPessoa[p] > 0)))]
+        .sort((a, b) => (PERSON_ORDER[a] ?? 99) - (PERSON_ORDER[b] ?? 99));
+      const comGasto = meses.filter((m) => m.total > 0);
+      const media = (valores) => (comGasto.length ? Math.round((sum(valores) / comGasto.length) * 100) / 100 : 0);
+      const cel = (v, forte = false) => (v ? (forte ? `<strong>${formatCurrency(v)}</strong>` : formatCurrency(v)) : '<span class="inv-zero">—</span>');
       const mesAtual = getMonthKey(currentDate);
+
       const linhas = meses.map((m) => `<tr class="${m.key === mesAtual ? 'inv-row--atual' : ''}">
         <td>${m.label}</td>
-        <td class="num"><strong>${m.total ? formatCurrency(m.total) : '<span class="inv-zero">—</span>'}</strong></td>
+        ${pessoas.map((p) => `<td class="num">${cel(m.porPessoa[p] || 0)}</td>`).join('')}
+        <td class="num">${cel(m.total, true)}</td>
       </tr>`).join('');
+
       return `
         <div class="chart-box mt-4">
           <h3 class="chart-box__title"><i class="bi bi-graph-up"></i> Gasto fixo mês a mês (6 meses)</h3>
-          <div class="mod-table-wrap"><table class="mod-table">
-            <thead><tr><th>Mês</th><th class="num">Gasto fixo</th></tr></thead>
+          <div class="mod-table-wrap"><table class="mod-table cf-tendencia">
+            <thead><tr><th>Mês</th>${pessoas.map((p) => `<th class="num">${escapeHtml(personLabel(p))}</th>`).join('')}<th class="num">Total</th></tr></thead>
             <tbody>${linhas}</tbody>
+            <tfoot><tr><td>Média${comGasto.length < meses.length ? ` <small>(${comGasto.length} meses com gasto)</small>` : ''}</td>
+              ${pessoas.map((p) => `<td class="num">${cel(media(comGasto.map((m) => m.porPessoa[p] || 0)))}</td>`).join('')}
+              <td class="num">${cel(media(comGasto.map((m) => m.total)), true)}</td></tr></tfoot>
           </table></div>
+          <p class="mod-suggest__hint mt-2 mb-0">Despesas marcadas como fixas + recorrentes do cartão de cada mês. Os serviços cadastrados não entram aqui.</p>
         </div>`;
     },
     render(c) {
@@ -1269,28 +1366,50 @@
           ${actionBtns('assinaturas', a.id)}
         </div>`;
       }).join('');
-      // Gasto fixo do mês = despesas marcadas como fixas + recorrentes de cartão + assinaturas ativas
-      const fixoEntries = sum(recurringEntriesMonth(), (e) => e.valor);
-      const fixoCartao = sum(recurringCardItemsMonth(), (i) => i.valor || 0);
-      const totalFixoMes = Math.round((fixoEntries + fixoCartao + totalMes) * 100) / 100;
+      // Gasto fixo do mês = despesas marcadas como fixas + recorrentes do cartão.
+      // Serviços cadastrados ficam à parte: podem repetir algo já lançado no mês.
+      const fixos = recurringEntriesMonth();
+      const doCartao = recurringCardItemsMonth();
+      const todos = [...fixos, ...doCartao];
+      const fixoEntries = Math.round(sum(fixos, (e) => e.valor) * 100) / 100;
+      const fixoCartao = Math.round(sum(doCartao, (i) => i.valor) * 100) / 100;
+      const totalFixoMes = Math.round((fixoEntries + fixoCartao) * 100) / 100;
+      const pago = Math.round(sum(todos.filter((i) => i.status === 'pago'), (i) => i.valor) * 100) / 100;
+      const falta = Math.round((totalFixoMes - pago) * 100) / 100;
+
+      const porPessoa = groupByPerson(todos).map((g) => {
+        const deFixos = Math.round(sum(fixos.filter((i) => (PERSON_LABELS[i.person] ? i.person : '') === g.person), (i) => i.valor) * 100) / 100;
+        return `
+          <div class="cf-person-card cf-person-card--${g.person || 'sem'}">
+            <span class="cf-person-card__nome">${g.person ? `<span class="person-tag person-tag--${g.person}">${escapeHtml(g.label)}</span>` : `<span class="person-tag">${escapeHtml(g.label)}</span>`}</span>
+            <strong class="cf-person-card__total">${formatCurrency(g.total)}</strong>
+            <small class="cf-person-card__det">Fixos ${formatCurrency(deFixos)} · Cartão ${formatCurrency(Math.round((g.total - deFixos) * 100) / 100)}</small>
+            <small class="cf-person-card__det">${totalFixoMes ? Math.round((g.total / totalFixoMes) * 100) : 0}% do gasto fixo</small>
+          </div>`;
+      }).join('');
 
       c.innerHTML = `
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-arrow-repeat app-icon"></i> Contas fixas</h2>
-          <p class="view-header__hint">Seu gasto fixo/essencial do mês — despesas marcadas como fixas, recorrentes do cartão e serviços cadastrados</p></div>
+          <p class="view-header__hint">Gasto fixo de ${MESES[currentDate.month()]} — despesas marcadas como fixas no Mês a mês e recorrentes do cartão, separados por pessoa</p></div>
           <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova conta fixa</button>
         </div>
         <div class="mod-summary">
           <div class="mod-summary__item"><span>Gasto fixo do mês</span><strong style="color:var(--app-expense)">${formatCurrency(totalFixoMes)}</strong><small>Projeção anual ${formatCurrency(totalFixoMes * 12)}</small></div>
-          <div class="mod-summary__item"><span>Despesas fixas (lançamentos)</span><strong>${formatCurrency(fixoEntries)}</strong></div>
-          <div class="mod-summary__item"><span>Recorrentes no cartão</span><strong>${formatCurrency(fixoCartao)}</strong></div>
-          <div class="mod-summary__item"><span>Serviços cadastrados (ativos)</span><strong>${formatCurrency(totalMes)}</strong><small>${ativas.length} conta(s)</small></div>
+          <div class="mod-summary__item"><span>Já pago</span><strong style="color:var(--app-income)">${formatCurrency(pago)}</strong><small>Falta pagar ${formatCurrency(falta)}</small></div>
+          <div class="mod-summary__item"><span>Despesas fixas (lançamentos)</span><strong>${formatCurrency(fixoEntries)}</strong><small>${fixos.length} item(ns)</small></div>
+          <div class="mod-summary__item"><span>Recorrentes no cartão</span><strong>${formatCurrency(fixoCartao)}</strong><small>${doCartao.length} item(ns)</small></div>
         </div>
+        ${porPessoa ? `<div class="cf-people">${porPessoa}</div>` : ''}
         ${this.renderRecurringEntriesMonth()}
         ${this.renderCardRecurringMonth()}
         ${this.renderTendencia()}
-        <h3 class="h5 mt-4 mb-2"><i class="bi bi-list-check"></i> Serviços cadastrados</h3>
-        ${this.renderSuggestions()}
+        <div class="mt-4">${this.renderSuggestions()}</div>
+        <div class="cf-services-head">
+          <h3 class="h5 mb-0"><i class="bi bi-list-check"></i> Serviços cadastrados</h3>
+          <span class="cf-services-head__total">${formatCurrency(totalMes)} / mês · ${ativas.length} ativo(s)</span>
+        </div>
+        <p class="mod-suggest__hint">Lista de referência das suas contas e assinaturas. Fica fora do gasto fixo do mês para não contar duas vezes o que já está lançado no Mês a mês.</p>
         ${list.length ? `<div class="mod-grid">${cards}</div>` : emptyBlock('arrow-repeat', 'Nenhum serviço fixo cadastrado. Use o botão acima ou as sugestões.')}`;
     }
   };
@@ -2189,13 +2308,27 @@
       </div>`;
   };
 
+  // Altura da barra de abas (fixa no celular) vira --app-tabs-h, usada no espaço
+  // reservado no fim da página
+  const watchTabsHeight = () => {
+    const nav = document.querySelector('.app-tabs');
+    if (!nav) return;
+    const aplicar = () => document.documentElement.style.setProperty('--app-tabs-h', `${Math.ceil(nav.getBoundingClientRect().height)}px`);
+    aplicar();
+    if (typeof ResizeObserver === 'function') new ResizeObserver(aplicar).observe(nav);
+    else window.addEventListener('resize', aplicar);
+  };
+
   const init = () => {
     buildTabs();
+    watchTabsHeight();
     document.addEventListener('click', handleModuleClick);
     document.addEventListener('keydown', handleModuleMenuKeydown);
     document.addEventListener('input', handleRelatorioFilter);
     document.addEventListener('change', handleRelatorioFilter);
     document.addEventListener('keydown', handleRelatorioKeydown);
+    // "toggle" do <details> não borbulha: escuta na fase de captura
+    document.addEventListener('toggle', handleContasFixasToggle, true);
 
     // Mantém dashboard/anual/relatórios sincronizados ao trocar de mês/ano
     ['selectMonth', 'selectYear'].forEach((id) => document.getElementById(id)?.addEventListener('change', () => setTimeout(refreshActiveView, 0)));

@@ -54,6 +54,13 @@ const handleRemoteUpdate = (remoteData, skipMirror = false) => {
 // Fonte única da versão: a meta do index.html, que é o mesmo valor do ?v= dos arquivos
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content?.trim() || 'dev';
 const RELOAD_GUARD_KEY = 'financas_casa_reloaded_version';
+
+// Na tela a versão aparece no padrão BR (dia/mês/ano e horário); por dentro continua
+// AAAAMMDD-HHMM, que é o que o hook grava e o que vai no ?v= dos arquivos.
+const formatAppVersion = (version) => {
+  const m = String(version || '').match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : String(version || '');
+};
 const updateState = {
   registration: null,
   waitingWorker: null,
@@ -88,7 +95,7 @@ const hasPendingUpdate = () => Boolean(
 const showPendingUpdateNotice = () => {
   if (updateState.noticeShown) return;
   updateState.noticeShown = true;
-  const version = updateState.targetVersion ? ` v${updateState.targetVersion}` : '';
+  const version = updateState.targetVersion ? ` v${formatAppVersion(updateState.targetVersion)}` : '';
   notify.info(`Atualização${version} disponível. Vou salvar as alterações e aplicar quando não houver formulário aberto.`);
 };
 
@@ -200,7 +207,8 @@ const checkRemoteAppVersion = async () => {
 
 const showAppVersion = () => {
   if (!dom.appVersion) return;
-  dom.appVersion.textContent = `v${APP_VERSION}`;
+  dom.appVersion.textContent = `v${formatAppVersion(APP_VERSION)}`;
+  dom.appVersion.title = `Versão ${formatAppVersion(APP_VERSION)} (${APP_VERSION}) — toque para buscar atualização`;
   dom.appVersion.hidden = false;
   // Atualização manual também aguarda o formulário e a sincronização terminarem.
   dom.appVersion.addEventListener('click', requestSafeRefresh);
