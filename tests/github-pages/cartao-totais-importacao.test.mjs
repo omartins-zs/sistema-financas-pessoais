@@ -269,6 +269,39 @@ test('banco do arquivo: CSV sem cabeçalho de banco usa o nome do arquivo', asyn
   assert.equal(bankIssuerName('', 'extrato.csv'), 'Cartão');
 });
 
+test('cartão de crédito pode ser cadastrado sem valor; despesa comum continua exigindo valor', async () => {
+  const entriesJs = await read('js/30-entries.js');
+  const erros = [];
+  const context = {
+    allData: { __app: {} },
+    notify: { error: (m) => erros.push(m) },
+    formatCurrency: (v) => `R$ ${Number(v).toFixed(2)}`,
+    normalizeEntry: (e) => e,
+    isCreditCardEntry: (e) => String(e?.category || '').startsWith('Cartão de crédito')
+  };
+  runInNewContext(`${entriesJs}\nglobalThis.__t = { validateEntry, toggleValorObrigatorio };`, context);
+  const { validateEntry, toggleValorObrigatorio } = context.__t;
+
+  const bradesco = { id: 'b', description: 'Bradesco', category: CAT.cartaoGabriel, type: 'despesa', person: 'gabriel', value: 0 };
+  assert.equal(validateEntry(bradesco), true, 'cartão novo com R$ 0,00, para importar os itens depois');
+  assert.equal(validateEntry({ ...bradesco, category: 'Luz' }), false);
+  assert.match(erros.at(-1), /valor maior que zero/);
+  assert.equal(validateEntry({ ...bradesco, person: '' }), false, 'continua exigindo de quem é');
+
+  const valor = { required: true, placeholder: '0,00', title: '' };
+  toggleValorObrigatorio({ value: CAT.cartaoBabi }, valor);
+  assert.equal(valor.required, false, 'no cartão o campo Valor não é obrigatório');
+  assert.match(valor.placeholder, /opcional/);
+  toggleValorObrigatorio({ value: 'Mercado' }, valor);
+  assert.equal(valor.required, true);
+  assert.equal(valor.placeholder, '0,00');
+
+  const events = await read('js/70-events.js');
+  assert.equal((events.match(/toggleValorObrigatorio\(dom\.inputCategory, dom\.inputValue\)/g) || []).length, 2, 'troca de categoria e de tipo no novo lançamento');
+  assert.equal((events.match(/toggleValorObrigatorio\(dom\.editCategory, dom\.editValue\)/g) || []).length, 2, 'troca de categoria e de tipo na edição');
+  assert.match(entriesJs, /toggleValorObrigatorio\(dom\.editCategory, dom\.editValue\);/, 'ao abrir a edição');
+});
+
 test('tela: botão Limpar itens na fatura e diálogo de importação com o cartão escolhido', async () => {
   const render = await read('js/60-render.js');
   const events = await read('js/70-events.js');

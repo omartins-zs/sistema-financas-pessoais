@@ -32,6 +32,7 @@ const resetAddForm = () => {
   dom.inputPerson.value = '';
   maskAdd.typedValue = 0;
   toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'));
+  toggleValorObrigatorio(dom.inputCategory, dom.inputValue);
   dom.inputDescription.focus();
 };
 

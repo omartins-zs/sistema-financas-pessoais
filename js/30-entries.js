@@ -92,6 +92,16 @@ const toggleInvestimentoField = (typeSel, categorySel, investSel, manageBtn, aut
   }
 };
 
+// Valor obrigatório, menos no cartão de crédito: o total da fatura vem dos itens
+// (digitados ou importados), então dá para cadastrar o cartão com R$ 0,00.
+const toggleValorObrigatorio = (categorySel, valueInput) => {
+  if (!categorySel || !valueInput) return;
+  const cartao = isCreditCardEntry({ category: categorySel.value });
+  valueInput.required = !cartao;
+  valueInput.placeholder = cartao ? '0,00 (opcional)' : '0,00';
+  valueInput.title = cartao ? 'No cartão o valor é opcional: ele vira a soma dos itens da fatura' : '';
+};
+
 // Categorias de investimento só se criam na aba Investimentos — aqui é só escolher.
 // Ao escolher uma já existente, a descrição preenche sozinha com o MESMO nome sempre
 // que estiver vazia — é o que faz os lançamentos de meses diferentes ficarem agrupados
@@ -127,7 +137,8 @@ const buildEntryFromForm = (formData) => normalizeEntry({
 const validateEntry = (entry) => {
   if (!entry.description) { notify.error('Informe uma descrição.'); return false; }
   if (!entry.person) { notify.error('Selecione quem paga ou recebe (Gabriel, Barbara ou Casa).'); return false; }
-  if (entry.value <= 0) { notify.error('Informe um valor maior que zero.'); return false; }
+  // Cartão pode nascer zerado (ex.: cria o "Bradesco" e importa a fatura depois): o total vem dos itens
+  if (entry.value <= 0 && !isCreditCardEntry(entry)) { notify.error('Informe um valor maior que zero.'); return false; }
   if (entry.type === 'resgate') {
     if (!entry.investimento_id) {
       notify.error('Selecione de qual investimento será feito o resgate.');
@@ -212,6 +223,7 @@ const openEditModal = (id) => {
   dom.editPerson.value = entry.person ?? '';
   setMaskValue(maskEdit, entry.value);
   toggleInvestimentoField(dom.editType, dom.editCategory, dom.editInvestimento, null);
+  toggleValorObrigatorio(dom.editCategory, dom.editValue);
   if (dom.editInvestimento) dom.editInvestimento.value = entry.investimento_id || '';
 
   editModal.show();

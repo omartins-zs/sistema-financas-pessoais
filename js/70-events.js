@@ -215,6 +215,7 @@ const onCategoryChange = () => {
   if (dom.inputType.value === 'investimento' || dom.inputType.value === 'resgate') {
     dom.inputCategory.value = catPapel('investimentos');
   }
+  toggleValorObrigatorio(dom.inputCategory, dom.inputValue);
 };
 
 const onEditCategoryChange = () => {
@@ -223,6 +224,7 @@ const onEditCategoryChange = () => {
   if (dom.editType.value === 'investimento' || dom.editType.value === 'resgate') {
     dom.editCategory.value = catPapel('investimentos');
   }
+  toggleValorObrigatorio(dom.editCategory, dom.editValue);
 };
 
 const onTypeChange = () => {
@@ -234,6 +236,7 @@ const onTypeChange = () => {
     dom.inputDueDay.value = '';
   }
   toggleInvestimentoField(dom.inputType, dom.inputCategory, dom.inputInvestimento, document.getElementById('btnManageCategories'), true);
+  toggleValorObrigatorio(dom.inputCategory, dom.inputValue);
 };
 
 const onEditTypeChange = () => {
@@ -241,4 +244,5 @@ const onEditTypeChange = () => {
     dom.editCategory.value = catPapel('investimentos');
   }
   toggleInvestimentoField(dom.editType, dom.editCategory, dom.editInvestimento, null, true);
+  toggleValorObrigatorio(dom.editCategory, dom.editValue);
 };
