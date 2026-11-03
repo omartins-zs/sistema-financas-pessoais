@@ -648,6 +648,68 @@ const deleteCardItem = (entryId, itemId) => {
   render();
 };
 
+// Limpa a fatura (ex.: para reimportar): tira os itens, podendo manter os recorrentes
+// e os valores de terceiros. Vai para o Histórico (dá para desfazer) e tira uma cópia
+// local antes, como as outras ações perigosas.
+const clearCardItems = async (entryId) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  if (!entry) return;
+  const itens = (entry.card_items ?? []).filter((i) => !isDefaultCardItem(i));
+  const recorrentes = itens.filter((i) => i.recurring === true);
+  const terceiros = getCardTerceiros(entry);
+  if (!itens.length && !terceiros.length) { notify.info('Esta fatura já está sem itens.'); return; }
+
+  const { value: opcoes, isConfirmed } = await Swal.fire({
+    title: `Limpar itens de “${escapeHtml(entry.description)}”?`,
+    html: `<div class="clear-card">
+        <p class="clear-card__info"><strong>${itens.length}</strong> item(ns) · ${formatCurrency(sumCardItems(itens))}</p>
+        ${recorrentes.length ? `<label class="clear-card__opt"><input type="checkbox" id="clearKeepRec" checked> Manter os <strong>${recorrentes.length}</strong> recorrente(s) (${formatCurrency(sumCardItems(recorrentes))})</label>` : ''}
+        ${terceiros.length ? `<label class="clear-card__opt"><input type="checkbox" id="clearTerceiros" checked> Apagar também os <strong>${terceiros.length}</strong> valor(es) de terceiros (${formatCurrency(sumCardTerceiros(entry))})</label>` : ''}
+        <p class="clear-card__hint">Dá para desfazer pelo Histórico.</p>
+      </div>`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '<i class="bi bi-eraser"></i> Sim, limpar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#94a3b8',
+    reverseButtons: true,
+    focusCancel: true,
+    preConfirm: () => {
+      const popup = Swal.getPopup();
+      return {
+        manterRecorrentes: popup.querySelector('#clearKeepRec')?.checked === true,
+        limparTerceiros: popup.querySelector('#clearTerceiros')?.checked === true
+      };
+    }
+  });
+  if (!isConfirmed || !opcoes) return;
+  try { await AppStorage.backupNow?.(allData, `antes de: limpar itens de “${entry.description}”`, { nuvem: false }); } catch {}
+
+  // Relê depois do diálogo: os dados podem ter mudado (outra aba/aparelho)
+  const entries = getCurrentEntries();
+  const index = entries.findIndex((e) => e.id === entryId);
+  if (index === -1) return;
+  const base = migrarTerceirosDosItens(cloneDados(entries[index]));
+  const ficam = opcoes.manterRecorrentes
+    ? (base.card_items ?? []).filter((i) => i.recurring === true && !isDefaultCardItem(i))
+    : [];
+  const removidos = (base.card_items ?? []).filter((i) => !isDefaultCardItem(i)).length - ficam.length;
+  const next = { ...base, card_items: ficam, value: sumCardItems(ficam) };
+  if (opcoes.limparTerceiros) next.terceiros = [];
+
+  // O "Desfazer última importação" desta fatura deixaria de fazer sentido (os itens saíram)
+  if (allData.__app?.ultimaImportacao?.tipo === 'cartao' && allData.__app.ultimaImportacao.entryId === entryId) {
+    delete allData.__app.ultimaImportacao;
+  }
+
+  expandedCardEntries.add(entryId);
+  setCurrentEntries(entries.map((e, i) => (i === index ? next : e)),
+    `limpou ${removidos} item(ns) da fatura “${entry.description}”${ficam.length ? ` (manteve ${ficam.length} recorrente(s))` : ''}${opcoes.limparTerceiros && terceiros.length ? ' e os valores de terceiros' : ''}`);
+  render();
+  notify.info(`Fatura “${entry.description}” limpa${ficam.length ? `: ficaram ${ficam.length} recorrente(s)` : ''}.`);
+};
+
 // Reordena apenas os ids informados, mantendo os demais itens nas posições atuais
 // (avulsos e recorrentes são grupos separados na tela).
 const applyCardItemsOrder = (entryId, orderedIds) => {

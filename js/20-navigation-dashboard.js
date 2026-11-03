@@ -233,9 +233,12 @@ const onMonthChange = () => {
 // Cálculos
 // ============================================
 
+// Cartão com terceiros entra pelo valor sem terceiros (valorContabil, em 00-core.js)
 const calculateSummary = (entries) =>
   entries.reduce(
-    (acc, { type, value, status, person }) => {
+    (acc, entry) => {
+      const { type, status, person } = entry;
+      const value = typeof valorContabil === 'function' ? valorContabil(entry) : entry.value;
       if (type === 'entrada') acc.income += value;
       else if (type === 'investimento') acc.investment += value;
       else if (type === 'resgate') acc.investment -= value;
@@ -286,8 +289,8 @@ const splitEntries = (entries) => ({
 const getExpensesByCategory = (entries) =>
   entries
     .filter((e) => e.type === 'despesa')
-    .reduce((acc, { category, value }) => {
-      acc[category] = (acc[category] ?? 0) + value;
+    .reduce((acc, entry) => {
+      acc[entry.category] = (acc[entry.category] ?? 0) + (typeof valorContabil === 'function' ? valorContabil(entry) : entry.value);
       return acc;
     }, {});
 

@@ -1701,7 +1701,7 @@
 
       // Despesas por categoria — top 7 + "Outras"
       const porCat = {};
-      despesas.forEach((e) => { const k = e.category || 'Sem categoria'; porCat[k] = (porCat[k] || 0) + (Number(e.value) || 0); });
+      despesas.forEach((e) => { const k = e.category || 'Sem categoria'; porCat[k] = (porCat[k] || 0) + valorContabil(e); });
       const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]);
       const topCats = cats.slice(0, 7);
       if (cats.length > 7) topCats.push(['Outras', sum(cats.slice(7), (c) => c[1])]);
@@ -1709,7 +1709,7 @@
 
       // Despesas por pessoa
       const porPessoa = {};
-      despesas.forEach((e) => { const k = e.person || 'casa'; porPessoa[k] = (porPessoa[k] || 0) + (Number(e.value) || 0); });
+      despesas.forEach((e) => { const k = e.person || 'casa'; porPessoa[k] = (porPessoa[k] || 0) + valorContabil(e); });
       const pessoas = Object.keys(porPessoa);
       const corPessoa = { gabriel: '#3b82f6', barbara: '#ec4899', casa: '#f59e0b' };
       rosca('dashChartPessoa', pessoas.map((p) => (typeof PERSON_LABELS !== 'undefined' && PERSON_LABELS[p]) || p), pessoas.map((p) => porPessoa[p]), pessoas.map((p, i) => corPessoa[p] || CHART_COLORS[i % CHART_COLORS.length]));
@@ -1994,7 +1994,7 @@
     mes: (e) => e.mes,
     descricao: (e) => String(e.description || '').toLowerCase(),
     categoria: (e) => String(e.category || '').toLowerCase(),
-    valor: (e) => Number(e.value) || 0
+    valor: (e) => valorContabil(e)
   };
 
   const Relatorios = {
@@ -2052,7 +2052,8 @@
 
     totais(lista) {
       const t = { entrada: 0, despesa: 0, investimento: 0, resgate: 0 };
-      lista.forEach((e) => { t[e.type] = (t[e.type] || 0) + (Number(e.value) || 0); });
+      // cartão com terceiros entra sem a parte de terceiros, igual ao resumo do mês
+      lista.forEach((e) => { t[e.type] = (t[e.type] || 0) + valorContabil(e); });
       t.investimento -= t.resgate;
       t.saldo = t.entrada - t.despesa - t.investimento;
       return t;
@@ -2063,7 +2064,7 @@
       const mapa = new Map();
       lista.forEach((e) => {
         if (e.type !== 'despesa') return;
-        mapa.set(e.category, (mapa.get(e.category) || 0) + (Number(e.value) || 0));
+        mapa.set(e.category, (mapa.get(e.category) || 0) + valorContabil(e));
       });
       return [...mapa.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
     },
@@ -2141,7 +2142,7 @@
           <td>${escapeHtml(e.category)}</td>
           <td>${escapeHtml(PERSON_LABELS[e.person] || '—')}</td>
           <td>${escapeHtml(STATUS_LABELS[e.status] || e.status)}</td>
-          <td class="num">${e.type === 'resgate' ? `− ${formatCurrency(e.value)}` : formatCurrency(e.value)}</td>
+          <td class="num">${e.type === 'resgate' ? `− ${formatCurrency(e.value)}` : formatCurrency(valorContabil(e))}${valorContabil(e) !== (Number(e.value) || 0) && e.type !== 'resgate' ? `<small class="d-block text-muted">fatura ${formatCurrency(e.value)}</small>` : ''}</td>
         </tr>`).join('');
 
       el.innerHTML = `

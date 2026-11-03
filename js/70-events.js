@@ -49,6 +49,11 @@ const handleListClick = (e) => {
     return;
   }
 
+  if (action === 'clear-card-items') {
+    clearCardItems(id);
+    return;
+  }
+
   if (action === 'add-card-terceiro') {
     submitCardTerceiroAdd(btn.closest('.card-items-panel'), id);
     return;

@@ -5,9 +5,65 @@ const registrarUndoImportacao = (log) => {
   allData.__app.ultimaImportacao = { quando: dayjs().toISOString(), ...log };
 };
 
+// Mesmo cartão em meses diferentes: nome + categoria + pessoa (ex.: "Nubank" do Gabriel)
+const cardKey = (e) => `${String(e?.description || '').trim().toLowerCase()}|${e?.category || ''}|${e?.person || ''}`;
+
+const findEntryAnyMonth = (id) => {
+  for (const k of Object.keys(allData)) {
+    if (!/^\d{4}-\d{2}$/.test(k)) continue;
+    const e = (allData[k] || []).find((x) => x && x.id === id);
+    if (e) return e;
+  }
+  return null;
+};
+
+// Destinos da fatura no diálogo de importação: os cartões já lançados no mês escolhido,
+// os de outros meses (criados no mês ao importar; os mais próximos primeiro) e "novo
+// cartão" por categoria. Pré-seleciona pelo nome do banco do arquivo (Nubank, Santander…).
+const opcoesCartaoImportacao = (mes, nomeCartao, cardCats) => {
+  const noMes = (allData[mes] || []).filter((e) => e && isCreditCardEntry(e));
+  const vistos = new Set(noMes.map(cardKey));
+  const distancia = (k) => Math.abs((Number(k.slice(0, 4)) * 12 + Number(k.slice(5, 7))) - (Number(String(mes).slice(0, 4)) * 12 + Number(String(mes).slice(5, 7))));
+  const deOutrosMeses = [];
+  Object.keys(allData)
+    .filter((k) => /^\d{4}-\d{2}$/.test(k) && k !== mes)
+    .sort((a, b) => distancia(a) - distancia(b) || b.localeCompare(a))
+    .forEach((k) => (allData[k] || []).forEach((e) => {
+      if (!e || !isCreditCardEntry(e) || vistos.has(cardKey(e))) return;
+      vistos.add(cardKey(e));
+      deOutrosMeses.push(e);
+    }));
+  const rotulo = (e) => `${e.description} · ${PERSON_LABELS[e.person] || e.category}`;
+  const opcoes = [
+    ...noMes.map((e) => ({ value: `entry:${e.id}`, grupo: 'mes', nome: e.description, label: `${rotulo(e)} — ${formatCurrency(Number(e.value) || 0)}` })),
+    ...deOutrosMeses.map((e) => ({ value: `modelo:${e.id}`, grupo: 'outros', nome: e.description, label: `${rotulo(e)} (criar neste mês)` })),
+    ...cardCats.map((c) => ({ value: `novo:${c}`, grupo: 'novo', nome: '', label: `Novo cartão “${nomeCartao}” — ${c}` }))
+  ];
+  const banco = String(nomeCartao || '').trim().toLowerCase();
+  const combina = (o) => Boolean(banco) && banco !== 'cartão' && Boolean(o.nome) && o.nome.toLowerCase().includes(banco);
+  const escolhida = opcoes.find((o) => o.grupo === 'mes' && combina(o))
+    || opcoes.find((o) => o.grupo === 'outros' && combina(o))
+    || opcoes.find((o) => o.grupo === 'mes')
+    || opcoes[0];
+  return { opcoes, selecionado: escolhida ? escolhida.value : '' };
+};
+
+const opcoesCartaoHtml = ({ opcoes, selecionado }, mes) => {
+  const nomeMes = /^\d{4}-\d{2}$/.test(mes) ? dayjs(`${mes}-01`).format('MMMM [de] YYYY') : 'este mês';
+  const grupo = (g, titulo) => {
+    const itens = opcoes.filter((o) => o.grupo === g);
+    return itens.length
+      ? `<optgroup label="${escapeAttr(titulo)}">${itens.map((o) => `<option value="${escapeAttr(o.value)}"${o.value === selecionado ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</optgroup>`
+      : '';
+  };
+  return grupo('mes', `Cartões lançados em ${nomeMes}`) + grupo('outros', 'De outros meses') + grupo('novo', 'Novo');
+};
+
 // Fatura importada vira itens DENTRO do lançamento do cartão (o mesmo painel
-// com drag & drop), em vez de dezenas de despesas soltas no mês.
-const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }) => {
+// com drag & drop), em vez de dezenas de despesas soltas no mês. "alvo" é a opção
+// escolhida no diálogo: entry:<id> (cartão do mês), modelo:<id> (cartão de outro mês,
+// criado neste) ou novo:<categoria>.
+const importFaturaAsCardItems = (txs, { mes, alvo }, { dueDay, nomeCartao }) => {
   const ehGasto = makeCardExpenseTest(txs);
   const gastos = txs.filter(ehGasto);
   const pagamentos = txs.length - gastos.length;
@@ -15,15 +71,41 @@ const importFaturaAsCardItems = (txs, { mes, categoria }, { dueDay, nomeCartao }
 
   const lista = [...(allData[mes] || [])];
   const antesLista = allData[mes] || [];
-  let index = lista.findIndex((e) => isCreditCardEntry(e) && e.category === categoria);
+  const [tipoAlvo, ...resto] = String(alvo || '').split(':');
+  const valorAlvo = resto.join(':');
+  let modelo = null;
+  let categoria = catPapel('cartao');
+  let index = -1;
+  if (tipoAlvo === 'entry') {
+    index = lista.findIndex((e) => e.id === valorAlvo && isCreditCardEntry(e));
+    if (index === -1) { notify.error('Esse cartão não está mais neste mês. Abra a importação de novo.'); return; }
+  } else {
+    if (tipoAlvo === 'modelo') {
+      modelo = findEntryAnyMonth(valorAlvo);
+      if (!modelo) { notify.error('Não achei esse cartão. Abra a importação de novo.'); return; }
+      categoria = modelo.category;
+    } else if (tipoAlvo === 'novo' && valorAlvo) {
+      categoria = valorAlvo;
+    }
+    // Já existe um cartão igual no mês? Usa ele em vez de criar outro
+    const chave = cardKey(modelo || { description: nomeCartao, category: categoria, person: personFromCardCategory(categoria) || '' });
+    index = lista.findIndex((e) => isCreditCardEntry(e) && cardKey(e) === chave);
+  }
   const entryCriada = index === -1;
   const valorAnterior = entryCriada ? 0 : Number(lista[index].value) || 0;
   let entry;
   if (index === -1) {
     entry = {
-      id: generateId(), description: nomeCartao, category: categoria, type: 'despesa',
-      person: personFromCardCategory(categoria) || '', value: 0, status: 'nao_pago',
-      due_day: dueDay || null, observation: '', card_items: []
+      id: generateId(),
+      description: modelo ? modelo.description : nomeCartao,
+      category: categoria,
+      type: 'despesa',
+      person: modelo ? (modelo.person || '') : (personFromCardCategory(categoria) || ''),
+      value: 0,
+      status: 'nao_pago',
+      due_day: dueDay || (modelo && modelo.due_day) || null,
+      observation: '',
+      card_items: []
     };
     lista.push(entry);
     index = lista.length - 1;
@@ -125,6 +207,7 @@ const importBankStatement = async (file) => {
   const diaVencimento = nomeData ? +nomeData[3] : null;
   const cardCats = [catPapel('cartaoGabriel'), catPapel('cartaoBabi'), catPapel('cartao')].filter((c) => CATEGORIAS.includes(c));
   const nomeCartao = bankIssuerName(org, file.name);
+  const opcoesIniciais = opcoesCartaoImportacao(mesFaturaDefault, nomeCartao, cardCats);
 
   const { value: escolha, isConfirmed } = await Swal.fire({
     title: `Importar ${formato}?`,
@@ -137,9 +220,9 @@ const importBankStatement = async (file) => {
       </label>
       <div id="bankCardOpts" style="margin:.2rem 0 .55rem 1.45rem;display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">
         <label style="margin:0">Mês da fatura <input type="month" id="bankCardMes" value="${mesFaturaDefault}" style="padding:.2rem .3rem"></label>
-        <label style="margin:0">Cartão <select id="bankCardCat" style="padding:.25rem .3rem;max-width:14rem">
-          ${cardCats.map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`).join('')}
-        </select></label>
+        <label style="margin:0;display:flex;flex-direction:column;gap:.2rem;flex:1 1 100%">Cartão
+          <select id="bankCardAlvo" class="fm-input" style="max-width:100%">${opcoesCartaoHtml(opcoesIniciais, mesFaturaDefault)}</select>
+        </label>
       </div>
       <label style="display:block;margin:.3rem 0;cursor:pointer">
         <input type="radio" name="bankMode" value="conta"${sugestao === 'conta' ? ' checked' : ''}>
@@ -158,6 +241,13 @@ const importBankStatement = async (file) => {
         opts.style.opacity = modo === 'cartao' ? '1' : '.45';
       };
       popup.querySelectorAll('input[name="bankMode"]').forEach((r) => r.addEventListener('change', sync));
+      // Trocou o mês da fatura: lista os cartões daquele mês
+      const mesInput = popup.querySelector('#bankCardMes');
+      const alvoSelect = popup.querySelector('#bankCardAlvo');
+      mesInput.addEventListener('change', () => {
+        const m = mesInput.value;
+        alvoSelect.innerHTML = opcoesCartaoHtml(opcoesCartaoImportacao(m, nomeCartao, cardCats), m);
+      });
       sync();
     },
     preConfirm: () => {
@@ -166,9 +256,10 @@ const importBankStatement = async (file) => {
       if (!tipo) { Swal.showValidationMessage('Escolha o tipo do arquivo.'); return false; }
       if (tipo === 'conta') return { tipo };
       const mes = popup.querySelector('#bankCardMes').value;
-      const categoria = popup.querySelector('#bankCardCat').value;
+      const alvo = popup.querySelector('#bankCardAlvo').value;
       if (!/^\d{4}-\d{2}$/.test(mes)) { Swal.showValidationMessage('Informe o mês da fatura.'); return false; }
-      return { tipo, mes, categoria };
+      if (!alvo) { Swal.showValidationMessage('Escolha o cartão.'); return false; }
+      return { tipo, mes, alvo };
     }
   });
   if (!isConfirmed || !escolha) return;

@@ -317,7 +317,7 @@ const sumCardItems = (items = []) =>
 // ---- Valores de terceiros da fatura (cartão emprestado / conta dividida) ----
 // Lista no próprio lançamento do cartão: [{ id, descricao, pessoa, valor }].
 // Ex.: Outback R$ 1.000 → "Outback · Pai · 300" e "Outback · Irmão · 300".
-// Só informativo: o valor do lançamento continua sendo a fatura cheia.
+// O lançamento guarda a fatura cheia; os totais do mês usam valorContabil (sem terceiros).
 const arredondaCentavos = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
 const normalizarTerceiro = (t) => ({
@@ -357,7 +357,13 @@ const getCardTerceiros = (entry) => {
 const sumCardTerceiros = (entry) =>
   arredondaCentavos(getCardTerceiros(entry).reduce((acc, t) => acc + (Number(t.valor) || 0), 0));
 
-const totalSemTerceiros = (entry) => arredondaCentavos((Number(entry?.value) || 0) - sumCardTerceiros(entry));
+// Nunca negativo: ex. itens limpos para reimportar mantendo os terceiros
+const totalSemTerceiros = (entry) => Math.max(0, arredondaCentavos((Number(entry?.value) || 0) - sumCardTerceiros(entry)));
+
+// Valor que conta nos totais (Despesas, Pago, Não pago, Sobra, % comprometido, Anual,
+// Dashboard, Relatórios): na fatura do cartão desconta a parte de terceiros. O valor
+// do lançamento (fatura cheia) não muda e continua sendo o que vai na exportação.
+const valorContabil = (entry) => (isCreditCardEntry(entry) ? totalSemTerceiros(entry) : (Number(entry?.value) || 0));
 
 // Quanto cada pessoa deve na fatura (maior primeiro)
 const terceirosPorPessoa = (entry) => {

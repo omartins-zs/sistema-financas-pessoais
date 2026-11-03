@@ -188,7 +188,7 @@ const renderTerceirosSection = (entry, items, ctx) => {
       </div>
       <datalist id="${idItens}">${descricoesItens.map((d) => `<option value="${escapeAttr(d)}">`).join('')}</datalist>
       <datalist id="${idPessoas}">${pessoasTerceirosConhecidas().map((p) => `<option value="${escapeAttr(p)}">`).join('')}</datalist>
-      <p class="card-item-add__hint">Enter adiciona · Só para controle: nas despesas do mês a fatura continua com o valor cheio</p>
+      <p class="card-item-add__hint">Enter adiciona · Nos totais do mês (Despesas, Pago, Sobra, % comprometido) conta só o valor sem terceiros</p>
       ${totalTerceiros > 0 ? `<div class="card-terceiros-sum">
         <div><span>Total da fatura</span><strong>${formatCurrency(Number(entry.value) || 0)}</strong></div>
         <div class="card-terceiros-sum__terceiros"><span><i class="bi bi-people-fill"></i> Terceiros</span><strong>− ${formatCurrency(totalTerceiros)}</strong></div>
@@ -212,7 +212,12 @@ const renderCardItemsPanel = (entry, items, ctx = 'tabela') => {
 
   return `
     <div class="card-items-panel" data-card-id="${entry.id}">
-      <p class="card-items-panel__title"><i class="bi bi-receipt"></i> Itens da fatura</p>
+      <div class="card-items-panel__head">
+        <p class="card-items-panel__title"><i class="bi bi-receipt"></i> Itens da fatura</p>
+        ${items.some((i) => !isDefaultCardItem(i)) || getCardTerceiros(entry).length
+          ? `<button type="button" class="card-items-clear" data-action="clear-card-items" data-id="${entry.id}" title="Tirar os itens desta fatura (ex.: para importar de novo)"><i class="bi bi-eraser"></i> Limpar itens</button>`
+          : ''}
+      </div>
       <ul class="card-items-list">${regularHtml}</ul>
       <p class="card-items-panel__title card-items-panel__title--recurring"><i class="bi bi-arrow-repeat"></i> Recorrentes no cartão</p>
       <ul class="card-items-list card-items-list--recurring">${recurringHtml}</ul>

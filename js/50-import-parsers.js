@@ -303,6 +303,11 @@ const makeCardExpenseTest = (txs) => {
 const bankIssuerName = (org, fileName) => {
   const fonte = `${org || ''} ${fileName || ''}`;
   if (/nu\s*pagamentos|nubank/i.test(fonte)) return 'Nubank';
+  // CSV não traz o banco: usa o nome do arquivo (ex.: "Santander_2026-11.csv")
+  const conhecido = [[/santander/i, 'Santander'], [/ita[uú]/i, 'Itaú'], [/bradesco/i, 'Bradesco'], [/\binter\b|banco\s*inter/i, 'Inter'],
+    [/\bc6\b/i, 'C6'], [/caixa/i, 'Caixa'], [/picpay/i, 'PicPay'], [/mercado\s*pago/i, 'Mercado Pago'], [/\bxp\b/i, 'XP']]
+    .find(([re]) => re.test(fonte));
+  if (conhecido) return conhecido[1];
   if (org) return titleCaseDesc(org.toLowerCase().replace(/\s+s\.?a\.?$/i, '').trim());
   return 'Cartão';
 };
