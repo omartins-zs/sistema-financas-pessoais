@@ -18,25 +18,58 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
 
 const PERSON_LABELS = { gabriel: 'Gabriel', barbara: 'Barbara', casa: 'Casa', familia: 'Família' };
 
-const loadContasFixas = async (allData, armazenado = {}) => {
+// "Mês" falso no formato do dayjs que o app usa: key YYYY-MM, format() e subtract(n, 'month')
+const mes = (key) => {
+  const [y, m] = key.split('-').map(Number);
+  const shift = (n) => {
+    const d = new Date(Date.UTC(y, m - 1 - n, 1));
+    return mes(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  };
+  return { key, format: () => key, subtract: (n) => shift(n), month: () => m - 1, year: () => y };
+};
+
+// Detecção de sugestões + helpers e conta manual das Contas fixas (app-modules.js)
+const loadContasFixas = async (allData, { armazenado = {}, mesAberto = '2026-11' } = {}) => {
   const modules = await read('app-modules.js');
-  const trecho = slice(modules, 'const PERSON_ORDER =', 'const Assinaturas = {');
+  const trecho = slice(modules, 'const subscriptionSkipCategories =', 'const Assinaturas = {');
   const storage = { ...armazenado };
+  const historicoMes = [];
+  const historicoModulo = [];
+  const avisos = [];
+  let seq = 0;
+  if (!allData.__app) allData.__app = {};
   const context = {
     allData,
     PERSON_LABELS,
+    MESES: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+    MES_KEY_RE: /^\d{4}-\d{2}$/,
+    CATEGORIAS: ['Aluguel', 'Mercado', 'Cartão de crédito Gabriel', 'Investimentos', 'Outros'],
     getMonthKey: (d) => d.key,
-    currentDate: { key: '2026-11' },
+    currentDate: mes(mesAberto),
+    catPapel: (p) => ({ outros: 'Outros', cartaoGabriel: 'Cartão de crédito Gabriel', cartaoBabi: 'Cartão de crédito Babi', cartao: 'Cartão de crédito', investimentos: 'Investimentos' })[p] || p,
     isCreditCardEntry: (e) => String(e.category || '').toLowerCase().includes('cartão'),
     sum: (arr, f) => arr.reduce((a, x) => a + (f ? f(x) : x), 0),
+    coll: (nome) => { if (!Array.isArray(allData.__app[nome])) allData.__app[nome] = []; return allData.__app[nome]; },
+    upsert: (nome, item) => {
+      const lista = context.coll(nome);
+      const i = lista.findIndex((x) => x.id === item.id);
+      if (i >= 0) lista[i] = item; else lista.push(item);
+    },
+    generateId: () => `novo-${++seq}`,
+    notify: { success: (m) => avisos.push(m), error: (m) => avisos.push(`ERRO: ${m}`), info: (m) => avisos.push(m) },
+    cloneDados: (x) => JSON.parse(JSON.stringify(x)),
+    registrarHistoricoMes: (mesKey, antes, depois, acao) => historicoMes.push({ mesKey, acao, antes: antes.length, depois: depois.length }),
+    registrarHistoricoModulo: (colecao, antes, depois) => historicoModulo.push({ colecao, antes, depois }),
+    saveData: () => {},
+    window: {},
     localStorage: {
       getItem: (k) => (k in storage ? storage[k] : null),
       setItem: (k, v) => { storage[k] = String(v); }
     }
   };
   runInNewContext(`${trecho}
-globalThis.__t = { recurringEntriesForMonth, recurringCardItemsForMonth, groupByPerson, fixedSpendByPersonForMonth, cfAberto, handleContasFixasToggle };`, context);
-  return { t: context.__t, storage };
+globalThis.__t = { detectSubscriptionCandidates, recurringEntriesForMonth, recurringCardItemsForMonth, groupByPerson, fixedSpendByPersonForMonth, cfAberto, handleContasFixasToggle, contasManuais, contasManuaisDoMes, criarContaFixaManual, lerContaManual, pagosComStatus, migrarContasManuaisDoMes };`, context);
+  return { t: context.__t, context, storage, historicoMes, historicoModulo, avisos };
 };
 
 const novembro = () => ({
@@ -84,19 +117,122 @@ test('contas fixas: agrupa por pessoa na ordem do app e soma cada grupo em centa
   ]);
 });
 
-test('mês a mês: gasto fixo por pessoa não inclui serviços cadastrados', async () => {
+test('Açougue R$ 250 em "Nova conta fixa" fica só nas Contas fixas e não vai para o Mês a mês', async () => {
   const dados = novembro();
-  dados.__app = { assinaturas: [{ id: 's1', nome: 'Netflix', valor: 55.9, status: 'ativa' }] };
+  const mesAntes = JSON.stringify(dados['2026-11']);
+  const { t, context, avisos } = await loadContasFixas(dados);
+
+  assert.equal(t.criarContaFixaManual({ descricao: ' Açougue ', pessoa: 'casa', categoria: 'Mercado', valor: 250, vencimento: '', status: 'nao_pago', observacao: '' }), true);
+
+  assert.equal(JSON.stringify(dados['2026-11']), mesAntes, 'nenhum lançamento novo no Mês a mês');
+  assert.equal(Object.keys(dados).filter((k) => /^\d{4}-\d{2}$/.test(k)).length, 2, 'nenhum mês novo criado');
+  const [acougue] = plain(t.contasManuais());
+  assert.equal(acougue.nome, 'Açougue');
+  assert.equal(acougue.valor, 250);
+  assert.equal(acougue.pessoa, 'casa');
+  assert.equal(acougue.manual, true);
+  assert.equal(acougue.desde, '2026-11', 'vale a partir do mês em que foi cadastrada');
+  assert.deepEqual(acougue.pagos, {});
+  assert.match(avisos.at(-1), /não vai para o Mês a mês/);
+
+  assert.deepEqual(plain(t.contasManuaisDoMes('2026-11').map((a) => [a.nome, a.valor, a.status])), [['Açougue', 250, 'nao_pago']]);
+  assert.equal(t.contasManuaisDoMes('2026-12').length, 1, 'repete nos meses seguintes');
+  assert.equal(t.contasManuaisDoMes('2026-10').length, 0, 'não aparece antes de existir');
+
+  assert.equal(t.fixedSpendByPersonForMonth('2026-11').casa, 250, 'entra no gasto fixo da Casa');
+  assert.equal(t.fixedSpendByPersonForMonth('2026-10').casa, undefined);
+
+  assert.equal(t.criarContaFixaManual({ descricao: 'açougue', pessoa: 'casa', valor: 300 }), false, 'mesma conta da mesma pessoa não duplica');
+  assert.match(avisos.at(-1), /já está nas contas fixas/);
+  assert.equal(t.criarContaFixaManual({ descricao: 'Feira', pessoa: '', valor: 120 }), false, 'precisa dizer de quem é');
+  assert.equal(t.criarContaFixaManual({ descricao: 'Feira', pessoa: 'barbara', valor: 0 }), false, 'precisa de valor');
+  assert.equal(t.contasManuais().length, 1);
+  assert.equal(context.coll('assinaturas').length, 1);
+});
+
+test('pago de conta manual é por mês e serviços antigos (sem manual) continuam ocultos', async () => {
+  const dados = novembro();
+  dados.__app = {
+    assinaturas: [
+      { id: 's1', nome: 'Netflix', valor: 55.9, status: 'ativa' },
+      { id: 'm1', manual: true, nome: 'Feira', pessoa: 'barbara', categoria: 'Mercado', valor: 120, vencimentoDia: 5, desde: '2026-10', pagos: { '2026-10': 'pago' }, status: 'ativa' }
+    ]
+  };
   const { t } = await loadContasFixas(dados);
 
-  assert.deepEqual(plain(t.fixedSpendByPersonForMonth('2026-11')), { gabriel: 705.43, barbara: 607.96, '': 10 });
-  assert.deepEqual(plain(t.fixedSpendByPersonForMonth('2026-10')), { gabriel: 500 });
-  assert.deepEqual(plain(t.fixedSpendByPersonForMonth('2026-09')), {}, 'mês sem lançamentos não quebra');
+  assert.deepEqual(plain(t.contasManuais().map((a) => a.id)), ['m1'], 'Netflix (serviço antigo) não aparece');
+  assert.equal(t.contasManuaisDoMes('2026-10')[0].status, 'pago');
+  assert.equal(t.contasManuaisDoMes('2026-11')[0].status, 'nao_pago', 'mês novo começa não pago');
+  assert.equal(t.contasManuaisDoMes('2026-11')[0].vencimentoDia, 5);
+
+  assert.deepEqual(plain(t.pagosComStatus({ '2026-10': 'pago' }, '2026-11', 'pago')), { '2026-10': 'pago', '2026-11': 'pago' });
+  assert.deepEqual(plain(t.pagosComStatus({ '2026-10': 'pago', '2026-11': 'pago' }, '2026-11', 'nao_pago')), { '2026-10': 'pago' });
+
+  assert.deepEqual(plain(t.fixedSpendByPersonForMonth('2026-11')), { gabriel: 705.43, barbara: 727.96, '': 10 },
+    'despesas fixas + Feira + cartão; Netflix fora');
+});
+
+test('Compras do mês e Feira que foram para o Mês a mês voltam para as Contas fixas', async () => {
+  const dados = {
+    '2026-11': [
+      { id: 'cm', description: 'Compras do mês', category: 'Mercado', type: 'despesa', person: 'casa', value: 800, status: 'pago', due_day: 5, observation: '', recurring: true, manual: true },
+      { id: 'fe', description: 'Feira', category: 'Mercado', type: 'despesa', person: 'barbara', value: 120, status: 'nao_pago', due_day: null, observation: 'sábado', recurring: true, manual: true },
+      { id: 'al', description: 'Aluguel', category: 'Aluguel', type: 'despesa', person: 'casa', value: 1800, status: 'nao_pago', recurring: true }
+    ],
+    '2026-12': [
+      { id: 'cm2', description: 'Compras do mês', category: 'Mercado', type: 'despesa', person: 'casa', value: 850, status: 'nao_pago', recurring: true, manual: true }
+    ]
+  };
+  const { t, historicoMes, historicoModulo } = await loadContasFixas(dados);
+
+  assert.equal(t.migrarContasManuaisDoMes(), true);
+  assert.deepEqual(plain(dados['2026-11'].map((e) => e.description)), ['Aluguel'], 'só as manuais saem do Mês a mês');
+  assert.deepEqual(plain(dados['2026-12']), []);
+  assert.deepEqual(plain(historicoMes.map((h) => [h.mesKey, h.antes, h.depois])), [['2026-11', 3, 1], ['2026-12', 1, 0]], 'saída registrada no Histórico (reversível e sincronizada)');
+  assert.match(historicoMes[0].acao, /moveu “Compras do mês”, “Feira” do Mês a mês para Contas fixas/);
+
+  const contas = plain(t.contasManuais());
+  assert.deepEqual(contas.map((a) => [a.id, a.nome, a.pessoa, a.valor, a.desde]), [
+    ['manual-cm', 'Compras do mês', 'casa', 850, '2026-11'],
+    ['manual-fe', 'Feira', 'barbara', 120, '2026-11']
+  ], 'uma conta por nome+pessoa, valor mais recente, desde o primeiro mês');
+  assert.deepEqual(contas[0].pagos, { '2026-11': 'pago' }, 'o pago de novembro é mantido');
+  assert.equal(contas[0].vencimentoDia, 5);
+  assert.equal(contas[1].observacao, 'sábado');
+  assert.equal(historicoModulo.length, 2);
+
+  assert.equal(t.migrarContasManuaisDoMes(), false, 'rodar de novo não faz nada');
+
+  dados['2026-12'].push({ id: 'cm3', description: 'Compras do mês', category: 'Mercado', type: 'despesa', person: 'casa', value: 850, status: 'nao_pago', recurring: true, manual: true });
+  assert.equal(t.migrarContasManuaisDoMes(), true, 'lançamento atrasado de outro aparelho também sai');
+  assert.equal(t.contasManuais().length, 2, 'sem duplicar a conta que já existe');
+});
+
+test('sugestões ignoram o que já é fixo ou conta manual e marcam o lançamento existente', async () => {
+  const despesa = (id, description, person, value, extra = {}) => ({ id, description, category: 'Outros', type: 'despesa', person, value, status: 'nao_pago', ...extra });
+  const dados = {
+    '2026-11': [despesa('n-dina', 'Dina', 'barbara', 125), despesa('n-mei', 'MEI Babi', 'barbara', 86.05, { recurring: true })],
+    '2026-10': [despesa('o-dina', 'Dina', 'barbara', 125), despesa('o-mei', 'MEI Babi', 'barbara', 86.05), despesa('o-unha', 'Unhas de gel', 'barbara', 160, { due_day: 5 }), despesa('o-feira', 'Feira', 'barbara', 120)],
+    '2026-09': [despesa('s-unha', 'Unhas de gel', 'barbara', 160, { due_day: 5 }), despesa('s-feira', 'Feira', 'barbara', 120), despesa('s-viagem', 'Viagem', 'gabriel', 900)],
+    __app: { assinaturas: [{ id: 'm1', manual: true, nome: 'Feira', pessoa: 'barbara', valor: 120, desde: '2026-11' }] }
+  };
+  const { t } = await loadContasFixas(dados);
+  const sugestoes = plain(t.detectSubscriptionCandidates(3));
+
+  assert.deepEqual(sugestoes.map((s) => [s.nome, s.idMesAtual]), [
+    ['Unhas de gel (Barbara)', ''],
+    ['Dina (Barbara)', 'n-dina']
+  ], 'MEI já é fixo, Feira já é conta manual, Viagem só apareceu uma vez');
+  const unha = sugestoes[0];
+  assert.equal(unha.descricao, 'Unhas de gel');
+  assert.equal(unha.person, 'barbara');
+  assert.equal(unha.vencimentoDia, 5);
+  assert.equal(unha.categoria, 'Outros');
 });
 
 test('colapsos começam abertos e lembram o que foi fechado neste aparelho', async () => {
   const { t, storage } = await loadContasFixas(novembro(), {
-    financas_casa_contas_fixas_colapsos: JSON.stringify({ 'p:fixos:barbara': false })
+    armazenado: { financas_casa_contas_fixas_colapsos: JSON.stringify({ 'p:fixos:barbara': false }) }
   });
 
   assert.equal(t.cfAberto('sec:fixos'), true, 'padrão aberto, como a tela já era');
@@ -111,132 +247,37 @@ test('colapsos começam abertos e lembram o que foi fechado neste aparelho', asy
   assert.equal(Object.keys(JSON.parse(storage.financas_casa_contas_fixas_colapsos)).length, 2, 'ignora outros <details>');
 });
 
-test('tela de contas fixas: colapsos por seção e pessoa, sem a lista de serviços cadastrados', async () => {
+test('tela de contas fixas: seções e ações das contas manuais; Mês a mês sem conta manual', async () => {
   const modules = await read('app-modules.js');
-  const render = slice(modules, '// Gasto fixo do mês = despesas marcadas como fixas (inclui as manuais)', '// MÓDULO: DASHBOARD');
+  const entries = await read('js/30-entries.js');
+  const render = await read('js/60-render.js');
   const tela = slice(modules, 'const Assinaturas = {', '// MÓDULO: DASHBOARD');
+  const renderTela = slice(tela, '// Gasto fixo do mês = despesas fixas do Mês a mês + contas manuais + recorrentes do cartão', '\n  };');
 
   assert.match(tela, /<details class="mod-card-recurring cf-sec/);
   assert.match(tela, /<details class="cf-pessoa"/);
-  assert.match(render, /const totalFixoMes = Math\.round\(\(fixoEntries \+ fixoCartao\) \* 100\) \/ 100;/, 'serviços fora do total');
-  assert.match(render, /data-mod="assinaturas" data-act="add"[^>]*>.*Nova conta fixa/, 'botão Nova conta fixa continua');
-  assert.doesNotMatch(render, /coll\('assinaturas'\)|Serviços cadastrados|mod-grid/, 'cards dos serviços saíram da tela');
+  assert.match(renderTela, /const totalFixoMes = Math\.round\(\(fixoEntries \+ fixoManuais \+ fixoCartao\) \* 100\) \/ 100;/);
+  assert.match(renderTela, /data-mod="assinaturas" data-act="add"[^>]*>.*Nova conta fixa/);
+  assert.doesNotMatch(renderTela, /Serviços cadastrados|mod-grid/, 'cards dos serviços antigos continuam fora');
 
-  const ordem = ['renderRecurringEntriesMonth()', 'renderCardRecurringMonth()', 'renderTendencia()', 'renderSuggestions()'];
-  const posicoes = ordem.map((m) => render.lastIndexOf(m));
+  const ordem = ['renderRecurringEntriesMonth()', 'renderContasManuais()', 'renderCardRecurringMonth()', 'renderTendencia()', 'renderSuggestions()'];
+  const posicoes = ordem.map((m) => renderTela.lastIndexOf(m));
   posicoes.forEach((p, i) => assert.notEqual(p, -1, `faltou na tela: ${ordem[i]}`));
-  assert.deepEqual(posicoes, [...posicoes].sort((a, b) => a - b), 'ordem: fixos, cartão, mês a mês e sugestões');
+  assert.deepEqual(posicoes, [...posicoes].sort((a, b) => a - b), 'ordem: fixos, manuais, cartão, mês a mês e sugestões');
+
+  for (const act of ['pago', 'edit', 'del']) assert.match(tela, new RegExp(`data-mod="assinaturas" data-act="${act}"`), `ação ${act} na conta manual`);
+  assert.match(modules, /else if \(act === 'pago'\) await M\.togglePago\(id\);/);
+  assert.match(modules, /if \(migrarContasManuaisDoMes\(\)\)/, 'a mudança roda quando os dados chegam');
   assert.match(modules, /addEventListener\('toggle', handleContasFixasToggle, true\)/);
 
-  const resto = modules.replace(tela, '');
-  assert.doesNotMatch(resto, /coll\('assinaturas'\)/, 'serviços escondidos não geram vencimento no Dashboard nem alerta');
+  const fora = modules.replace(slice(modules, 'const contasManuais =', '// MÓDULO: DASHBOARD'), '');
+  assert.doesNotMatch(fora, /coll\('assinaturas'\)/, 'Dashboard e alertas só enxergam contas manuais (nunca os serviços ocultos)');
+  assert.equal((fora.match(/contasManuaisMes\(\)/g) || []).length, 2, 'vencimentos do Dashboard e do sino incluem contas manuais');
+
+  assert.doesNotMatch(entries, /manual/, 'Mês a mês não cria nem copia conta manual');
+  assert.doesNotMatch(render, /cf-manual-tag/);
 });
 
-// Lançamentos (30-entries.js) + criação de conta fixa manual (app-modules.js)
-const loadContaManual = async (meses) => {
-  const entriesJs = await read('js/30-entries.js');
-  const modules = await read('app-modules.js');
-  const manual = slice(modules, 'const categoriasContaFixa =', 'const Assinaturas = {');
-  const registros = [];
-  const avisos = [];
-  let seq = 0;
-  const context = {
-    allData: { __app: {}, ...meses },
-    currentDate: { key: '2026-11' },
-    getMonthKey: (d) => d.key,
-    dayjs: () => ({ subtract: () => ({ key: '2026-10' }) }),
-    getCurrentEntries: () => context.allData['2026-11'] || [],
-    setCurrentEntries: (next, acao) => { registros.push(acao); context.allData['2026-11'] = next; },
-    generateId: () => `novo-${++seq}`,
-    normalizeEntry: (e) => e,
-    isEntryDuplicate: (e, lista) => lista.some((x) => x.description === e.description && x.value === e.value && x.person === e.person),
-    render: () => {},
-    notify: { success: (m) => avisos.push(m), error: (m) => avisos.push(`ERRO: ${m}`), info: (m) => avisos.push(m) },
-    formatCurrency: (v) => `R$ ${Number(v).toFixed(2)}`,
-    getMonthLabel: () => 'novembro de 2026',
-    resumoLancamento: (e) => `“${e.description}”`,
-    catPapel: (p) => ({ outros: 'Outros', cartaoGabriel: 'Cartão de crédito Gabriel', cartaoBabi: 'Cartão de crédito Babi', cartao: 'Cartão de crédito', investimentos: 'Investimentos' })[p],
-    CATEGORIAS: ['Aluguel', 'Internet', 'Cartão de crédito Gabriel', 'Investimentos', 'Outros']
-  };
-  runInNewContext(`${entriesJs}\n${manual}
-globalThis.__t = { criarContaFixaManual, categoriasContaFixa, copyPreviousMonth, buildEntryFromForm };`, context);
-  return { t: context.__t, context, registros, avisos };
-};
-
-test('nova conta fixa vira lançamento do mês, fixo e com a tag Manual', async () => {
-  const { t, context, registros, avisos } = await loadContaManual({});
-
-  assert.deepEqual(plain(t.categoriasContaFixa()), ['Aluguel', 'Internet', 'Outros'], 'sem cartão e investimentos');
-
-  assert.equal(t.criarContaFixaManual({ descricao: ' Aluguel ', pessoa: 'casa', categoria: 'Aluguel', valor: 1800, vencimento: 45, status: 'nao_pago', observacao: '' }), true);
-  const [entry] = context.allData['2026-11'];
-  assert.equal(entry.description, 'Aluguel');
-  assert.equal(entry.type, 'despesa');
-  assert.equal(entry.recurring, true, 'já entra como gasto fixo');
-  assert.equal(entry.manual, true, 'tag Manual');
-  assert.equal(entry.due_day, 31, 'vencimento acima de 31 vira 31');
-  assert.match(registros.at(-1), /conta fixa manual: adicionou “Aluguel”/, 'vai para o Histórico');
-
-  assert.equal(t.criarContaFixaManual({ descricao: 'Aluguel', pessoa: 'casa', categoria: 'Aluguel', valor: 1800 }), false, 'mesma conta duas vezes no mês');
-  assert.match(avisos.at(-1), /já está lançada/);
-  assert.equal(t.criarContaFixaManual({ descricao: 'Internet', pessoa: '', categoria: 'Internet', valor: 100 }), false, 'sem pessoa não lança');
-  assert.equal(context.allData['2026-11'].length, 1);
-
-  const semVencimento = t.buildEntryFromForm({ description: 'X', category: 'Outros', type: 'despesa', person: 'gabriel', value: 1, status: 'pago', due_day: null, observation: '' });
-  assert.equal('manual' in semVencimento, false, 'lançamento comum não ganha a tag');
-});
-
-test('copiar mês leva as contas fixas manuais com as tags Fixo e Manual', async () => {
-  const { t, context } = await loadContaManual({
-    '2026-10': [
-      { id: 'a', description: 'Aluguel', category: 'Aluguel', type: 'despesa', person: 'casa', value: 1800, status: 'pago', recurring: true, manual: true, card_items: [] },
-      { id: 'b', description: 'Mercado', category: 'Outros', type: 'despesa', person: 'casa', value: 900, status: 'pago', card_items: [] }
-    ]
-  });
-  await t.copyPreviousMonth();
-  const copiados = context.allData['2026-11'];
-  assert.equal(copiados.length, 2);
-  const aluguel = copiados.find((e) => e.description === 'Aluguel');
-  assert.equal(aluguel.manual, true);
-  assert.equal(aluguel.recurring, true);
-  assert.equal(aluguel.status, 'nao_pago', 'mês novo começa como não pago');
-  assert.equal('manual' in copiados.find((e) => e.description === 'Mercado'), false);
-
-  const entriesJs = await read('js/30-entries.js');
-  assert.match(entriesJs, /manual: entries\[index\]\.manual === true/, 'editar no Mês a mês não perde a tag');
-});
-
-test('sugestões ignoram o que já é fixo no mês e marcam o lançamento existente', async () => {
-  const modules = await read('app-modules.js');
-  const trecho = slice(modules, 'const subscriptionSkipCategories =', 'MÓDULO: CONTAS FIXAS');
-  const mes = (i) => ({ format: () => ['2026-11', '2026-10', '2026-09'][i] });
-  const despesa = (id, description, person, value, extra = {}) => ({ id, description, category: 'Outros', type: 'despesa', person, value, status: 'nao_pago', ...extra });
-  const context = {
-    allData: {
-      '2026-11': [despesa('n-dina', 'Dina', 'barbara', 125), despesa('n-mei', 'MEI Babi', 'barbara', 86.05, { recurring: true })],
-      '2026-10': [despesa('o-dina', 'Dina', 'barbara', 125), despesa('o-mei', 'MEI Babi', 'barbara', 86.05), despesa('o-unha', 'Unhas de gel', 'barbara', 160, { due_day: 5 })],
-      '2026-09': [despesa('s-unha', 'Unhas de gel', 'barbara', 160, { due_day: 5 }), despesa('s-viagem', 'Viagem', 'gabriel', 900)]
-    },
-    currentDate: { subtract: (i) => mes(i) },
-    PERSON_LABELS,
-    MESES: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
-    catPapel: (p) => p,
-    isCreditCardEntry: () => false,
-    sum: (arr, f) => arr.reduce((a, x) => a + (f ? f(x) : x), 0)
-  };
-  runInNewContext(`${trecho}\nglobalThis.__t = { detectSubscriptionCandidates };`, context);
-  const sugestoes = plain(context.__t.detectSubscriptionCandidates(3));
-
-  assert.deepEqual(sugestoes.map((s) => [s.nome, s.idMesAtual]), [
-    ['Unhas de gel (Barbara)', ''],
-    ['Dina (Barbara)', 'n-dina']
-  ], 'MEI já é fixo em novembro; Viagem só apareceu uma vez');
-  const unha = sugestoes[0];
-  assert.equal(unha.descricao, 'Unhas de gel');
-  assert.equal(unha.person, 'barbara');
-  assert.equal(unha.vencimentoDia, 5);
-  assert.equal(unha.categoria, 'Outros');
-});
 
 test('carro: falta pagar, saldo depois de cada pagamento, previsão e quitado', async () => {
   const modules = await read('app-modules.js');

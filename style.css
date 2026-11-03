@@ -594,20 +594,6 @@ body {
   white-space: nowrap;
 }
 
-/* Conta fixa cadastrada pela aba Contas fixas */
-.cf-manual-tag {
-  display: inline-block;
-  margin-left: 0.4rem;
-  padding: 0.08rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  background: color-mix(in srgb, var(--app-primary) 18%, var(--app-surface-2));
-  color: var(--app-primary);
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
 .entry-row--recurring td,
 .entry-card--recurring {
   background: color-mix(in srgb, var(--app-reserved) 6%, transparent);

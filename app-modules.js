@@ -1023,6 +1023,7 @@
       && Boolean(normalizeSubName(entry.description));
 
     const jaFixas = new Set((allData[mesAtual] || []).filter((e) => elegivel(e) && e.recurring === true).map(subscriptionKey));
+    contasManuais().forEach((a) => jaFixas.add(chaveContaManual(a.nome, a.pessoa)));
     const buckets = new Map();
 
     monthKeys.forEach((monthKey) => {
@@ -1154,8 +1155,7 @@
         valor: Number(entry.value) || 0,
         categoria: entry.category || '',
         person: entry.person || '',
-        status: entry.status || '',
-        manual: entry.manual === true
+        status: entry.status || ''
       });
     });
     return out.sort(byPersonThenName);
@@ -1163,57 +1163,157 @@
 
   const recurringEntriesMonth = () => recurringEntriesForMonth(getMonthKey(currentDate));
 
-  // Gasto fixo de um mês por pessoa = despesas marcadas como fixas + recorrentes do cartão.
-  // Serviços cadastrados ficam de fora: podem repetir algo que já é lançado no mês.
+  // ----------------------------------------------------------
+  // Contas fixas manuais: cadastradas pela aba Contas fixas e guardadas SÓ aqui
+  // (allData.__app.assinaturas com manual: true). Não viram lançamento do Mês a mês
+  // nem entram no saldo; valem todo mês a partir do mês em que foram cadastradas e
+  // somam no gasto fixo. O pago/não pago é guardado por mês em "pagos".
+  // Os antigos "serviços cadastrados" (sem manual: true) continuam salvos, mas ocultos.
+  // ----------------------------------------------------------
+  const contasManuais = () => coll('assinaturas').filter((a) => a && a.manual === true);
+
+  const chaveContaManual = (nome, pessoa) => `${normalizeSubName(nome).toLowerCase()}|${pessoa || '_'}`;
+
+  const contasManuaisDoMes = (monthKey) => contasManuais()
+    .filter((a) => !a.desde || a.desde <= monthKey)
+    .map((a) => ({
+      id: a.id,
+      nome: a.nome || '—',
+      valor: Number(a.valor) || 0,
+      categoria: a.categoria || '',
+      person: a.pessoa || '',
+      status: (a.pagos && a.pagos[monthKey]) || 'nao_pago',
+      vencimentoDia: Number(a.vencimentoDia) || null,
+      manual: true
+    }))
+    .sort(byPersonThenName);
+
+  const contasManuaisMes = () => contasManuaisDoMes(getMonthKey(currentDate));
+
+  // Gasto fixo de um mês por pessoa = despesas marcadas como fixas no Mês a mês +
+  // contas manuais + recorrentes do cartão
   const fixedSpendByPersonForMonth = (monthKey) => {
     const porPessoa = {};
-    [...recurringEntriesForMonth(monthKey), ...recurringCardItemsForMonth(monthKey)].forEach((item) => {
+    [...recurringEntriesForMonth(monthKey), ...contasManuaisDoMes(monthKey), ...recurringCardItemsForMonth(monthKey)].forEach((item) => {
       const person = PERSON_LABELS[item.person] ? item.person : '';
       porPessoa[person] = Math.round(((porPessoa[person] || 0) + (Number(item.valor) || 0)) * 100) / 100;
     });
     return porPessoa;
   };
 
-  // Categorias que fazem sentido para uma conta fixa comum (cartão e investimento têm
-  // fluxo próprio e mudariam o tipo do lançamento)
+  // Categorias que fazem sentido para uma conta fixa (cartão e investimento têm fluxo próprio)
   const categoriasContaFixa = () => {
     const fora = new Set([catPapel('cartaoGabriel'), catPapel('cartaoBabi'), catPapel('cartao'), catPapel('investimentos')]);
     return CATEGORIAS.filter((c) => !fora.has(c));
   };
 
-  // "Nova conta fixa" vira um lançamento de verdade no mês aberto: despesa marcada
-  // como fixa (⟳) e com a tag Manual. Uma fonte só: aparece no Mês a mês, entra no
-  // saldo e passa para o próximo mês pelo "Copiar mês".
-  const criarContaFixaManual = (v) => {
-    const dia = Number(v.vencimento);
-    const entry = buildEntryFromForm({
-      description: String(v.descricao || ''),
-      category: v.categoria || catPapel('outros'),
-      type: 'despesa',
-      person: v.pessoa || '',
-      value: Number(v.valor) || 0,
-      status: v.status || 'nao_pago',
-      due_day: dia >= 1 ? String(Math.min(31, Math.round(dia))) : null,
-      observation: String(v.observacao || ''),
-      recurring: true,
-      manual: true
-    });
-    if (!validateEntry(entry)) return false;
-    const atuais = getCurrentEntries();
-    if (isEntryDuplicate(entry, atuais)) {
-      notify.error(`“${entry.description}” já está lançada em ${getMonthLabel()} com esse valor.`);
-      return false;
+  // Valida o formulário e devolve os campos da conta manual (ou null, já avisando o erro)
+  const lerContaManual = (v, ignorarId = '') => {
+    const nome = String(v.descricao || '').trim();
+    const pessoa = PERSON_LABELS[v.pessoa] ? v.pessoa : '';
+    const valor = Math.round((Number(v.valor) || 0) * 100) / 100;
+    if (!nome) { notify.error('Informe a conta.'); return null; }
+    if (!pessoa) { notify.error('Selecione de quem é a conta.'); return null; }
+    if (valor <= 0) { notify.error('Informe um valor maior que zero.'); return null; }
+    const chave = chaveContaManual(nome, pessoa);
+    if (contasManuais().some((a) => a.id !== ignorarId && chaveContaManual(a.nome, a.pessoa) === chave)) {
+      notify.error(`“${nome}” de ${PERSON_LABELS[pessoa]} já está nas contas fixas.`);
+      return null;
     }
-    setCurrentEntries([...atuais, entry], `conta fixa manual: adicionou ${resumoLancamento(entry)}`);
-    render();
-    notify.success(`Conta fixa lançada em ${getMonthLabel()}.`);
+    const dia = Number(v.vencimento);
+    return {
+      nome,
+      pessoa,
+      categoria: categoriasContaFixa().includes(v.categoria) ? v.categoria : catPapel('outros'),
+      valor,
+      vencimentoDia: dia >= 1 ? Math.min(31, Math.round(dia)) : null,
+      observacao: String(v.observacao || '').trim()
+    };
+  };
+
+  const pagosComStatus = (pagos, mes, status) => {
+    const out = { ...(pagos || {}) };
+    if (status && status !== 'nao_pago') out[mes] = status;
+    else delete out[mes];
+    return out;
+  };
+
+  const criarContaFixaManual = (v) => {
+    const campos = lerContaManual(v);
+    if (!campos) return false;
+    const mes = getMonthKey(currentDate);
+    upsert('assinaturas', { id: generateId(), manual: true, ...campos, desde: mes, pagos: pagosComStatus({}, mes, v.status), status: 'ativa' });
+    notify.success(`“${campos.nome}” adicionada às contas fixas (não vai para o Mês a mês).`);
+    return true;
+  };
+
+  // Contas manuais criadas na versão de 02/11/2026 15:09 viravam lançamentos do mês
+  // (manual: true). Elas saem do Mês a mês (com histórico e exclusão sincronizada) e
+  // viram conta manual desta aba, sem perder valor, vencimento nem pago/não pago.
+  // Id determinístico: dois aparelhos migrando os mesmos lançamentos geram a mesma conta.
+  let migrandoManuais = false;
+  const migrarContasManuaisDoMes = () => {
+    if (migrandoManuais) return false;
+    const meses = Object.keys(allData)
+      .filter((k) => MES_KEY_RE.test(k) && (allData[k] || []).some((e) => e && e.manual === true))
+      .sort();
+    if (!meses.length) return false;
+
+    migrandoManuais = true;
+    try {
+      const grupos = new Map();
+      meses.forEach((mes) => {
+        const antes = cloneDados(allData[mes]);
+        const manuais = antes.filter((e) => e && e.manual === true);
+        manuais.forEach((e) => {
+          const chave = chaveContaManual(e.description, e.person);
+          if (!grupos.has(chave)) grupos.set(chave, { primeira: e, desde: mes, ultima: e, pagos: {}, dia: null, obs: '' });
+          const g = grupos.get(chave);
+          g.ultima = e; // meses em ordem crescente: fica o valor mais recente
+          if (Number(e.due_day) >= 1) g.dia = Number(e.due_day); // último vencimento preenchido
+          if (String(e.observation || '').trim()) g.obs = String(e.observation).trim();
+          if (e.status && e.status !== 'nao_pago') g.pagos[mes] = e.status;
+        });
+        const depois = cloneDados(antes).filter((e) => !(e && e.manual === true));
+        const nomes = [...new Set(manuais.map((e) => `“${e.description}”`))].join(', ');
+        allData[mes] = depois;
+        registrarHistoricoMes(mes, antes, depois, `moveu ${nomes} do Mês a mês para Contas fixas (conta manual)`);
+      });
+
+      const lista = coll('assinaturas');
+      grupos.forEach((g, chave) => {
+        const id = `manual-${g.primeira.id}`;
+        if (lista.some((a) => a.id === id || (a.manual === true && chaveContaManual(a.nome, a.pessoa) === chave))) return;
+        const e = g.ultima;
+        const item = {
+          id,
+          manual: true,
+          nome: String(e.description || '').trim(),
+          pessoa: e.person || '',
+          categoria: e.category || catPapel('outros'),
+          valor: Math.round((Number(e.value) || 0) * 100) / 100,
+          vencimentoDia: g.dia,
+          observacao: g.obs,
+          desde: g.desde,
+          pagos: g.pagos,
+          status: 'ativa',
+          _updatedAt: Date.now()
+        };
+        lista.push(item);
+        window.desmarcarExclusaoIds?.([id]);
+        if (typeof registrarHistoricoModulo === 'function') registrarHistoricoModulo('assinaturas', null, item);
+      });
+      saveData();
+    } finally {
+      migrandoManuais = false;
+    }
     return true;
   };
 
   const Assinaturas = {
     _suggestions: [],
     fields: (a = {}) => [
-      { name: 'descricao', label: 'Conta', type: 'text', required: true, value: a.descricao, placeholder: 'Ex: Aluguel, Internet, Convênio', wide: true },
+      { name: 'descricao', label: 'Conta', type: 'text', required: true, value: a.descricao, placeholder: 'Ex: Feira, Açougue, Compras do mês', wide: true },
       { name: 'pessoa', label: 'De quem', type: 'select', required: true, value: a.pessoa || '', options: [{ value: '', label: 'Quem paga?' }, ...Object.entries(PERSON_LABELS).map(([value, label]) => ({ value, label }))] },
       { name: 'categoria', label: 'Categoria', type: 'select', value: categoriasContaFixa().includes(a.categoria) ? a.categoria : catPapel('outros'), options: categoriasContaFixa().map((c) => ({ value: c, label: c })) },
       { name: 'valor', label: 'Valor mensal (R$)', type: 'money', required: true, value: a.valor ? formatValuePlain(a.valor) : '' },
@@ -1222,12 +1322,35 @@
       { name: 'observacao', label: 'Observação (opcional)', type: 'text', value: a.observacao || '', wide: true }
     ],
     async add(prefill = {}) {
-      const v = await formModal({ title: `Nova conta fixa · ${getMonthLabel()}`, icon: 'arrow-repeat', fields: this.fields(prefill), confirmText: 'Lançar conta fixa' });
+      const v = await formModal({ title: 'Nova conta fixa', icon: 'pencil-square', fields: this.fields(prefill), confirmText: 'Salvar conta fixa' });
       if (!v) return;
       criarContaFixaManual(v);
     },
+    async edit(id) {
+      const a = contasManuais().find((x) => x.id === id);
+      if (!a) return;
+      const mes = getMonthKey(currentDate);
+      const v = await formModal({
+        title: 'Editar conta fixa',
+        icon: 'pencil-square',
+        fields: this.fields({ descricao: a.nome, pessoa: a.pessoa, categoria: a.categoria, valor: a.valor, vencimento: a.vencimentoDia, status: (a.pagos && a.pagos[mes]) || 'nao_pago', observacao: a.observacao })
+      });
+      if (!v) return;
+      const campos = lerContaManual(v, a.id);
+      if (!campos) return;
+      upsert('assinaturas', { ...a, ...campos, pagos: pagosComStatus(a.pagos, mes, v.status) });
+      notify.success('Conta fixa atualizada!');
+    },
+    // Pago ⇄ não pago só no mês aberto (cada mês tem o seu)
+    async togglePago(id) {
+      const a = contasManuais().find((x) => x.id === id);
+      if (!a) return;
+      const mes = getMonthKey(currentDate);
+      const pago = (a.pagos && a.pagos[mes]) === 'pago';
+      upsert('assinaturas', { ...a, pagos: pagosComStatus(a.pagos, mes, pago ? 'nao_pago' : 'pago') });
+    },
     // Sugestão: se a despesa já está no mês aberto, só marca como fixa; senão abre o
-    // formulário preenchido para lançar como conta fixa manual
+    // formulário preenchido para guardar como conta fixa manual
     async addFromSuggestion(idx) {
       const sug = (this._suggestions || [])[Number(idx)];
       if (!sug) return;
@@ -1247,7 +1370,7 @@
       if (!list.length) {
         return `<div class="mod-suggest mod-suggest--empty">
           <p class="mod-suggest__title"><i class="bi bi-search"></i> Análise dos últimos 3 meses</p>
-          <p class="mod-suggest__hint mb-0">Nada novo para sugerir: as despesas que se repetem já estão marcadas como fixas neste mês.</p>
+          <p class="mod-suggest__hint mb-0">Nada novo para sugerir: as despesas que se repetem já estão nas contas fixas deste mês.</p>
         </div>`;
       }
       const items = list.map((s, i) => `
@@ -1257,7 +1380,7 @@
             <span class="mod-suggest__meta">${escapeHtml(s.mesesLabel)} · ${s.ocorrencias} de 3 meses · ~${formatCurrency(s.valor)}/mês${s.idMesAtual ? ' · já lançada este mês' : ''}</span>
           </div>
           <button type="button" class="btn btn-sm btn-outline-primary" data-mod="assinaturas" data-act="add-sug" data-idx="${i}">
-            ${s.idMesAtual ? '<i class="bi bi-arrow-repeat"></i> Marcar como fixa' : '<i class="bi bi-plus-lg"></i> Lançar como fixa'}
+            ${s.idMesAtual ? '<i class="bi bi-arrow-repeat"></i> Marcar como fixa' : '<i class="bi bi-plus-lg"></i> Adicionar às contas fixas'}
           </button>
         </div>`).join('');
       return `<div class="mod-suggest">
@@ -1265,26 +1388,41 @@
           <p class="mod-suggest__title"><i class="bi bi-stars"></i> Sugestões dos últimos 3 meses</p>
           <span class="mod-badge mod-badge--blue">${list.length} encontrada(s)</span>
         </div>
-        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido, e ainda não estão marcadas como fixas neste mês.</p>
+        <p class="mod-suggest__hint">Despesas que apareceram em pelo menos 2 dos últimos 3 meses, com valor parecido, e ainda não estão nas contas fixas deste mês.</p>
         <div class="mod-suggest__list">${items}</div>
       </div>`;
     },
-    // Linha de um gasto fixo (lançamento ou item de cartão) dentro do grupo da pessoa
-    cfRow(item, meta) {
+    // Linha de um gasto fixo dentro do grupo da pessoa; "acoes" só nas contas manuais
+    cfRow(item, meta, acoes = '') {
       const status = item.status && STATUS_LABELS[item.status]
         ? `<span class="cf-status cf-status--${item.status}">${escapeHtml(STATUS_LABELS[item.status])}</span>`
         : '';
       return `
-        <li class="card-recurring-row">
+        <li class="card-recurring-row${acoes ? ' cf-row--manual' : ''}">
           <div class="card-recurring-row__body">
-            <strong>${escapeHtml(item.nome)}${item.manual ? ' <span class="cf-manual-tag" title="Cadastrada pela aba Contas fixas"><i class="bi bi-pencil-square"></i> Manual</span>' : ''}</strong>
-            <span class="card-recurring-row__meta">${escapeHtml(meta)}${status}</span>
+            <strong>${escapeHtml(item.nome)}</strong>
+            <span class="card-recurring-row__meta">${escapeHtml(meta)}${acoes ? '' : status}</span>
           </div>
-          <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
+          <div class="cf-row__end">
+            <strong class="card-recurring-row__value">${formatCurrency(item.valor)}</strong>
+            ${acoes}
+          </div>
         </li>`;
     },
+    // Pago/editar/excluir de uma conta manual (o pago vale só para o mês aberto)
+    cfAcoesManual(item) {
+      const pago = item.status === 'pago';
+      return `
+        <div class="cf-row__actions">
+          <button type="button" class="cf-pay-btn${pago ? ' is-paid' : ''}" data-mod="assinaturas" data-act="pago" data-id="${item.id}" aria-pressed="${pago}" title="${pago ? 'Marcar como não pago' : 'Marcar como pago'} em ${MESES[currentDate.month()]}">
+            <i class="bi bi-${pago ? 'check-circle-fill' : 'circle'}"></i> ${pago ? 'Pago' : 'Não pago'}
+          </button>
+          <button type="button" class="carro-icon-btn" data-mod="assinaturas" data-act="edit" data-id="${item.id}" title="Editar" aria-label="Editar ${escapeHtml(item.nome)}"><i class="bi bi-pencil"></i></button>
+          <button type="button" class="carro-icon-btn carro-icon-btn--danger" data-mod="assinaturas" data-act="del" data-id="${item.id}" title="Excluir" aria-label="Excluir ${escapeHtml(item.nome)}"><i class="bi bi-trash"></i></button>
+        </div>`;
+    },
     // Subgrupo colapsável por pessoa: nome e quantidade à esquerda, total à direita
-    cfPessoa(secao, grupo, metaDe) {
+    cfPessoa(secao, grupo, metaDe, acoesDe) {
       const key = `p:${secao}:${grupo.person || 'sem'}`;
       const n = grupo.itens.length;
       return `
@@ -1296,11 +1434,11 @@
             </span>
             <span class="cf-pessoa__right"><strong>${formatCurrency(grupo.total)}</strong><i class="bi bi-chevron-down cf-chev"></i></span>
           </summary>
-          <ul class="mod-card-recurring__list cf-pessoa__list">${grupo.itens.map((item) => this.cfRow(item, metaDe(item))).join('')}</ul>
+          <ul class="mod-card-recurring__list cf-pessoa__list">${grupo.itens.map((item) => this.cfRow(item, metaDe(item), acoesDe ? acoesDe(item) : '')).join('')}</ul>
         </details>`;
     },
     // Seção colapsável: título à esquerda, total à direita, grupos por pessoa dentro
-    cfSecao({ secao, icon, titulo, badge, itens, metaDe, vazio }) {
+    cfSecao({ secao, icon, titulo, badge, itens, metaDe, acoesDe, vazio, dica = '' }) {
       const key = `sec:${secao}`;
       const total = Math.round(sum(itens, (i) => Number(i.valor) || 0) * 100) / 100;
       const n = itens.length;
@@ -1311,11 +1449,12 @@
             <span class="cf-sec__right"><span class="mod-badge mod-badge--${badge}">${formatCurrency(total)}</span><i class="bi bi-chevron-down cf-chev"></i></span>
           </summary>
           <div class="cf-sec__body">
-            ${n ? groupByPerson(itens).map((g) => this.cfPessoa(secao, g, metaDe)).join('') : `<p class="mod-suggest__hint mb-0">${vazio}</p>`}
+            ${dica ? `<p class="mod-suggest__hint mb-0">${dica}</p>` : ''}
+            ${n ? groupByPerson(itens).map((g) => this.cfPessoa(secao, g, metaDe, acoesDe)).join('') : `<p class="mod-suggest__hint mb-0">${vazio}</p>`}
           </div>
         </details>`;
     },
-    // Despesas comuns marcadas como "fixo" no mês atual (puxadas do Mês a mês)
+    // Despesas comuns marcadas como "fixo" no Mês a mês
     renderRecurringEntriesMonth() {
       return this.cfSecao({
         secao: 'fixos',
@@ -1325,6 +1464,20 @@
         itens: recurringEntriesMonth(),
         metaDe: (item) => item.categoria || '—',
         vazio: 'Nenhuma despesa marcada como fixa neste mês. No Mês a mês, clique no <i class="bi bi-arrow-repeat"></i> de um lançamento de despesa para marcá-lo como gasto fixo.'
+      });
+    },
+    // Contas cadastradas aqui ("Nova conta fixa"): ficam só nesta aba
+    renderContasManuais() {
+      return this.cfSecao({
+        secao: 'manuais',
+        icon: 'pencil-square',
+        titulo: 'Contas fixas manuais',
+        badge: 'violet',
+        itens: contasManuaisMes(),
+        metaDe: (item) => `${item.categoria || '—'}${item.vencimentoDia ? ` · vence dia ${item.vencimentoDia}` : ''}`,
+        acoesDe: (item) => this.cfAcoesManual(item),
+        dica: 'Cadastradas em "Nova conta fixa". Ficam só aqui: não aparecem no Mês a mês nem mexem no saldo do mês.',
+        vazio: 'Nenhuma conta manual. Use "Nova conta fixa" para guardar algo só aqui (ex.: Feira, Açougue).'
       });
     },
     renderCardRecurringMonth() {
@@ -1338,7 +1491,7 @@
         vazio: 'Nenhum item recorrente nas faturas deste mês. Na fatura do cartão, use o <i class="bi bi-arrow-repeat"></i> de um item para marcá-lo como recorrente.'
       });
     },
-    // Gasto fixo dos últimos 6 meses, separado por pessoa (despesas fixas + recorrentes do cartão)
+    // Gasto fixo dos últimos 6 meses, separado por pessoa
     renderTendencia() {
       const meses = [];
       for (let i = 5; i >= 0; i--) {
@@ -1372,47 +1525,48 @@
               ${pessoas.map((p) => `<td class="num">${cel(media(comGasto.map((m) => m.porPessoa[p] || 0)))}</td>`).join('')}
               <td class="num">${cel(media(comGasto.map((m) => m.total)), true)}</td></tr></tfoot>
           </table></div>
-          <p class="mod-suggest__hint mt-2 mb-0">Despesas marcadas como fixas + recorrentes do cartão de cada mês. Os serviços cadastrados não entram aqui.</p>
+          <p class="mod-suggest__hint mt-2 mb-0">Despesas fixas do Mês a mês, contas fixas manuais e recorrentes do cartão de cada mês.</p>
         </div>`;
     },
-    // Os antigos "serviços cadastrados" (allData.__app.assinaturas) continuam salvos e no
-    // backup, mas não aparecem mais: repetiam os lançamentos fixos do mês.
     render(c) {
-      // Gasto fixo do mês = despesas marcadas como fixas (inclui as manuais) + recorrentes do cartão
+      // Gasto fixo do mês = despesas fixas do Mês a mês + contas manuais + recorrentes do cartão
       const fixos = recurringEntriesMonth();
+      const manuais = contasManuaisMes();
       const doCartao = recurringCardItemsMonth();
-      const todos = [...fixos, ...doCartao];
-      const fixoEntries = Math.round(sum(fixos, (e) => e.valor) * 100) / 100;
-      const fixoCartao = Math.round(sum(doCartao, (i) => i.valor) * 100) / 100;
-      const totalFixoMes = Math.round((fixoEntries + fixoCartao) * 100) / 100;
-      const pago = Math.round(sum(todos.filter((i) => i.status === 'pago'), (i) => i.valor) * 100) / 100;
+      const todos = [...fixos, ...manuais, ...doCartao];
+      const soma = (lista) => Math.round(sum(lista, (i) => Number(i.valor) || 0) * 100) / 100;
+      const fixoEntries = soma(fixos);
+      const fixoManuais = soma(manuais);
+      const fixoCartao = soma(doCartao);
+      const totalFixoMes = Math.round((fixoEntries + fixoManuais + fixoCartao) * 100) / 100;
+      const pago = soma(todos.filter((i) => i.status === 'pago'));
       const falta = Math.round((totalFixoMes - pago) * 100) / 100;
+      const daPessoa = (lista, person) => soma(lista.filter((i) => (PERSON_LABELS[i.person] ? i.person : '') === person));
 
-      const porPessoa = groupByPerson(todos).map((g) => {
-        const deFixos = Math.round(sum(fixos.filter((i) => (PERSON_LABELS[i.person] ? i.person : '') === g.person), (i) => i.valor) * 100) / 100;
-        return `
+      const porPessoa = groupByPerson(todos).map((g) => `
           <div class="cf-person-card cf-person-card--${g.person || 'sem'}">
             <span class="cf-person-card__nome">${g.person ? `<span class="person-tag person-tag--${g.person}">${escapeHtml(g.label)}</span>` : `<span class="person-tag">${escapeHtml(g.label)}</span>`}</span>
             <strong class="cf-person-card__total">${formatCurrency(g.total)}</strong>
-            <small class="cf-person-card__det">Fixos ${formatCurrency(deFixos)} · Cartão ${formatCurrency(Math.round((g.total - deFixos) * 100) / 100)}</small>
+            <small class="cf-person-card__det">Fixos ${formatCurrency(daPessoa(fixos, g.person))} · Manuais ${formatCurrency(daPessoa(manuais, g.person))} · Cartão ${formatCurrency(daPessoa(doCartao, g.person))}</small>
             <small class="cf-person-card__det">${totalFixoMes ? Math.round((g.total / totalFixoMes) * 100) : 0}% do gasto fixo</small>
-          </div>`;
-      }).join('');
+          </div>`).join('');
 
       c.innerHTML = `
         <div class="view-header">
           <div><h2 class="h4"><i class="bi bi-arrow-repeat app-icon"></i> Contas fixas</h2>
-          <p class="view-header__hint">Gasto fixo de ${MESES[currentDate.month()]} — despesas marcadas como fixas no Mês a mês e recorrentes do cartão, separados por pessoa</p></div>
+          <p class="view-header__hint">Gasto fixo de ${MESES[currentDate.month()]}: despesas fixas do Mês a mês, contas fixas manuais (só desta aba) e recorrentes do cartão, por pessoa</p></div>
           <button class="btn btn-primary" data-mod="assinaturas" data-act="add"><i class="bi bi-plus-lg"></i> Nova conta fixa</button>
         </div>
         <div class="mod-summary">
           <div class="mod-summary__item"><span>Gasto fixo do mês</span><strong style="color:var(--app-expense)">${formatCurrency(totalFixoMes)}</strong><small>Projeção anual ${formatCurrency(totalFixoMes * 12)}</small></div>
           <div class="mod-summary__item"><span>Já pago</span><strong style="color:var(--app-income)">${formatCurrency(pago)}</strong><small>Falta pagar ${formatCurrency(falta)}</small></div>
-          <div class="mod-summary__item"><span>Despesas fixas (lançamentos)</span><strong>${formatCurrency(fixoEntries)}</strong><small>${fixos.length} item(ns)${fixos.some((i) => i.manual) ? ` · ${fixos.filter((i) => i.manual).length} manual(is)` : ''}</small></div>
+          <div class="mod-summary__item"><span>Despesas fixas (Mês a mês)</span><strong>${formatCurrency(fixoEntries)}</strong><small>${fixos.length} item(ns)</small></div>
+          <div class="mod-summary__item"><span>Contas manuais (só aqui)</span><strong>${formatCurrency(fixoManuais)}</strong><small>${manuais.length} item(ns)</small></div>
           <div class="mod-summary__item"><span>Recorrentes no cartão</span><strong>${formatCurrency(fixoCartao)}</strong><small>${doCartao.length} item(ns)</small></div>
         </div>
         ${porPessoa ? `<div class="cf-people">${porPessoa}</div>` : ''}
         ${this.renderRecurringEntriesMonth()}
+        ${this.renderContasManuais()}
         ${this.renderCardRecurringMonth()}
         ${this.renderTendencia()}
         <div class="mt-4">${this.renderSuggestions()}</div>`;
@@ -1492,7 +1646,11 @@
           if (dias !== null && dias <= 7) out.push({ title: e.description, dias, icon: 'cash-coin', color: 'var(--app-expense)' });
         }
       });
-      // contas fixas já entram acima, como lançamentos do mês com dia de vencimento
+      // contas fixas manuais (ficam só na aba Contas fixas) ainda não pagas neste mês
+      contasManuaisMes().filter((a) => a.vencimentoDia && a.status !== 'pago').forEach((a) => {
+        const dias = daysUntil(nextDueDate(a.vencimentoDia));
+        if (dias !== null && dias <= 7) out.push({ title: `${a.nome} (conta fixa)`, dias, icon: 'pencil-square', color: 'var(--app-investment)' });
+      });
       coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
         const dias = daysUntil(nextDueDate(k.vencimento));
         if (dias !== null && dias <= 7) out.push({ title: 'Fatura ' + k.nome, dias, icon: 'credit-card-2-front', color: 'var(--app-investment)' });
@@ -2121,6 +2279,10 @@
       const dias = daysUntil(m.dataAlvo);
       if (dias !== null && dias < 0) out.push({ level: 'amber', icon: 'bullseye', title: `Meta atrasada: ${m.nome}`, desc: `Faltam ${formatCurrency((m.valorObjetivo || 0) - metaAtual(m))}` });
     });
+    contasManuaisMes().filter((a) => a.vencimentoDia && a.status !== 'pago').forEach((a) => {
+      const dias = daysUntil(nextDueDate(a.vencimentoDia));
+      if (dias !== null && dias <= 3) out.push({ level: 'blue', icon: 'pencil-square', title: `${a.nome} vence em ${dias}d`, desc: `Conta fixa · ${formatCurrency(a.valor)}` });
+    });
     coll('cartoes').filter((k) => k.vencimento).forEach((k) => {
       const dias = daysUntil(nextDueDate(k.vencimento));
       if (dias !== null && dias <= 3) out.push({ level: 'amber', icon: 'credit-card-2-front', title: `Fatura ${k.nome} em ${dias}d`, desc: `Vence dia ${k.vencimento} · ${formatCurrency(Cartoes.faturaMes(k.id, currentDate))}` });
@@ -2216,6 +2378,7 @@
       else if (act === 'saq') await M.mov(id, 'saque');
       else if (act === 'resgatar') await M.resgatar(id);
       else if (act === 'pag') await M.pagamento(id);
+      else if (act === 'pago') await M.togglePago(id);
       else if (act === 'pag-del') await M.excluirPagamento(id, btn.dataset.pagId);
       else if (act === 'visit') await M.marcarVisitado(id);
       else if (act === 'unvisit') await M.desmarcarVisitado(id);
@@ -2337,7 +2500,13 @@
 
   // Hook chamado por render() em js/60-render.js após cada atualização de dados
   window.AppModules = {
-    onDataRender() { refreshAlerts(); if (activeTab !== 'mes') refreshActiveView(); },
+    onDataRender() {
+      // Contas manuais que tinham ido para o Mês a mês voltam para as Contas fixas; o
+      // render seguinte (fora deste) já mostra o mês sem elas
+      if (migrarContasManuaisDoMes()) { setTimeout(() => { if (typeof render === 'function') render(); }, 0); return; }
+      refreshAlerts();
+      if (activeTab !== 'mes') refreshActiveView();
+    },
     activate,
     editInvestimento: (id) => Investimentos.edit(id)
   };

@@ -46,10 +46,9 @@ const renderEntryRecurringToggle = (entry) => {
     </button>`;
 };
 
-const recurringTag = (entry) => [
-  entry.recurring === true ? '<span class="entry-recurring-tag" title="Gasto fixo recorrente"><i class="bi bi-arrow-repeat"></i> Fixo</span>' : '',
-  entry.manual === true ? '<span class="cf-manual-tag" title="Cadastrada pela aba Contas fixas"><i class="bi bi-pencil-square"></i> Manual</span>' : ''
-].join('');
+const recurringTag = (entry) => (entry.recurring === true
+  ? '<span class="entry-recurring-tag" title="Gasto fixo recorrente"><i class="bi bi-arrow-repeat"></i> Fixo</span>'
+  : '');
 
 const renderDueDay = (due_day) => due_day
   ? `<span class="badge text-bg-light border" style="font-size:.7rem;"><i class="bi bi-calendar-event me-1"></i>dia ${due_day}</span>`

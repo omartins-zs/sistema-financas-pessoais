@@ -679,6 +679,69 @@
   color: var(--app-expense);
 }
 
+/* Contas fixas manuais: ficam só nesta aba, com pago/editar/excluir na linha */
+.cf-sec--manuais {
+  background: color-mix(in srgb, var(--app-investment) 6%, var(--app-surface));
+  border-color: color-mix(in srgb, var(--app-investment) 28%, var(--app-border));
+}
+
+.cf-row__end {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.cf-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.cf-row__actions .carro-icon-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+.cf-pay-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.9rem;
+  padding: 0 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--app-expense) 40%, var(--app-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-expense) 10%, transparent);
+  color: var(--app-expense);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.cf-pay-btn:hover,
+.cf-pay-btn:focus-visible {
+  background: color-mix(in srgb, var(--app-expense) 18%, transparent);
+}
+
+.cf-pay-btn.is-paid {
+  border-color: color-mix(in srgb, var(--app-income) 45%, var(--app-border));
+  background: color-mix(in srgb, var(--app-income) 12%, transparent);
+  color: var(--app-income);
+}
+
+@media (max-width: 575px) {
+  .cf-row--manual {
+    flex-wrap: wrap;
+  }
+
+  .cf-row--manual .cf-row__end {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 /* Um card por pessoa no topo da aba */
 .cf-people {
   display: grid;
