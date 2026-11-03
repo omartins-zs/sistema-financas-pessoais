@@ -314,6 +314,14 @@ const createDefaultCardItem = (entry) => ({
 const sumCardItems = (items = []) =>
   Math.round(items.reduce((acc, item) => acc + (Number(item.value) || 0), 0) * 100) / 100;
 
+// Mesmo gasto recorrente em faturas diferentes ("Google One", "Dl*Spotify P489e"…):
+// nome sem "Parcela x/y", sem acento e sem símbolos. Usado ao limpar a fatura (lembra
+// quais eram recorrentes) e ao importar (mescla/remarca os recorrentes).
+const chaveItemRecorrente = (desc) => String(desc || '')
+  .replace(/\s*-?\s*parcela\s*\d+\s*\/\s*\d+/gi, '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 // ---- Valores de terceiros da fatura (cartão emprestado / conta dividida) ----
 // Lista no próprio lançamento do cartão: [{ id, descricao, pessoa, valor }].
 // Ex.: Outback R$ 1.000 → "Outback · Pai · 300" e "Outback · Irmão · 300".

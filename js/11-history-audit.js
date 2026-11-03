@@ -434,6 +434,9 @@ const updateCardItem = (entryId, itemId, description, value, recurring) => {
   const entries = getCurrentEntries();
   const index = entries.findIndex((e) => e.id === entryId);
   if (index === -1) return;
+  // Estorno importado é crédito: o campo mostra o valor sem sinal e ele continua abatendo
+  const atual = (entries[index].card_items ?? []).find((i) => i.id === itemId);
+  if (atual?.estorno === true) value = -Math.abs(value);
 
   const items = (entries[index].card_items ?? []).map((item) => {
     if (item.id !== itemId) return item;
@@ -648,9 +651,10 @@ const deleteCardItem = (entryId, itemId) => {
   render();
 };
 
-// Limpa a fatura (ex.: para reimportar): tira os itens, podendo manter os recorrentes
-// e os valores de terceiros. Vai para o Histórico (dá para desfazer) e tira uma cópia
-// local antes, como as outras ações perigosas.
+// Limpa a fatura para importar de novo: tira todos os itens (inclusive recorrentes) e
+// guarda quais eram recorrentes — na próxima importação eles voltam marcados. Os valores
+// de terceiros (digitados à mão, não vêm no arquivo) podem ficar. Vai para o Histórico
+// (dá para desfazer) e tira uma cópia local antes, como as outras ações perigosas.
 const clearCardItems = async (entryId) => {
   const entry = getCurrentEntries().find((e) => e.id === entryId);
   if (!entry) return;
@@ -662,9 +666,9 @@ const clearCardItems = async (entryId) => {
   const { value: opcoes, isConfirmed } = await Swal.fire({
     title: `Limpar itens de “${escapeHtml(entry.description)}”?`,
     html: `<div class="clear-card">
-        <p class="clear-card__info"><strong>${itens.length}</strong> item(ns) · ${formatCurrency(sumCardItems(itens))}</p>
-        ${recorrentes.length ? `<label class="clear-card__opt"><input type="checkbox" id="clearKeepRec" checked> Manter os <strong>${recorrentes.length}</strong> recorrente(s) (${formatCurrency(sumCardItems(recorrentes))})</label>` : ''}
-        ${terceiros.length ? `<label class="clear-card__opt"><input type="checkbox" id="clearTerceiros" checked> Apagar também os <strong>${terceiros.length}</strong> valor(es) de terceiros (${formatCurrency(sumCardTerceiros(entry))})</label>` : ''}
+        <p class="clear-card__info">Saem <strong>todos os ${itens.length}</strong> item(ns) · ${formatCurrency(sumCardItems(itens))}</p>
+        ${recorrentes.length ? `<p class="clear-card__note"><i class="bi bi-arrow-repeat"></i> Os <strong>${recorrentes.length}</strong> recorrente(s) também saem. Ao importar a fatura de novo, eles voltam marcados como recorrentes.</p>` : ''}
+        ${terceiros.length ? `<label class="clear-card__opt"><input type="checkbox" id="clearTerceiros"> Apagar também os <strong>${terceiros.length}</strong> valor(es) de terceiros (${formatCurrency(sumCardTerceiros(entry))}) — eles não vêm no arquivo</label>` : ''}
         <p class="clear-card__hint">Dá para desfazer pelo Histórico.</p>
       </div>`,
     icon: 'warning',
@@ -677,10 +681,7 @@ const clearCardItems = async (entryId) => {
     focusCancel: true,
     preConfirm: () => {
       const popup = Swal.getPopup();
-      return {
-        manterRecorrentes: popup.querySelector('#clearKeepRec')?.checked === true,
-        limparTerceiros: popup.querySelector('#clearTerceiros')?.checked === true
-      };
+      return { limparTerceiros: popup.querySelector('#clearTerceiros')?.checked === true };
     }
   });
   if (!isConfirmed || !opcoes) return;
@@ -691,11 +692,10 @@ const clearCardItems = async (entryId) => {
   const index = entries.findIndex((e) => e.id === entryId);
   if (index === -1) return;
   const base = migrarTerceirosDosItens(cloneDados(entries[index]));
-  const ficam = opcoes.manterRecorrentes
-    ? (base.card_items ?? []).filter((i) => i.recurring === true && !isDefaultCardItem(i))
-    : [];
-  const removidos = (base.card_items ?? []).filter((i) => !isDefaultCardItem(i)).length - ficam.length;
-  const next = { ...base, card_items: ficam, value: sumCardItems(ficam) };
+  const reais = (base.card_items ?? []).filter((i) => !isDefaultCardItem(i));
+  const chavesRec = reais.filter((i) => i.recurring === true).map((i) => chaveItemRecorrente(i.description)).filter(Boolean);
+  const lembrados = [...new Set([...(Array.isArray(base.recorrentesLembrados) ? base.recorrentesLembrados : []), ...chavesRec])];
+  const next = { ...base, card_items: [], value: 0, ...(lembrados.length ? { recorrentesLembrados: lembrados } : {}) };
   if (opcoes.limparTerceiros) next.terceiros = [];
 
   // O "Desfazer última importação" desta fatura deixaria de fazer sentido (os itens saíram)
@@ -705,9 +705,9 @@ const clearCardItems = async (entryId) => {
 
   expandedCardEntries.add(entryId);
   setCurrentEntries(entries.map((e, i) => (i === index ? next : e)),
-    `limpou ${removidos} item(ns) da fatura “${entry.description}”${ficam.length ? ` (manteve ${ficam.length} recorrente(s))` : ''}${opcoes.limparTerceiros && terceiros.length ? ' e os valores de terceiros' : ''}`);
+    `limpou ${reais.length} item(ns) da fatura “${entry.description}”${opcoes.limparTerceiros && terceiros.length ? ' e os valores de terceiros' : ''}`);
   render();
-  notify.info(`Fatura “${entry.description}” limpa${ficam.length ? `: ficaram ${ficam.length} recorrente(s)` : ''}.`);
+  notify.info(`Fatura “${entry.description}” limpa. Agora é só importar o arquivo de novo${chavesRec.length ? ` — os ${chavesRec.length} recorrente(s) voltam marcados` : ''}.`);
 };
 
 // Reordena apenas os ids informados, mantendo os demais itens nas posições atuais

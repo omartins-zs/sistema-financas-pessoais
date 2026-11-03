@@ -8,13 +8,13 @@
 
   <!-- Versão do app. Trocar SÓ aqui a cada deploy: um replace deste valor no arquivo
        atualiza o selo na tela, o service worker e o ?v= de todos os arquivos. -->
-  <meta name="app-version" content="20261103-1828">
+  <meta name="app-version" content="20261103-1839">
 
   <link rel="icon" type="image/png" href="icon-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest?v=20261103-1828">
+  <link rel="manifest" href="manifest.webmanifest?v=20261103-1839">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,8 +24,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css" rel="stylesheet">
   <!-- ?v=AAAAMMDD-N — trocar a cada deploy: muda a URL e nenhum dispositivo reusa o cache antigo -->
-  <link rel="stylesheet" href="style.css?v=20261103-1828">
-  <link rel="stylesheet" href="modules.css?v=20261103-1828">
+  <link rel="stylesheet" href="style.css?v=20261103-1839">
+  <link rel="stylesheet" href="modules.css?v=20261103-1839">
 </head>
 <body>
 
@@ -115,20 +115,57 @@
               <button type="button" class="topbar__tool dropdown-toggle" data-bs-toggle="dropdown" title="Importar dados" aria-label="Importar dados">
                 <i class="bi bi-upload"></i>
               </button>
-              <ul class="dropdown-menu dropdown-menu-end shadow border-0">
-                <li><h6 class="dropdown-header">Importar para o mês atual</h6></li>
-                <li><button class="dropdown-item" type="button" data-import="sheet"><i class="bi bi-file-earmark-spreadsheet"></i> Planilha CSV ou Excel</button></li>
+              <ul class="dropdown-menu dropdown-menu-end shadow border-0 import-menu">
+                <li class="import-menu__title"><i class="bi bi-upload"></i> Importar</li>
+
+                <li><h6 class="dropdown-header">Do banco</h6></li>
+                <li>
+                  <button class="dropdown-item import-menu__item" type="button" data-import="bank">
+                    <span class="import-menu__icon import-menu__icon--bank"><i class="bi bi-credit-card-2-front"></i></span>
+                    <span class="import-menu__text">
+                      <strong>Fatura do cartão ou extrato</strong>
+                      <small>Nubank, Santander… · OFX, CSV ou QIF · você escolhe o cartão e duplicados são pulados</small>
+                    </span>
+                  </button>
+                </li>
+                <li>
+                  <button class="dropdown-item import-menu__item" type="button" data-import="undo-bank">
+                    <span class="import-menu__icon"><i class="bi bi-arrow-counterclockwise"></i></span>
+                    <span class="import-menu__text">
+                      <strong>Desfazer última importação</strong>
+                      <small>Tira só o que a última fatura ou extrato colocou</small>
+                    </span>
+                  </button>
+                </li>
+
                 <li><hr class="dropdown-divider"></li>
-                <li><h6 class="dropdown-header">Extrato do banco</h6></li>
-                <li><button class="dropdown-item" type="button" data-import="bank"><i class="bi bi-bank"></i> Extrato ou fatura (OFX, CSV, QIF)</button></li>
-                <li><button class="dropdown-item" type="button" data-import="undo-bank"><i class="bi bi-arrow-counterclockwise"></i> Desfazer última importação</button></li>
+                <li><h6 class="dropdown-header">Planilha</h6></li>
+                <li>
+                  <button class="dropdown-item import-menu__item" type="button" data-import="sheet">
+                    <span class="import-menu__icon import-menu__icon--sheet"><i class="bi bi-file-earmark-spreadsheet"></i></span>
+                    <span class="import-menu__text">
+                      <strong>Importar planilha no mês aberto</strong>
+                      <small>CSV ou Excel no formato do modelo</small>
+                    </span>
+                  </button>
+                </li>
+                <li class="import-menu__templates">
+                  <span>Modelo da planilha:</span>
+                  <a href="template-importacao.csv" download><i class="bi bi-filetype-csv"></i> CSV</a>
+                  <a href="template-importacao.xlsx" download><i class="bi bi-file-earmark-excel"></i> Excel</a>
+                </li>
+
                 <li><hr class="dropdown-divider"></li>
-                <li><h6 class="dropdown-header">Templates de exemplo</h6></li>
-                <li><a class="dropdown-item" href="template-importacao.csv" download><i class="bi bi-filetype-csv"></i> Baixar template CSV</a></li>
-                <li><a class="dropdown-item" href="template-importacao.xlsx" download><i class="bi bi-file-earmark-excel"></i> Baixar template Excel</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><h6 class="dropdown-header">Backup completo</h6></li>
-                <li><button class="dropdown-item" type="button" data-import="json"><i class="bi bi-filetype-json"></i> Restaurar backup JSON</button></li>
+                <li><h6 class="dropdown-header">Backup</h6></li>
+                <li>
+                  <button class="dropdown-item import-menu__item import-menu__item--warn" type="button" data-import="json">
+                    <span class="import-menu__icon import-menu__icon--warn"><i class="bi bi-shield-exclamation"></i></span>
+                    <span class="import-menu__text">
+                      <strong>Restaurar backup completo</strong>
+                      <small>Arquivo JSON do Exportar · substitui todos os meses e módulos</small>
+                    </span>
+                  </button>
+                </li>
               </ul>
             </div>
 
@@ -652,24 +689,24 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20261103-1828"></script>
-  <script src="cloud-sync.js?v=20261103-1828"></script>
+  <script src="firebase-config.js?v=20261103-1839"></script>
+  <script src="cloud-sync.js?v=20261103-1839"></script>
 
   <!-- Scripts do app são clássicos e carregados nesta ordem para preservar o escopo global legado. -->
-  <script src="js/00-core.js?v=20261103-1828"></script>
-  <script src="js/10-theme-persistence.js?v=20261103-1828"></script>
-  <script src="js/11-history-audit.js?v=20261103-1828"></script>
-  <script src="js/20-navigation-dashboard.js?v=20261103-1828"></script>
-  <script src="js/30-entries.js?v=20261103-1828"></script>
-  <script src="js/40-exports.js?v=20261103-1828"></script>
-  <script src="js/41-backups-recovery.js?v=20261103-1828"></script>
-  <script src="js/50-import-parsers.js?v=20261103-1828"></script>
-  <script src="js/51-import-workflows.js?v=20261103-1828"></script>
-  <script src="js/60-render.js?v=20261103-1828"></script>
-  <script src="js/61-card-reordering.js?v=20261103-1828"></script>
-  <script src="js/70-events.js?v=20261103-1828"></script>
-  <script src="js/80-bootstrap-pwa.js?v=20261103-1828"></script>
-  <script src="app-modules.js?v=20261103-1828"></script>
+  <script src="js/00-core.js?v=20261103-1839"></script>
+  <script src="js/10-theme-persistence.js?v=20261103-1839"></script>
+  <script src="js/11-history-audit.js?v=20261103-1839"></script>
+  <script src="js/20-navigation-dashboard.js?v=20261103-1839"></script>
+  <script src="js/30-entries.js?v=20261103-1839"></script>
+  <script src="js/40-exports.js?v=20261103-1839"></script>
+  <script src="js/41-backups-recovery.js?v=20261103-1839"></script>
+  <script src="js/50-import-parsers.js?v=20261103-1839"></script>
+  <script src="js/51-import-workflows.js?v=20261103-1839"></script>
+  <script src="js/60-render.js?v=20261103-1839"></script>
+  <script src="js/61-card-reordering.js?v=20261103-1839"></script>
+  <script src="js/70-events.js?v=20261103-1839"></script>
+  <script src="js/80-bootstrap-pwa.js?v=20261103-1839"></script>
+  <script src="app-modules.js?v=20261103-1839"></script>
 </body>
 </html>
 

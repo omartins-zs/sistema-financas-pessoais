@@ -75,7 +75,7 @@ const renderCardItemRow = (entry, item, sortable = false) => {
     <li class="card-item card-item--editing" data-item-id="${item.id}">
       ${sortable ? '<span class="card-item__drag card-item__drag--off" aria-hidden="true"><i class="bi bi-grip-vertical"></i></span>' : ''}
       <input type="text" class="form-control form-control-sm card-item-edit-desc" value="${escapeAttr(item.description)}" aria-label="Editar descrição">
-      <input type="text" class="form-control form-control-sm card-item-edit-val" value="${escapeAttr(formatValuePlain(item.value))}" inputmode="decimal" aria-label="Editar valor">
+      <input type="text" class="form-control form-control-sm card-item-edit-val" value="${escapeAttr(formatValuePlain(Math.abs(Number(item.value) || 0)))}" inputmode="decimal" aria-label="Editar valor">
       ${isDefault ? '' : `<label class="card-item-recurring-check card-item-recurring-check--inline">
         <input type="checkbox" class="card-item-edit-recurring"${recurring ? ' checked' : ''}>
         <span>Rec.</span>
@@ -92,11 +92,12 @@ const renderCardItemRow = (entry, item, sortable = false) => {
   }
 
   return `
-    <li class="card-item${recurring ? ' card-item--recurring' : ''}" data-item-id="${item.id}">
+    <li class="card-item${recurring ? ' card-item--recurring' : ''}${item.estorno === true ? ' card-item--estorno' : ''}" data-item-id="${item.id}">
       ${dragHandle}
       <span class="card-item__desc">
         ${escapeHtml(item.description)}
         ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
+        ${item.estorno === true ? '<span class="card-item__tag card-item__tag--estorno" title="Crédito na fatura: abate do total">Estorno</span>' : ''}
       </span>
       <strong class="card-item__value">${formatCurrency(item.value)}</strong>
       <div class="card-item__actions">
