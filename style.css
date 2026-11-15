@@ -2282,6 +2282,61 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   color: var(--app-reserved);
 }
 
+/* Botão de terceiros no item do cartão */
+.card-item__terceiros-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-faint);
+  transition: all 0.15s ease;
+}
+
+.card-item__terceiros-btn:hover,
+.card-item__terceiros-btn.is-active {
+  background: color-mix(in srgb, var(--app-investment) 18%, transparent);
+  color: var(--app-investment);
+}
+
+.card-item__tag--terceiros {
+  background: color-mix(in srgb, var(--app-investment) 18%, var(--app-surface-2));
+  color: var(--app-investment);
+  font-weight: 600;
+  font-size: 0.72rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  vertical-align: middle;
+}
+
+.card-item__terceiros-seu {
+  opacity: 0.85;
+  font-weight: 500;
+  font-size: 0.68rem;
+  margin-left: 0.15rem;
+}
+
+.card-item__terceiros-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--app-investment) 15%, var(--app-surface-2));
+  color: var(--app-investment);
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
 /* Valores de terceiros (cartão emprestado / conta dividida) */
 .card-terceiros {
   margin-top: 1rem;

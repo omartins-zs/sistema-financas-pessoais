@@ -91,13 +91,26 @@ const renderCardItemRow = (entry, item, sortable = false) => {
     </li>`;
   }
 
+  const itemTerceiros = getCardItemTerceiros(entry, item);
+  const itemTerceirosSum = sumCardItemTerceiros(entry, item);
+  const hasTerceiros = itemTerceirosSum > 0;
+  const pessoasTexto = itemTerceiros.map((t) => t.pessoa).filter(Boolean).join(', ') || 'Terceiros';
+
+  const terceirosTag = hasTerceiros
+    ? `<span class="card-item__tag card-item__tag--terceiros" title="Parte de outras pessoas: ${escapeAttr(formatCurrency(itemTerceirosSum))} (${escapeAttr(pessoasTexto)})">
+        <i class="bi bi-people-fill"></i> ${escapeHtml(pessoasTexto)} ${formatCurrency(itemTerceirosSum)}
+        ${itemTerceirosSum < (Number(item.value) || 0) ? `<small class="card-item__terceiros-seu">(seu: ${formatCurrency(arredondaCentavos((Number(item.value) || 0) - itemTerceirosSum))})</small>` : ''}
+      </span>`
+    : '';
+
   return `
-    <li class="card-item${recurring ? ' card-item--recurring' : ''}${item.estorno === true ? ' card-item--estorno' : ''}" data-item-id="${item.id}">
+    <li class="card-item${recurring ? ' card-item--recurring' : ''}${item.estorno === true ? ' card-item--estorno' : ''}${hasTerceiros ? ' card-item--com-terceiro' : ''}" data-item-id="${item.id}">
       ${dragHandle}
       <span class="card-item__desc">
         ${escapeHtml(item.description)}
         ${recurring ? '<span class="card-item__tag">Recorrente</span>' : ''}
         ${item.estorno === true ? '<span class="card-item__tag card-item__tag--estorno" title="Crédito na fatura: abate do total">Estorno</span>' : ''}
+        ${terceirosTag}
       </span>
       <strong class="card-item__value">${formatCurrency(item.value)}</strong>
       <div class="card-item__actions">
@@ -106,6 +119,9 @@ const renderCardItemRow = (entry, item, sortable = false) => {
         </button>
         <button type="button" class="card-item__edit" data-action="edit-card-item" data-id="${entry.id}" data-item-id="${item.id}" title="Editar" aria-label="Editar item">
           <i class="bi bi-pencil"></i>
+        </button>
+        <button type="button" class="card-item__terceiros-btn${hasTerceiros ? ' is-active' : ''}" data-action="edit-card-item-terceiro" data-id="${entry.id}" data-item-id="${item.id}" title="${hasTerceiros ? `Valor de terceiros: ${formatCurrency(itemTerceirosSum)} (${pessoasTexto}) — toque para editar` : 'Atribuir a terceiros (outra pessoa)'}" aria-label="Valor de terceiros">
+          <i class="bi bi-people${hasTerceiros ? '-fill' : ''}"></i>
         </button>
         ${isDefault ? '' : `<button type="button" class="card-item__recurring${recurring ? ' is-active' : ''}" data-action="toggle-card-recurring" data-id="${entry.id}" data-item-id="${item.id}" title="${recurring ? 'Remover recorrência' : 'Marcar como recorrente'}" aria-label="Recorrente">
           <i class="bi bi-arrow-repeat"></i>
@@ -143,10 +159,12 @@ const pessoasTerceirosConhecidas = () => {
   return [...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 };
 
-const renderTerceiroRow = (entry, t) => `
+const renderTerceiroRow = (entry, t) => {
+  const temItemVinculado = Boolean(t.itemId && entry.card_items?.some((i) => i.id === t.itemId));
+  return `
   <li class="terceiro-row" data-terceiro-id="${escapeAttr(t.id)}">
     <div class="terceiro-row__body">
-      <strong class="terceiro-row__desc">${escapeHtml(t.descricao || '—')}</strong>
+      <strong class="terceiro-row__desc">${escapeHtml(t.descricao || '—')}${temItemVinculado ? ' <span class="card-item__terceiros-badge" title="Vinculado diretamente a um item da fatura"><i class="bi bi-link-45deg"></i> item</span>' : ''}</strong>
       <span class="terceiro-row__pessoa"><i class="bi bi-person-fill"></i> ${escapeHtml(t.pessoa || 'Sem nome')}</span>
     </div>
     <strong class="terceiro-row__valor">${formatCurrency(Number(t.valor) || 0)}</strong>
@@ -159,6 +177,7 @@ const renderTerceiroRow = (entry, t) => `
       </button>
     </div>
   </li>`;
+};
 
 // Seção "Valores de terceiros": o que é · de quem · valor (cartão emprestado, conta dividida)
 const renderTerceirosSection = (entry, items, ctx) => {

@@ -332,7 +332,8 @@ const normalizarTerceiro = (t) => ({
   id: String(t?.id || generateId()),
   descricao: String(t?.descricao ?? '').trim(),
   pessoa: String(t?.pessoa ?? '').trim(),
-  valor: arredondaCentavos(Math.max(Number(t?.valor) || 0, 0))
+  valor: arredondaCentavos(Math.max(Number(t?.valor) || 0, 0)),
+  ...(t?.itemId ? { itemId: String(t.itemId) } : {})
 });
 
 // Formato antigo (um valor por item: item.terceiros / item.terceirosNome) vira linha
@@ -350,7 +351,7 @@ const migrarTerceirosDosItens = (entry) => {
     const valor = Math.min(Math.max(Number(terceiros) || 0, 0), Number(item.value) || 0);
     const id = `${item.id}-terceiros`;
     if (valor > 0 && !ids.has(id)) {
-      lista.push({ id, descricao: String(item.description ?? '').trim(), pessoa: String(terceirosNome ?? '').trim(), valor: arredondaCentavos(valor) });
+      lista.push({ id, itemId: item.id, descricao: String(item.description ?? '').trim(), pessoa: String(terceirosNome ?? '').trim(), valor: arredondaCentavos(valor) });
     }
     return resto;
   });
@@ -359,8 +360,17 @@ const migrarTerceirosDosItens = (entry) => {
 
 const getCardTerceiros = (entry) => {
   const lista = migrarTerceirosDosItens(entry)?.terceiros;
-  return Array.isArray(lista) ? lista.filter((t) => Number(t?.valor) > 0) : [];
+  return Array.isArray(lista) ? lista.map(normalizarTerceiro).filter((t) => Number(t?.valor) > 0) : [];
 };
+
+const getCardItemTerceiros = (entry, item) => {
+  if (!entry || !item) return [];
+  const lista = getCardTerceiros(entry);
+  return lista.filter((t) => t.itemId === item.id || t.id === `${item.id}-terceiros`);
+};
+
+const sumCardItemTerceiros = (entry, item) =>
+  arredondaCentavos(getCardItemTerceiros(entry, item).reduce((acc, t) => acc + (Number(t.valor) || 0), 0));
 
 const sumCardTerceiros = (entry) =>
   arredondaCentavos(getCardTerceiros(entry).reduce((acc, t) => acc + (Number(t.valor) || 0), 0));

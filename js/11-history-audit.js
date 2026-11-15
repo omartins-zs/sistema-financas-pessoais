@@ -458,8 +458,19 @@ const updateCardItem = (entryId, itemId, description, value, recurring) => {
     return next;
   });
 
+  const nextTerceiros = (entries[index].terceiros ?? []).map((t) => {
+    if (t.itemId === itemId || t.id === `${itemId}-terceiros`) {
+      return {
+        ...t,
+        descricao: description,
+        valor: Math.min(Number(t.valor) || 0, value)
+      };
+    }
+    return t;
+  });
+
   const nextEntries = entries.map((e, i) => (
-    i === index ? syncCardEntryFromItems({ ...e, card_items: items }) : e
+    i === index ? syncCardEntryFromItems({ ...e, card_items: items, terceiros: nextTerceiros }) : e
   ));
   editingCardItems.delete(`${entryId}:${itemId}`);
   expandedCardEntries.add(entryId);
@@ -625,6 +636,109 @@ const removeCardTerceiro = (entryId, terceiroId) => {
   if (ok) notify.info('Valor de terceiros removido (dá para desfazer no Histórico).');
 };
 
+const editCardItemTerceiro = async (entryId, itemId) => {
+  const entry = getCurrentEntries().find((e) => e.id === entryId);
+  const item = entry?.card_items?.find((it) => it.id === itemId);
+  if (!entry || !item) return;
+
+  const totalItem = Number(item.value) || 0;
+  const existentes = getCardItemTerceiros(entry, item);
+  const atual = existentes[0] || null;
+  let mask = null;
+
+  const idPessoasModal = `item-terc-pessoas-${Date.now()}`;
+  const pessoasDatalist = (typeof pessoasTerceirosConhecidas === 'function' ? pessoasTerceirosConhecidas() : [])
+    .map((p) => `<option value="${escapeAttr(p)}">`)
+    .join('');
+
+  const { value: res, isConfirmed, isDenied } = await Swal.fire({
+    title: '<span class="fm-title"><i class="bi bi-people-fill"></i> Valor de terceiros do item</span>',
+    html: `<p class="terceiros-modal__info">${escapeHtml(item.description)} · item de <strong>${formatCurrency(totalItem)}</strong></p>
+      <div class="fm-grid">
+        <div class="fm-field fm-wide">
+          <label for="swalItemTercPessoa">De quem é?</label>
+          <input id="swalItemTercPessoa" type="text" class="fm-input" maxlength="40" list="${idPessoasModal}" placeholder="Ex: Mãe, Bárbara, João" value="${escapeAttr(atual?.pessoa || '')}">
+          <datalist id="${idPessoasModal}">${pessoasDatalist}</datalist>
+        </div>
+        <div class="fm-field fm-wide">
+          <label for="swalItemTercValor">Valor de terceiros (R$)</label>
+          <input id="swalItemTercValor" type="text" class="fm-input" inputmode="decimal" placeholder="0,00">
+        </div>
+      </div>
+      <p class="terceiros-modal__hint">${atual ? 'Deixe o valor zerado para desvincular terceiros deste item.' : 'Padrão: valor total do item. Altere se for apenas uma parte.'}</p>`,
+    width: 480,
+    showCancelButton: true,
+    showDenyButton: Boolean(atual),
+    confirmButtonText: '<i class="bi bi-check-lg"></i> Salvar',
+    denyButtonText: '<i class="bi bi-trash"></i> Desvincular',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#4f6ef7',
+    denyButtonColor: '#ef4444',
+    cancelButtonColor: '#94a3b8',
+    reverseButtons: true,
+    focusConfirm: false,
+    didOpen: () => {
+      mask = IMask(document.getElementById('swalItemTercValor'), moneyMaskOptions);
+      mask.typedValue = atual ? (Number(atual.valor) || 0) : totalItem;
+      const inputPessoa = document.getElementById('swalItemTercPessoa');
+      if (!inputPessoa.value) inputPessoa.focus();
+      else document.getElementById('swalItemTercValor').focus();
+    },
+    preConfirm: () => {
+      const pessoa = document.getElementById('swalItemTercPessoa').value.trim();
+      const valor = arredondaCentavos(getMaskValue(mask));
+      if (valor > 0 && !pessoa) {
+        Swal.showValidationMessage('Informe de quem é o valor de terceiros.');
+        return false;
+      }
+      if (valor > totalItem) {
+        Swal.showValidationMessage(`O valor de terceiros não pode passar do valor do item (${formatCurrency(totalItem)}).`);
+        return false;
+      }
+      const linha = {
+        id: atual?.id || `${itemId}-terceiros`,
+        itemId: item.id,
+        descricao: item.description,
+        pessoa,
+        valor
+      };
+      if (valor > 0) {
+        const erro = erroTerceiro(entry, linha, atual?.id);
+        if (erro) { Swal.showValidationMessage(erro); return false; }
+      }
+      return linha;
+    }
+  });
+
+  if (isDenied && atual) {
+    const ok = salvarTerceirosDoCartao(entryId, (lista) => lista.filter((t) => !(t.itemId === itemId || t.id === atual.id)),
+      `terceiros em “${entry.description}”: desvinculou item “${item.description}”`);
+    if (ok) notify.info('Valor de terceiros desvinculado do item.');
+    return;
+  }
+
+  if (!isConfirmed || !res) return;
+
+  if (res.valor === 0) {
+    const ok = salvarTerceirosDoCartao(entryId, (lista) => lista.filter((t) => !(t.itemId === itemId || t.id === atual?.id)),
+      `terceiros em “${entry.description}”: removeu terceiro do item “${item.description}”`);
+    if (ok) notify.info('Valor de terceiros removido do item.');
+    return;
+  }
+
+  const ok = salvarTerceirosDoCartao(entryId, (lista) => {
+    const existe = lista.some((t) => t.itemId === itemId || t.id === res.id);
+    if (existe) {
+      return lista.map((t) => (t.itemId === itemId || t.id === res.id ? res : t));
+    }
+    return [...lista, res];
+  }, `terceiros em “${entry.description}”: ${atual ? 'atualizou' : 'atribuiu'} item “${item.description}” para ${resumoTerceiro(res)}`);
+
+  if (ok) {
+    notify.success(`${res.pessoa}: ${formatCurrency(res.valor)} atribuído a terceiros.`);
+  }
+};
+
 const canDeleteCardItem = (item, items = []) =>
   items.length > 1;
 
@@ -641,9 +755,10 @@ const deleteCardItem = (entryId, itemId) => {
 
   const items = currentItems.filter((item) => item.id !== itemId);
   const total = sumCardItems(items);
+  const terceiros = (entries[index].terceiros ?? []).filter((t) => !(t.itemId === itemId || t.id === `${itemId}-terceiros`));
 
   const nextEntries = entries.map((e, i) => (
-    i === index ? syncCardEntryFromItems({ ...e, card_items: items, value: total }) : e
+    i === index ? syncCardEntryFromItems({ ...e, card_items: items, value: total, terceiros }) : e
   ));
   expandedCardEntries.add(entryId);
   setCurrentEntries(nextEntries);

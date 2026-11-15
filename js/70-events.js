@@ -38,6 +38,11 @@ const handleListClick = (e) => {
     return;
   }
 
+  if (action === 'edit-card-item-terceiro') {
+    editCardItemTerceiro(id, itemId);
+    return;
+  }
+
   if (action === 'save-card-item') {
     const row = btn.closest('.card-item--editing');
     if (row) saveCardItemFromRow(id, itemId, row);

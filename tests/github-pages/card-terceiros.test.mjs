@@ -28,7 +28,7 @@ const loadCore = async () => {
     generateId: () => `gerado-${++seq}`
   };
   runInNewContext(`${trecho}
-globalThis.__t = { normalizeEntry, migrarTerceirosDosItens, getCardTerceiros, sumCardTerceiros, totalSemTerceiros, terceirosPorPessoa, arredondaCentavos };`, context);
+globalThis.__t = { normalizeEntry, migrarTerceirosDosItens, getCardTerceiros, getCardItemTerceiros, sumCardItemTerceiros, sumCardTerceiros, totalSemTerceiros, terceirosPorPessoa, arredondaCentavos };`, context);
   return context.__t;
 };
 
@@ -74,8 +74,8 @@ test('terceiros: formato antigo (um valor por item) migra para a lista sem dupli
   const migrado = t.migrarTerceirosDosItens(legado);
   assert.equal(migrado.card_items.some((i) => 'terceiros' in i || 'terceirosNome' in i), false, 'campos antigos saem dos itens');
   assert.deepEqual(JSON.parse(JSON.stringify(migrado.terceiros)), [
-    { id: 'geo-terceiros', descricao: 'Geo Cosmeticos 2/2', pessoa: 'Mae', valor: 40 },
-    { id: 'exc-terceiros', descricao: 'Exagerado', pessoa: 'X', valor: 10 }
+    { id: 'geo-terceiros', itemId: 'geo', descricao: 'Geo Cosmeticos 2/2', pessoa: 'Mae', valor: 40 },
+    { id: 'exc-terceiros', itemId: 'exc', descricao: 'Exagerado', pessoa: 'X', valor: 10 }
   ], 'id determinístico e valor limitado ao valor do item');
   assert.equal(legado.card_items[0].terceiros, 40, 'não muta o lançamento original');
 
@@ -95,7 +95,7 @@ test('normalizeEntry migra terceiros do cartão e não mexe no valor da fatura n
     ]
   });
   assert.equal(cartao.value, 1000, 'despesas do mês continuam com a fatura cheia');
-  assert.deepEqual(JSON.parse(JSON.stringify(cartao.terceiros)), [{ id: 'a-terceiros', descricao: 'Outback', pessoa: 'Pai', valor: 400 }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(cartao.terceiros)), [{ id: 'a-terceiros', itemId: 'a', descricao: 'Outback', pessoa: 'Pai', valor: 400 }]);
   assert.equal(cartao.card_items.some((i) => 'terceiros' in i), false);
 
   const limpo = t.normalizeEntry({ ...faturaOutback(), terceiros: [{ id: 'z', descricao: ' Bar ', pessoa: ' João ', valor: '12.345' }, { id: 'zero', pessoa: 'Ninguém', valor: 0 }] });
@@ -127,7 +127,7 @@ const loadOps = async (entries) => {
     notify: { success: (m) => avisos.push(m), error: (m) => avisos.push(`ERRO: ${m}`), info: (m) => avisos.push(m) }
   };
   runInNewContext(`${puras}\n${ops}
-globalThis.__t = { addCardTerceiro, removeCardTerceiro, erroTerceiro, submitCardTerceiroAdd };`, context);
+globalThis.__t = { addCardTerceiro, editCardItemTerceiro, removeCardTerceiro, erroTerceiro, submitCardTerceiroAdd };`, context);
   return { t: context.__t, context, registros, avisos };
 };
 
@@ -186,9 +186,10 @@ test('tela: seção de terceiros no fim da fatura, dois valores no cartão e ras
   assert.match(render, /Total sem terceiros/);
   assert.match(render, /\$\{renderTerceirosSection\(entry, items, ctx\)\}\s*<\/div>`;/, 'seção fica no fim do painel da fatura');
   assert.equal((render.match(/cardValorComTerceiros\(entry\)/g) || []).length, 2, 'tabela e card do celular mostram os dois valores');
-  assert.doesNotMatch(render, /edit-card-terceiros|card-item__terceiros/, 'sem botão de terceiros em cada item');
+  assert.match(render, /data-action="edit-card-item-terceiro"/, 'botão de terceiros em cada item');
+  assert.match(render, /card-item__terceiros-btn/, 'classe do botão de terceiros');
 
-  for (const acao of ['add-card-terceiro', 'edit-card-terceiro', 'remove-card-terceiro']) {
+  for (const acao of ['edit-card-item-terceiro', 'add-card-terceiro', 'edit-card-terceiro', 'remove-card-terceiro']) {
     assert.match(events, new RegExp(`'${acao}'`));
   }
   assert.match(events, /\.terceiro-desc, \.terceiro-pessoa, \.terceiro-val/, 'Enter adiciona');
@@ -213,4 +214,135 @@ test('tela: valor do cartão mostra a sua parte em destaque e a fatura com terce
   assert.match(html, /card-value-proprio[^>]*>R\$ 1925\.07</, 'destaque é o valor sem terceiros');
   assert.match(html, /com terceiros R\$ 2656\.49/, 'embaixo a fatura cheia');
   assert.equal(context.__f({ value: 500, terceiros: [] }), 'R$ 500.00', 'sem terceiros mostra só o valor');
+});
+
+test('item de cartão: consulta de terceiros por item e soma específica', async () => {
+  const t = await loadCore();
+  const entry = {
+    id: 'k1', category: CARTAO, value: 500,
+    card_items: [
+      { id: 'item-1', description: 'Remédio', value: 150 },
+      { id: 'item-2', description: 'Jantar', value: 350 }
+    ],
+    terceiros: [
+      { id: 't1', itemId: 'item-1', descricao: 'Remédio', pessoa: 'Mãe', valor: 150 },
+      { id: 't2', itemId: 'item-2', descricao: 'Jantar', pessoa: 'Amigo', valor: 100 }
+    ]
+  };
+
+  const tercItem1 = t.getCardItemTerceiros(entry, entry.card_items[0]);
+  assert.equal(tercItem1.length, 1);
+  assert.equal(tercItem1[0].pessoa, 'Mãe');
+  assert.equal(t.sumCardItemTerceiros(entry, entry.card_items[0]), 150);
+
+  const tercItem2 = t.getCardItemTerceiros(entry, entry.card_items[1]);
+  assert.equal(tercItem2.length, 1);
+  assert.equal(tercItem2[0].pessoa, 'Amigo');
+  assert.equal(t.sumCardItemTerceiros(entry, entry.card_items[1]), 100);
+
+  const semTerc = t.getCardItemTerceiros(entry, { id: 'outro-item' });
+  assert.equal(semTerc.length, 0);
+  assert.equal(t.sumCardItemTerceiros(entry, { id: 'outro-item' }), 0);
+});
+
+test('item de cartão: renderização do botão de terceiros e tag no item', async () => {
+  const render = await read('js/60-render.js');
+  const trecho = slice(render, 'const renderCardItemRow =', 'const getCardItemFromEntry =');
+  const context = {
+    isDefaultCardItem: () => false,
+    editingCardItems: new Set(),
+    canDeleteCardItem: () => true,
+    formatCurrency: (v) => `R$ ${Number(v).toFixed(2)}`,
+    formatCurrencyPlain: (v) => String(v),
+    escapeHtml: (s) => s,
+    escapeAttr: (s) => s,
+    arredondaCentavos: (v) => Math.round((Number(v) || 0) * 100) / 100,
+    getCardItemTerceiros: (entry, item) => (entry.terceiros || []).filter((t) => t.itemId === item.id),
+    sumCardItemTerceiros: (entry, item) => (entry.terceiros || []).filter((t) => t.itemId === item.id).reduce((acc, t) => acc + (Number(t.valor) || 0), 0)
+  };
+
+  runInNewContext(`${trecho}\nglobalThis.__renderRow = renderCardItemRow;`, context);
+
+  // Item COM terceiros (100% de outra pessoa)
+  const entryCom = {
+    id: 'k1',
+    card_items: [{ id: 'i1', description: 'Farmácia', value: 150 }],
+    terceiros: [{ id: 't1', itemId: 'i1', descricao: 'Farmácia', pessoa: 'Mãe', valor: 150 }]
+  };
+  const htmlCom = context.__renderRow(entryCom, entryCom.card_items[0]);
+  assert.match(htmlCom, /card-item__terceiros-btn is-active/, 'botão fica ativo quando há terceiro');
+  assert.match(htmlCom, /bi-people-fill/, 'ícone preenchido');
+  assert.match(htmlCom, /card-item__tag--terceiros/, 'mostra tag com valor e nome da pessoa');
+  assert.match(htmlCom, /Mãe R\$ 150\.00/);
+
+  // Item SEM terceiros
+  const entrySem = {
+    id: 'k1',
+    card_items: [{ id: 'i2', description: 'Gasolina', value: 200 }],
+    terceiros: []
+  };
+  const htmlSem = context.__renderRow(entrySem, entrySem.card_items[0]);
+  assert.match(htmlSem, /card-item__terceiros-btn" data-action="edit-card-item-terceiro"/, 'botão presente mas sem classe ativa');
+  assert.doesNotMatch(htmlSem, /card-item__terceiros-btn is-active/);
+  assert.match(htmlSem, /bi-people"/, 'ícone de linha comum');
+  assert.doesNotMatch(htmlSem, /card-item__tag--terceiros/);
+});
+
+test('item de cartão: modal de terceiros preenche o valor total por padrão e vincula ao item', async () => {
+  const fatura = {
+    id: 'k1', description: 'Nubank', category: CARTAO, type: 'despesa', value: 1000,
+    card_items: [
+      { id: 'item-remedio', description: 'Remédio Farmácia', value: 150 },
+      { id: 'item-resto', description: 'Outros', value: 850 }
+    ],
+    terceiros: []
+  };
+  const { t, context, registros, avisos } = await loadOps([fatura]);
+
+  let maskVal = 0;
+  const pessoaInput = { value: 'Mãe', focus() {} };
+  const valorInput = { value: '', focus() {} };
+
+  context.document = {
+    getElementById: (id) => {
+      if (id === 'swalItemTercPessoa') return pessoaInput;
+      if (id === 'swalItemTercValor') return valorInput;
+      return null;
+    }
+  };
+  context.escapeHtml = (x) => x;
+  context.escapeAttr = (x) => x;
+  context.moneyMaskOptions = {};
+  context.IMask = (el, opts) => ({
+    get typedValue() { return maskVal; },
+    set typedValue(v) { maskVal = v; }
+  });
+  context.getMaskValue = (m) => m.typedValue;
+
+  let modalHtml = '';
+  context.Swal = {
+    fire: async (cfg) => {
+      modalHtml = cfg.html;
+      if (typeof cfg.didOpen === 'function') cfg.didOpen();
+      const val = cfg.preConfirm();
+      return { isConfirmed: true, value: val };
+    },
+    showValidationMessage: (msg) => {}
+  };
+
+  // Chama atribuição no item de R$ 150
+  await t.editCardItemTerceiro('k1', 'item-remedio');
+
+  // Verifica que o valor padrão atribuído foi o total do item (150)
+  assert.equal(maskVal, 150, 'valor inicial da máscara foi o total do item');
+  assert.match(modalHtml, /Remédio Farmácia/, 'traz a descrição do item no cabeçalho');
+
+  const entrada = context.state.entries[0];
+  assert.equal(entrada.terceiros.length, 1);
+  assert.equal(entrada.terceiros[0].pessoa, 'Mãe');
+  assert.equal(entrada.terceiros[0].valor, 150);
+  assert.equal(entrada.terceiros[0].itemId, 'item-remedio');
+  assert.equal(entrada.terceiros[0].descricao, 'Remédio Farmácia');
+  assert.match(registros.at(-1), /atribuiu item “Remédio Farmácia” para Mãe R\$ 150\.00/);
+  assert.match(avisos.at(-1), /Mãe: R\$ 150\.00 atribuído a terceiros/);
 });
