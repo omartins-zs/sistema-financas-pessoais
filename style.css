@@ -3028,3 +3028,16 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   .history-action { flex: 1 1 100%; }
   .audit-log-list .hist-row { grid-template-columns: 1fr; gap: 0.25rem; padding: 0.65rem 0.1rem; }
 }
+
+/* Regra de cálculo nos cards individuais (Gabriel / Bárbara) */
+.person-card-rule {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--app-text-muted);
+  border-top: 1px dashed color-mix(in srgb, var(--app-border) 70%, transparent) !important;
+}
+
+.person-card-rule i {
+  color: var(--app-investment);
+  margin-right: 0.25rem;
+}

@@ -8,13 +8,13 @@
 
   <!-- Versão do app. Trocar SÓ aqui a cada deploy: um replace deste valor no arquivo
        atualiza o selo na tela, o service worker e o ?v= de todos os arquivos. -->
-  <meta name="app-version" content="20261115-1928">
+  <meta name="app-version" content="20261115-1943">
 
   <link rel="icon" type="image/png" href="icon-192.png">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
   <!-- PWA -->
-  <link rel="manifest" href="manifest.webmanifest?v=20261115-1928">
+  <link rel="manifest" href="manifest.webmanifest?v=20261115-1943">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -24,8 +24,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/notyf@3.10.0/notyf.min.css" rel="stylesheet">
   <!-- ?v=AAAAMMDD-N — trocar a cada deploy: muda a URL e nenhum dispositivo reusa o cache antigo -->
-  <link rel="stylesheet" href="style.css?v=20261115-1928">
-  <link rel="stylesheet" href="modules.css?v=20261115-1928">
+  <link rel="stylesheet" href="style.css?v=20261115-1943">
+  <link rel="stylesheet" href="modules.css?v=20261115-1943">
 </head>
 <body>
 
@@ -286,30 +286,35 @@
         <!-- Gabriel -->
         <div class="col-12 col-md-6">
           <div class="card app-card shadow-sm border-0 h-100">
-            <div class="card-body p-4">
-              <h3 class="fw-bold mb-3 text-primary d-flex align-items-center gap-2">
-                <i class="bi bi-person-circle"></i> Gabriel
-              </h3>
-              <div class="row g-3 mb-3">
-                <div class="col-6">
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Entrada</span>
-                  <strong class="fs-5 text-success" id="gabrielIncome">R$ 0,00</strong>
+            <div class="card-body p-4 d-flex flex-column justify-content-between">
+              <div>
+                <h3 class="fw-bold mb-3 text-primary d-flex align-items-center gap-2">
+                  <i class="bi bi-person-circle"></i> Gabriel
+                </h3>
+                <div class="row g-3 mb-3">
+                  <div class="col-6">
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Entrada</span>
+                    <strong class="fs-5 text-success" id="gabrielIncome">R$ 0,00</strong>
+                  </div>
+                  <div class="col-6">
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Saída</span>
+                    <strong class="fs-5 text-danger" id="gabrielExpense">R$ 0,00</strong>
+                  </div>
                 </div>
-                <div class="col-6">
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Saída</span>
-                  <strong class="fs-5 text-danger" id="gabrielExpense">R$ 0,00</strong>
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                  <div>
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Sobra</span>
+                    <strong class="fs-5" id="gabrielSurplus">R$ 0,00</strong>
+                  </div>
+                  <div class="text-end">
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">% Comprometido</span>
+                    <strong class="fs-5 text-secondary" id="gabrielPercent">0,0%</strong>
+                  </div>
                 </div>
               </div>
-              <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-                <div>
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Sobra</span>
-                  <strong class="fs-5" id="gabrielSurplus">R$ 0,00</strong>
-                </div>
-                <div class="text-end">
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">% Comprometido</span>
-                  <strong class="fs-5 text-secondary" id="gabrielPercent">0,0%</strong>
-                </div>
-              </div>
+              <p class="person-card-rule mt-3 pt-2 mb-0 border-top text-muted">
+                <i class="bi bi-info-circle"></i> Regra: calculado com base na <strong>Entrada</strong> e somente no que foi <strong>Pago</strong> (valores <em>Reservados</em> ou <em>Não pagos</em> não entram na saída).
+              </p>
             </div>
           </div>
         </div>
@@ -317,30 +322,35 @@
         <!-- Bárbara -->
         <div class="col-12 col-md-6">
           <div class="card app-card shadow-sm border-0 h-100">
-            <div class="card-body p-4">
-              <h3 class="fw-bold mb-3 text-danger d-flex align-items-center gap-2" style="color: #d63384 !important;">
-                <i class="bi bi-person-circle"></i> Bárbara
-              </h3>
-              <div class="row g-3 mb-3">
-                <div class="col-6">
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Entrada</span>
-                  <strong class="fs-5 text-success" id="barbaraIncome">R$ 0,00</strong>
+            <div class="card-body p-4 d-flex flex-column justify-content-between">
+              <div>
+                <h3 class="fw-bold mb-3 text-danger d-flex align-items-center gap-2" style="color: #d63384 !important;">
+                  <i class="bi bi-person-circle"></i> Bárbara
+                </h3>
+                <div class="row g-3 mb-3">
+                  <div class="col-6">
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Entrada</span>
+                    <strong class="fs-5 text-success" id="barbaraIncome">R$ 0,00</strong>
+                  </div>
+                  <div class="col-6">
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Saída</span>
+                    <strong class="fs-5 text-danger" id="barbaraExpense">R$ 0,00</strong>
+                  </div>
                 </div>
-                <div class="col-6">
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Saída</span>
-                  <strong class="fs-5 text-danger" id="barbaraExpense">R$ 0,00</strong>
+                <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                  <div>
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Sobra</span>
+                    <strong class="fs-5" id="barbaraSurplus">R$ 0,00</strong>
+                  </div>
+                  <div class="text-end">
+                    <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">% Comprometido</span>
+                    <strong class="fs-5 text-secondary" id="barbaraPercent">0,0%</strong>
+                  </div>
                 </div>
               </div>
-              <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-                <div>
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">Sobra</span>
-                  <strong class="fs-5" id="barbaraSurplus">R$ 0,00</strong>
-                </div>
-                <div class="text-end">
-                  <span class="d-block small fw-bold text-muted text-uppercase tracking-wide">% Comprometido</span>
-                  <strong class="fs-5 text-secondary" id="barbaraPercent">0,0%</strong>
-                </div>
-              </div>
+              <p class="person-card-rule mt-3 pt-2 mb-0 border-top text-muted">
+                <i class="bi bi-info-circle"></i> Regra: calculado com base na <strong>Entrada</strong> e somente no que foi <strong>Pago</strong> (valores <em>Reservados</em> ou <em>Não pagos</em> não entram na saída).
+              </p>
             </div>
           </div>
         </div>
@@ -689,24 +699,24 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20261115-1928"></script>
-  <script src="cloud-sync.js?v=20261115-1928"></script>
+  <script src="firebase-config.js?v=20261115-1943"></script>
+  <script src="cloud-sync.js?v=20261115-1943"></script>
 
   <!-- Scripts do app são clássicos e carregados nesta ordem para preservar o escopo global legado. -->
-  <script src="js/00-core.js?v=20261115-1928"></script>
-  <script src="js/10-theme-persistence.js?v=20261115-1928"></script>
-  <script src="js/11-history-audit.js?v=20261115-1928"></script>
-  <script src="js/20-navigation-dashboard.js?v=20261115-1928"></script>
-  <script src="js/30-entries.js?v=20261115-1928"></script>
-  <script src="js/40-exports.js?v=20261115-1928"></script>
-  <script src="js/41-backups-recovery.js?v=20261115-1928"></script>
-  <script src="js/50-import-parsers.js?v=20261115-1928"></script>
-  <script src="js/51-import-workflows.js?v=20261115-1928"></script>
-  <script src="js/60-render.js?v=20261115-1928"></script>
-  <script src="js/61-card-reordering.js?v=20261115-1928"></script>
-  <script src="js/70-events.js?v=20261115-1928"></script>
-  <script src="js/80-bootstrap-pwa.js?v=20261115-1928"></script>
-  <script src="app-modules.js?v=20261115-1928"></script>
+  <script src="js/00-core.js?v=20261115-1943"></script>
+  <script src="js/10-theme-persistence.js?v=20261115-1943"></script>
+  <script src="js/11-history-audit.js?v=20261115-1943"></script>
+  <script src="js/20-navigation-dashboard.js?v=20261115-1943"></script>
+  <script src="js/30-entries.js?v=20261115-1943"></script>
+  <script src="js/40-exports.js?v=20261115-1943"></script>
+  <script src="js/41-backups-recovery.js?v=20261115-1943"></script>
+  <script src="js/50-import-parsers.js?v=20261115-1943"></script>
+  <script src="js/51-import-workflows.js?v=20261115-1943"></script>
+  <script src="js/60-render.js?v=20261115-1943"></script>
+  <script src="js/61-card-reordering.js?v=20261115-1943"></script>
+  <script src="js/70-events.js?v=20261115-1943"></script>
+  <script src="js/80-bootstrap-pwa.js?v=20261115-1943"></script>
+  <script src="app-modules.js?v=20261115-1943"></script>
 </body>
 </html>
 
