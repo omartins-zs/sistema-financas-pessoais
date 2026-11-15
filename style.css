@@ -2442,7 +2442,7 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   margin-top: 0.1rem;
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--app-text-muted);
+  color: var(--app-income);
   white-space: nowrap;
 }
 
