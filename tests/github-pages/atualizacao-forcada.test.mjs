@@ -233,3 +233,15 @@ test('aviso da nuvem dispara a atualização e a volta limpa o contador e a URL'
   assert.equal(session.size, 0, 'atualizou: zera o contador');
   assert.equal(depois.calls.replaced, 'https://exemplo.github.io/financas/index.html');
 });
+
+
+test('worker novo que já assumiu sozinho (skipWaiting) não deixa atualização pendurada nem recarrega à toa', async () => {
+  const { t, calls } = await loadBootstrap();
+  let mensagens = 0;
+  t.markUpdatePending({ worker: { state: 'activated', postMessage() { mensagens += 1; } } });
+  await t.attemptPendingUpdate();
+
+  assert.equal(t.updateState.waitingWorker, null, 'limpa o worker que já está ativo');
+  assert.equal(mensagens, 0, 'não pede SKIP_WAITING de novo');
+  assert.equal(calls.reload + calls.replace.length, 0, 'a página nova vem pela checagem de versão, quando for seguro');
+});

@@ -14,7 +14,7 @@
  * ============================================================
  */
 
-const SW_BUILD_VERSION = '20261115-1904';
+const SW_BUILD_VERSION = '20261115-1909';
 const VERSION = new URLSearchParams(self.location.search).get('v') || SW_BUILD_VERSION;
 const CACHE = `financas-${VERSION}`;
 
@@ -52,8 +52,12 @@ self.addEventListener('install', (event) => {
     // Um a um: com addAll, um único arquivo falhando derrubaria a instalação inteira.
     await Promise.all(SHELL.map((url) =>
       cache.add(new Request(url, { cache: 'reload' })).catch(() => {})));
-    // Se já há uma versão ativa, aguarda o app salvar e encerrar formulários antes de ativar.
-    // A página envia SKIP_WAITING somente quando a atualização for segura.
+    // Assume na hora, sem esperar todas as abas fecharem. É o único caminho que alcança
+    // páginas muito antigas (o navegador baixa o sw.js novo sozinho, mesmo que o código da
+    // página não saiba pedir SKIP_WAITING); sem isso, F5 continuava preso no worker velho.
+    // Seguro para os dados: o worker NÃO recarrega a página; quem recarrega é o app, depois
+    // de salvar e sem formulário aberto. Como é network-first, o próximo F5 já vem atualizado.
+    await self.skipWaiting();
   })());
 });
 

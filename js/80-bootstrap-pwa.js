@@ -220,6 +220,12 @@ const attemptPendingUpdate = async () => {
     const waiting = updateState.waitingWorker?.state === 'installed'
       ? updateState.waitingWorker
       : updateState.registration?.waiting;
+    if (!waiting && updateState.waitingWorker) {
+      // O sw.js novo já assumiu sozinho (skipWaiting na instalação): nada a ativar.
+      // A página nova chega pela checagem de versão, que recarrega quando for seguro.
+      updateState.waitingWorker = null;
+      setTimeout(checkRemoteAppVersion, 0);
+    }
     if (waiting) {
       updateState.waitingWorker = waiting;
       if (!updateState.activationRequested) {

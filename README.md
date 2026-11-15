@@ -323,6 +323,10 @@ rede (`cache: 'no-store'`), então o próprio refresh já traz a versão mais re
   por uma versão mais nova, a aba atrasada **não grava**: a alteração fica no aparelho
   (pendente), o app se atualiza e a versão nova envia a pendência mesclada. Assim um código
   antigo nunca regrava os dados com regras ultrapassadas.
+- O `sw.js` novo assume assim que é baixado (`skipWaiting()` na instalação), sem esperar
+  fechar as abas. O navegador baixa o `sw.js` sozinho até em páginas muito antigas, então
+  esse é o caminho que destrava versões velhas: como ele é network-first, o próximo F5 já
+  traz a versão atual. O worker nunca recarrega a página por conta própria.
 
 
 ---

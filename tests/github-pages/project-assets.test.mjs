@@ -69,7 +69,8 @@ test('atualização da PWA espera formulários e salvamentos antes de recarregar
   assert.match(bootstrap, /AppStorage\.isDirty\?\./);
   assert.match(bootstrap, /controllerchange/);
   assert.match(bootstrap, /SKIP_WAITING/);
-  assert.doesNotMatch(installHandler, /skipWaiting\(/);
+  assert.match(installHandler, /await self\.skipWaiting\(\)/, 'worker novo assume até em páginas antigas, sem esperar fechar as abas');
+  assert.doesNotMatch(serviceWorker, /client\.navigate|clients\.matchAll/, 'o worker nunca recarrega a página por conta própria');
   assert.match(serviceWorker, /event\.data\?\.type === 'SKIP_WAITING'/);
 });
 
