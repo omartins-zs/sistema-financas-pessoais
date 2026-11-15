@@ -54,6 +54,30 @@ const handleRemoteUpdate = (remoteData, skipMirror = false) => {
 // Fonte única da versão: a meta do index.html, que é o mesmo valor do ?v= dos arquivos
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content?.trim() || 'dev';
 const RELOAD_GUARD_KEY = 'financas_casa_reloaded_version';
+// Tentativas de atualização forçada por versão (na mesma aba) antes de pedir ação manual
+const MAX_UPDATE_ATTEMPTS = 3;
+const UPDATE_URL_PARAM = 'atualizar';
+
+// Só atualiza para uma versão MAIS NOVA (AAAAMMDD-HHMM); uma resposta antiga de cache/CDN
+// não pode puxar o app para trás nem causar recarga em loop.
+const isNewerVersion = (remote, local) => {
+  const re = /^\d{8}-\d{4}$/;
+  if (re.test(String(remote || '')) && re.test(String(local || ''))) return String(remote) > String(local);
+  return Boolean(remote) && remote !== local;
+};
+
+const readUpdateAttempts = (version) => {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(RELOAD_GUARD_KEY) || 'null');
+    return raw && raw.version === version ? Number(raw.attempts) || 0 : 0;
+  } catch { return 0; }
+};
+
+const registerUpdateAttempt = (version) => {
+  const attempts = readUpdateAttempts(version) + 1;
+  try { sessionStorage.setItem(RELOAD_GUARD_KEY, JSON.stringify({ version, attempts })); } catch {}
+  return attempts;
+};
 
 // Na tela a versão aparece no padrão BR (dia/mês/ano e horário); por dentro continua
 // AAAAMMDD-HHMM, que é o que o hook grava e o que vai no ?v= dos arquivos.
@@ -71,6 +95,7 @@ const updateState = {
   applying: false,
   reloading: false,
   noticeShown: false,
+  stuckNoticeShown: false,
   retryTimer: null
 };
 
@@ -86,6 +111,37 @@ const hasOpenEditingSurface = () => {
   if (hasUnsavedFormDraft()) return true;
   if (document.querySelector('.modal.show, .card-item--editing')) return true;
   try { return Boolean(window.Swal?.isVisible?.()); } catch { return false; }
+};
+
+// Com a nuvem travada para esta versão antiga, a pendência não sobe mesmo: ela já está no
+// espelho local e a versão nova envia depois de recarregar. Não deixa isso travar a atualização.
+const canUpdateWithLocalPending = () =>
+  Boolean(AppStorage.isOutdated?.()) && AppStorage.localSaveOk?.() !== false;
+
+const savingBlocksUpdate = (saved) =>
+  (saved === false || AppStorage.isDirty?.()) && !canUpdateWithLocalPending();
+
+const showStuckUpdateNotice = (version) => {
+  if (updateState.stuckNoticeShown) return;
+  updateState.stuckNoticeShown = true;
+  notify.error(`Não consegui atualizar sozinho para a versão ${formatAppVersion(version)}. Feche e abra o app ou pressione Ctrl+Shift+R. Suas alterações estão guardadas neste aparelho.`);
+};
+
+// Equivale ao Ctrl+Shift+F5: tira o service worker deste app e os caches "financas-*"
+// e abre a página com um parâmetro novo, que fura o cache do navegador e da CDN.
+const hardReloadForVersion = async (version) => {
+  const scope = new URL('./', window.location.href).href;
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.filter((reg) => reg.scope === scope).map((reg) => reg.unregister()));
+  } catch {}
+  try {
+    const names = (await caches?.keys?.()) || [];
+    await Promise.all(names.filter((name) => name.startsWith('financas-')).map((name) => caches.delete(name)));
+  } catch {}
+  const url = new URL(window.location.href);
+  url.searchParams.set(UPDATE_URL_PARAM, version);
+  window.location.replace(url.toString());
 };
 
 const hasPendingUpdate = () => Boolean(
@@ -125,7 +181,7 @@ const reloadForUpdate = async () => {
   updateState.reloading = true;
   try {
     const saved = await AppStorage.flush?.();
-    if (saved === false || AppStorage.isDirty?.() || hasOpenEditingSurface()) {
+    if (savingBlocksUpdate(saved) || hasOpenEditingSurface()) {
       updateState.reloading = false;
       startUpdateRetry();
       return;
@@ -137,10 +193,18 @@ const reloadForUpdate = async () => {
   }
 
   if (updateState.targetVersion) {
-    try { sessionStorage.setItem(RELOAD_GUARD_KEY, updateState.targetVersion); } catch {}
+    // Versão nova publicada: recarrega sem cache. Limite por aba evita loop caso a CDN
+    // ainda entregue a página antiga; depois disso pede para fechar/abrir o app.
+    if (readUpdateAttempts(updateState.targetVersion) >= MAX_UPDATE_ATTEMPTS) {
+      updateState.reloading = false;
+      showStuckUpdateNotice(updateState.targetVersion);
+      return;
+    }
+    registerUpdateAttempt(updateState.targetVersion);
+    // Só remove os caches "financas-*" e o service worker deste app, nada de outros sites do domínio.
+    await hardReloadForVersion(updateState.targetVersion);
+    return;
   }
-  // O service worker remove somente os caches "financas-*" ao ativar a versão nova.
-  // Não apagamos caches de outros recursos/aplicações do mesmo domínio.
   window.location.reload();
 };
 
@@ -151,7 +215,7 @@ const attemptPendingUpdate = async () => {
   updateState.applying = true;
   try {
     const saved = await AppStorage.flush?.();
-    if (saved === false || AppStorage.isDirty?.() || hasOpenEditingSurface()) return;
+    if (savingBlocksUpdate(saved) || hasOpenEditingSurface()) return;
 
     const waiting = updateState.waitingWorker?.state === 'installed'
       ? updateState.waitingWorker
@@ -195,10 +259,11 @@ const checkRemoteAppVersion = async () => {
     const html = await res.text();
     const match = html.match(/<meta\s+name=["']app-version["']\s+content=["']([^"']+)["']/i);
     const remoteVersion = match?.[1]?.trim();
-    if (!remoteVersion || remoteVersion === APP_VERSION) return;
-    try {
-      if (sessionStorage.getItem(RELOAD_GUARD_KEY) === remoteVersion) return;
-    } catch {}
+    if (!isNewerVersion(remoteVersion, APP_VERSION)) return;
+    if (readUpdateAttempts(remoteVersion) >= MAX_UPDATE_ATTEMPTS) {
+      showStuckUpdateNotice(remoteVersion);
+      return;
+    }
     markUpdatePending({ version: remoteVersion });
   } catch {
     /* Sem rede no momento */
@@ -279,8 +344,34 @@ const registerServiceWorker = async () => {
   }
 };
 
+// Depois de uma atualização forçada: limpa o contador e o parâmetro ?atualizar= da barra.
+const finishForcedUpdate = () => {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(RELOAD_GUARD_KEY) || 'null');
+    if (raw && !isNewerVersion(raw.version, APP_VERSION)) sessionStorage.removeItem(RELOAD_GUARD_KEY);
+  } catch {}
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has(UPDATE_URL_PARAM)) {
+      url.searchParams.delete(UPDATE_URL_PARAM);
+      history.replaceState(history.state, '', url.toString());
+    }
+  } catch {}
+};
+
+// A nuvem avisou que outro aparelho já usa versão mais nova: atualiza assim que for seguro.
+const handleOutdatedClient = (event) => {
+  const version = event?.detail?.versao;
+  if (!version || !isNewerVersion(version, APP_VERSION)) return;
+  notify.info(`Há uma versão mais nova do app (v${formatAppVersion(version)}). Suas alterações ficam guardadas neste aparelho e sobem para a nuvem depois de atualizar.`);
+  updateState.noticeShown = true;
+  markUpdatePending({ version });
+};
+
 const init = () => {
   dayjs.locale('pt-br');
+  finishForcedUpdate();
+  window.addEventListener('app:versao-desatualizada', handleOutdatedClient);
   showAppVersion();
   window.addEventListener('load', registerServiceWorker);
   initTheme();

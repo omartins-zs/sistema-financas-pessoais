@@ -312,6 +312,18 @@ fica preso numa versão velha. Com o `?v=` novo, a URL é outra e todo dispositi
 baixa a versão nova. O service worker fecha o cerco: ele busca o HTML sempre na
 rede (`cache: 'no-store'`), então o próprio refresh já traz a versão mais recente.
 
+**Atualização forçada e trava de versão** (para nunca ficar numa versão atrasada):
+
+- A cada 60s, ao focar a janela e ao voltar para o app, a página compara a própria versão
+  com a do `index.html` publicado. Se houver uma **mais nova**, salva tudo e recarrega
+  *sem cache* (equivale ao Ctrl+Shift+F5): remove o service worker e os caches `financas-*`
+  deste app e abre a URL com `?atualizar=<versão>`. São no máximo 3 tentativas por aba;
+  depois disso aparece um aviso pedindo para fechar/abrir o app.
+- Toda gravação no Firestore marca o documento com `appVersion`. Se a nuvem já foi gravada
+  por uma versão mais nova, a aba atrasada **não grava**: a alteração fica no aparelho
+  (pendente), o app se atualiza e a versão nova envia a pendência mesclada. Assim um código
+  antigo nunca regrava os dados com regras ultrapassadas.
+
 
 ---
 

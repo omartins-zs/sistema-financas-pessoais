@@ -495,6 +495,25 @@ const AppStorage = (() => {
 
   const appVersion = () => document.querySelector?.('meta[name="app-version"]')?.content?.trim() || 'dev';
 
+  // ---------- Trava de versão: app desatualizado não grava na nuvem ----------
+  // Cada gravação marca o documento com a versão do app (AAAAMMDD-HHMM). Se a nuvem já
+  // foi gravada por uma versão mais nova, esta aba está atrasada: as alterações ficam no
+  // aparelho (espelho local marcado como pendente) e só sobem depois que o app atualizar,
+  // para que um código antigo nunca regrave os dados com regras/campos ultrapassados.
+  const VERSAO_RE = /^\d{8}-\d{4}$/;
+  const versaoMaisNova = (a, b) =>
+    VERSAO_RE.test(String(a || '')) && VERSAO_RE.test(String(b || '')) && String(a) > String(b);
+  let versaoNuvemMaisNova = '';
+  const conferirVersaoRemota = (docData) => {
+    const remota = String(docData?.appVersion || '').trim();
+    if (!versaoMaisNova(remota, appVersion())) return false;
+    if (versaoNuvemMaisNova !== remota) {
+      versaoNuvemMaisNova = remota;
+      try { window.dispatchEvent(new CustomEvent('app:versao-desatualizada', { detail: { versao: remota } })); } catch {}
+    }
+    return true;
+  };
+
   const detectDevice = () => {
     const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
     const so = /iPhone/i.test(ua) ? 'iPhone'
@@ -956,6 +975,11 @@ const AppStorage = (() => {
       // gravar primeiro, o Firestore repete esta função com a versão mais recente.
       const result = await db.runTransaction(async (transaction) => {
         const snap = await transaction.get(docRef);
+        if (snap.exists && conferirVersaoRemota(snap.data())) {
+          const outdated = new Error('A nuvem foi gravada por uma versão mais nova do app.');
+          outdated.code = 'app/outdated-client';
+          throw outdated;
+        }
         let remote = null;
         if (snap.exists) {
           const raw = snap.data()?.data;
@@ -978,7 +1002,8 @@ const AppStorage = (() => {
           data: serialized,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           clientUpdatedAt: Date.now(),
-          clientId
+          clientId,
+          appVersion: appVersion()
         });
         return { data: merged, remote };
       });
@@ -1023,7 +1048,11 @@ const AppStorage = (() => {
       lastWriteErrorCode = err?.code || 'unknown';
       console.error('[AppStorage] Erro ao salvar no Firestore:', err);
       registrarLog('erro', `Falha ao salvar na nuvem (${err?.code || 'desconhecido'})`);
-      if (err?.code === 'app/document-too-large') {
+      if (err?.code === 'app/outdated-client') {
+        setSyncUI('error', lastLocalSaveFailed
+          ? 'App desatualizado e falha ao salvar neste aparelho. Mantenha a tela aberta: atualizando...'
+          : 'App desatualizado: alterações guardadas neste aparelho. Atualizando para enviar à nuvem...');
+      } else if (err?.code === 'app/document-too-large') {
         const localStatus = lastLocalSaveFailed
           ? ' Também falhou a gravação local neste navegador; mantenha o app aberto e exporte os dados assim que possível.'
           : ' A cópia local permanece marcada como pendente.';
@@ -1064,6 +1093,7 @@ const AppStorage = (() => {
   };
 
   const erroPermanenteDeGravacao = (code) => [
+    'app/outdated-client', // reenviado pela versão nova logo após atualizar
     'app/document-too-large',
     'permission-denied',
     'unauthenticated',
@@ -1116,6 +1146,7 @@ const AppStorage = (() => {
     try {
       const snap = await fetchServerDocWithTimeout(4000);
       if (!snap || !snap.exists || snap.metadata?.hasPendingWrites) return;
+      conferirVersaoRemota(snap.data());
       const raw = snap.data()?.data;
       if (!raw || raw === lastWrittenJson) return;
       let remoteObj = null;
@@ -1142,6 +1173,7 @@ const AppStorage = (() => {
       { includeMetadataChanges: true },
       (snap) => {
         if (!snap.exists) return;
+        conferirVersaoRemota(snap.data());
         // Se há escrita local pendente no SDK, não sobrescreve
         if (snap.metadata.hasPendingWrites) {
           setSyncUI('saving');
@@ -1569,6 +1601,13 @@ const AppStorage = (() => {
       return Boolean(getLocalMeta().dirty || dirtyIdsSet.size > 0 || saveTimer || pendingData || isWriting);
     },
     flush: flushCloudSave,
+    // Nuvem gravada por versão mais nova: pendências ficam no aparelho até atualizar
+    isOutdated() {
+      return Boolean(versaoNuvemMaisNova);
+    },
+    localSaveOk() {
+      return !lastLocalSaveFailed;
+    },
     syncNow,
     mergeAllData,
     // Backups, log de auditoria e identificação do aparelho
