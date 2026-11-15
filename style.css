@@ -2377,17 +2377,17 @@ body.is-dragging-card-item .card-item:not(.card-item--empty):hover {
   align-items: center;
 }
 
-/* Valor do cartão com os dois números (fatura cheia e sem terceiros) */
-.card-value-total {
+/* Valor do cartão com os dois números (sua parte em destaque, fatura cheia embaixo) */
+.card-value-proprio {
   display: block;
 }
 
-.card-value-sem-terceiros {
+.card-value-com-terceiros {
   display: block;
   margin-top: 0.1rem;
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--app-income);
+  color: var(--app-text-muted);
   white-space: nowrap;
 }
 

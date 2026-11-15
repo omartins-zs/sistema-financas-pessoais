@@ -14,7 +14,7 @@
  * ============================================================
  */
 
-const SW_BUILD_VERSION = '20261103-1839';
+const SW_BUILD_VERSION = '20261115-1859';
 const VERSION = new URLSearchParams(self.location.search).get('v') || SW_BUILD_VERSION;
 const CACHE = `financas-${VERSION}`;
 

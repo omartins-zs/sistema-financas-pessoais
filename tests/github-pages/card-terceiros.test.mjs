@@ -195,3 +195,22 @@ test('tela: seção de terceiros no fim da fatura, dois valores no cartão e ras
   assert.match(bootstrap, /\.terceiro-desc, \.terceiro-pessoa, \.terceiro-val/, 'atualização do PWA espera o rascunho');
   assert.match(audit, /terceiros \$\{formatCurrency\(terceirosA\)\} → \$\{formatCurrency\(terceirosD\)\}/);
 });
+
+test('tela: valor do cartão mostra a sua parte em destaque e a fatura com terceiros embaixo', async () => {
+  const render = await read('js/60-render.js');
+  const trecho = slice(render, 'const cardValorComTerceiros =', 'const renderCreditCardRows =');
+  const context = {
+    sumCardTerceiros: (e) => (e.terceiros || []).reduce((a, t) => a + t.valor, 0),
+    totalSemTerceiros: (e) => Math.round((e.value - (e.terceiros || []).reduce((a, t) => a + t.valor, 0)) * 100) / 100,
+    formatCurrency: (v) => `R$ ${v.toFixed(2)}`,
+    escapeAttr: (s) => s
+  };
+  runInNewContext(`${trecho}\nglobalThis.__f = cardValorComTerceiros;`, context);
+  const html = context.__f({ value: 2656.49, terceiros: [{ valor: 731.42 }] });
+  const proprio = html.indexOf('card-value-proprio');
+  const cheia = html.indexOf('card-value-com-terceiros');
+  assert.ok(proprio !== -1 && cheia !== -1 && proprio < cheia, 'sua parte vem antes da fatura cheia');
+  assert.match(html, /card-value-proprio[^>]*>R\$ 1925\.07</, 'destaque é o valor sem terceiros');
+  assert.match(html, /com terceiros R\$ 2656\.49/, 'embaixo a fatura cheia');
+  assert.equal(context.__f({ value: 500, terceiros: [] }), 'R$ 500.00', 'sem terceiros mostra só o valor');
+});

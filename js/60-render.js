@@ -255,12 +255,13 @@ const terceirosBadge = (entry) => {
   return `<span class="card-items-badge card-items-badge--terceiros" title="${escapeAttr(pessoas)}"><i class="bi bi-people-fill"></i> ${formatCurrency(total)} terceiros</span>`;
 };
 
-// Valor do cartão com os dois números: fatura cheia e o que fica sem terceiros
+// Valor do cartão com os dois números: em destaque a sua parte (sem terceiros, é o que
+// entra nos totais e no % comprometido) e embaixo a fatura cheia, com terceiros
 const cardValorComTerceiros = (entry) => {
   const terceiros = sumCardTerceiros(entry);
   if (!terceiros) return formatCurrency(Number(entry.value) || 0);
-  return `<span class="card-value-total">${formatCurrency(Number(entry.value) || 0)}</span>
-    <small class="card-value-sem-terceiros" title="Fatura menos ${escapeAttr(formatCurrency(terceiros))} de terceiros">sem terceiros ${formatCurrency(totalSemTerceiros(entry))}</small>`;
+  return `<span class="card-value-proprio" title="Sua parte: fatura menos ${escapeAttr(formatCurrency(terceiros))} de terceiros">${formatCurrency(totalSemTerceiros(entry))}</span>
+    <small class="card-value-com-terceiros" title="Fatura cheia, incluindo ${escapeAttr(formatCurrency(terceiros))} de terceiros">com terceiros ${formatCurrency(Number(entry.value) || 0)}</small>`;
 };
 
 const renderCreditCardRows = (entry, valueClass) => {
